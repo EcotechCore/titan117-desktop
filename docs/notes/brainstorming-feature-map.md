@@ -56,13 +56,13 @@ An AI team for small companies that runs on your own laptop: a general assistant
 
 | # | Feature | Stage | Notes |
 |---|---|---|---|
-| 2.1 | Local models with one-click download | V1 | llama.cpp built in (1.15), no Ollama needed; suggestions from 1.4 |
+| 2.1 | Local models with one-click download | V1 | llama.cpp built in (1.15). A full catalogue from tiny (under 1B) to the largest the laptop can run, each marked "runs well", "runs slowly" or "too big" from the hardware check (1.4); downloaded completely, so they work with no internet (1.22). Only models whose licence we've checked (decisions §33) |
 | 2.2 | OpenRouter models | V1 | Through our credit proxy or BYOK |
 | 2.3 | Model per agent, override per step | V1 | Sensible defaults for beginners |
 | 2.4 | Smart routing | V1 | Strong model plans, cheaper model does bulk edits |
 | 2.5 | Cost shown before a task runs | V1 | Estimated credits; local runs cost nothing |
 | 2.6 | "Too heavy for this laptop" fallback | V1 | Suggests the OpenRouter model and its cost |
-| 2.7 | Image, voice and video providers | V1 | Through OpenRouter and credits where it has them (text, some images); anything else (for example AI video from fal.ai or Replicate) through the user's own account with a guided setup (decisions §31) |
+| 2.7 | Image, voice and video providers | V1 | Through OpenRouter and our credits: text, images and **video** (OpenRouter's video API since April 2026: Sora 2, Veo 3.1, Seedance, Wan). Free on the laptop: open models such as Wan 2.2 (Apache 2.0) on a strong graphics card; after V1, HunyuanVideo only in countries its licence covers (not the EU, UK or South Korea). Anything else on the user's own account (decisions §31, §33) |
 | 2.8 | Compare models side by side | V1 | Same prompt, several models |
 | 2.9 | Your own key from a model provider | V1 | Anthropic, OpenAI or Google API keys, used directly next to OpenRouter; kept in the OS keychain |
 | 2.10 | No sign-in with chat subscriptions | Decided | Claude Pro or Max, ChatGPT Plus or Pro and similar plans are not used to run our agents (see Not doing). Different from 13.14, where your own installed coding tool runs under its own sign-in |
@@ -78,11 +78,14 @@ An AI team for small companies that runs on your own laptop: a general assistant
 | 3.5 | Learns how you work: writes its own skills | V1 | After doing a task once, saves how as a skill and reuses it; skills are files you can read, edit and delete |
 | 3.6 | Tools through MCP | V1 | Gmail, Calendar, Slack, Notion, Stripe, GitHub, CRMs and so on, each connected as the user through the service's own sign-in. One inbox for Gmail, Outlook, Yahoo, iCloud and company mail, kept on the laptop and never through our servers, so it costs us nothing (decisions §27) |
 | 3.7 | **General assistant (Titan)** | V1 | The default agent: has every tool below plus shared memory, does one-off tasks without a dedicated agent, and hands big jobs to the specialists (4.6) |
-| 3.8 | Shell and terminal | V1 | Run commands and scripts, install tools, convert files, git; sandboxed, risky commands need your OK |
+| 3.8 | Shell and terminal | V1 | Any command; sandboxed. Risky commands ask first, with "allow once" or "always allow this command in this project". A short list always asks, even when allowed before: deleting outside the allowed folders, admin or sudo, formatting disks, touching saved logins (decisions §33) |
 | 3.9 | File system | V1 | Read, write, organize, rename and search files, inside the folders you allow |
 | 3.10 | Browser control | V1 | Research, forms, downloads, checking sites; the same tool the QA agent, watcher and recorder use. **A core strength:** self-correcting (acts, checks, recovers), on any site or app the user chooses, their own apps included; warnings where a site forbids automation; stops before publish, send or pay (decisions §29) |
 | 3.11 | Code execution | V1 | Writes and runs small scripts for one-off jobs (clean data, build an Excel report, edit PDFs) |
 | 3.12 | Strong model for long tasks | V1 | Multi-step work with many tools suggests an OpenRouter model; local models are fine for simple tasks |
+| 3.13 | **Remembers how it solved things** | V1 | Every finished task keeps a short local record: the goal, the steps, what failed, what worked, the files and sites involved. Agents search these records before starting something similar and reuse what worked; repeated ones become skills (3.5). The user can browse, search and delete them; kept on the laptop only (decisions §32, §34) |
+| 3.14 | **Speech** | V1 | Reading text aloud and voice input, as a tool every agent can use. Local first (for example whisper.cpp, MIT, for speech to text, and Kokoro, Apache 2.0, for text to speech; licences checked at phase start); OpenRouter voices through credits as an option (decisions §34) |
+| 3.15 | **Run on other machines** | V1 | Besides the laptop's sandbox, containers (6.27) and virtual machines (8.7): **the user's own servers over SSH** (keys in the keychain, the same approvals and always-ask list as 3.8) and **cloud sandboxes** such as Modal, on the user's own account (decisions §31). Each task shows where it runs (decisions §34) |
 
 Example tasks for Titan: sort the downloads folder; build an Excel report from a folder of invoices; reply to supplier emails about delays; find 20 local restaurants without a website and add them to the CRM; convert a folder of videos to MP4.
 
@@ -99,6 +102,7 @@ Example tasks for Titan: sort the downloads folder; build an Excel report from a
 | 4.7 | Shared memory and a message bus between agents | V1 | |
 | 4.8 | Budgets and limits | V1 | Credit cap per task, step limits, loop detection |
 | 4.9 | Web content treated as data, never instructions | V1 | Against prompt injection and memory poisoning |
+| 4.10 | **Scripts that call Titan's tools** | V1 | For bulk work (500 invoices, 200 pages), the agent writes one script that calls Titan's tools directly (files, browser, search, connectors) through a local tool API, and only the summary returns to the model: faster and much cheaper. The script runs in the sandbox with the same permissions and approvals as the agent; built-in Python (1.15) or Node (decisions §34) |
 
 ## 5. Flagship agents
 
@@ -218,6 +222,7 @@ Like Lovable, the builder uses several models, each for the job it does best; li
 | 8.7 | Computer use inside a virtual machine | V1 | The agent sees the screen and uses mouse and keyboard, but in a VM or emulator, not on your desktop: it works in the background, you keep using your computer, and a mistake can't touch your files. First use: testing desktop apps we build (6.26) and apps without an API. Reads the accessibility tree first (Windows UI Automation, macOS Accessibility), screenshots when that isn't enough |
 | 8.8 | Computer use on your own desktop | V1 | Any desktop app (Excel, accounting software). Only when you start it, for one task at a time, limited to the apps you allow; a visible "agent is in control" bar, a hotkey that stops it at once, approvals for anything risky; needs the OS permissions (Accessibility and Screen Recording on macOS). Your mouse and keyboard are taken while it works |
 | 8.9 | Building blocks for computer use | V1 | Vision models through OpenRouter or local; UI-TARS (ByteDance, open model and desktop agent, licence to check) and nut.js (Apache 2.0) to study; Open Interpreter is AGPL, so ideas only |
+| 8.10 | **Schedules in plain words** | V1 | "Every weekday at 8, brief me on new emails and the law watcher" becomes a schedule the user sees and edits (time, what runs, where the result goes: laptop, phone, chat). Runs unattended while the app is open and catches up on the next launch (8.1); reports, backups and briefings as ready-made examples (decisions §34) |
 
 ## 9. Web app and remote control
 
@@ -295,7 +300,7 @@ One coding engine runs inside the desktop app and powers every agent that writes
 | 13.11 | Live preview next to the code | V1 | For web apps; shared with the app builder |
 | 13.12 | Open in the user's editor | V1 | VS Code, Cursor, JetBrains |
 | 13.13 | Start and watch coding tasks remotely | V1 | Web app (§9) and chat channels (9.7) |
-| 13.14 | **Use the coding tools you already have** | V1 | If Claude Code, Codex, Cursor's agent, OpenCode or Antigravity is installed and signed in on the laptop, the code builder and app builder can hand a coding task to it instead of our engine. Titan117 starts the vendor's own, unmodified program; you sign in through the vendor's own flow; usage stays on your plan. Rules in decisions §20 |
+| 13.14 | **Use the coding tools you already have** | V1 | An option the user picks per project or task ("Titan117's engine" or one of their tools), like T3 Code: no keys resold, no quota caps, switch models mid-conversation. If Claude Code, Codex, Cursor (its agent or SDK), OpenCode, Grok CLI or Antigravity is installed and signed in on the laptop, the code builder and app builder can hand a coding task to it instead of our engine. Titan117 starts the vendor's own, unmodified program; you sign in through the vendor's own flow; usage stays on your plan. Rules in decisions §20 |
 
 ## 14. SEO
 
@@ -306,6 +311,7 @@ Our advantage: we build the sites (§6), so they come with SEO built in, and the
 | 14.1 | Built into every site we generate | V1 | Titles, meta descriptions, headings, sitemap, robots.txt, canonical links, Open Graph images, structured data (schema.org), alt text, fast pages |
 | 14.2 | Site audit | V1 | Crawl: broken links, redirects and loops, missing or duplicate meta tags, heading order, thin pages, missing alt text; issues by severity. Ideas from SEOnaut, SiteOne Crawler, LibreCrawl (all MIT) |
 | 14.3 | Speed and Core Web Vitals across the whole site | V1 | Lighthouse on every page, like Unlighthouse (MIT); shared with the QA agent (5.2) |
+| 14.4b | SEO skill for code | V1 | The code builder audits a codebase for SEO and fixes it in the code (titles, meta tags, sitemap, structured data, speed), as a skill the user can call, like skills in Claude Code (decisions §33) |
 | 14.4 | Fix it for me | V1 | On our sites the agent makes the fix through the coding engine (§13); on other repos it opens a pull request |
 | 14.5 | Google Search Console | V1 | Free, official data: queries, clicks, impressions, indexing problems; needs our Google sign-in app verified ([external services](external-services.md)) |
 | 14.6 | Rank tracking | V1 | Ideas from SerpBear (MIT); positions from Search Console for free, or a SERP API on the user's own account (decisions §31) |
@@ -338,6 +344,7 @@ Out of reach with open source: backlink databases, competitors' traffic estimate
 | 15.12 | Lead finding | V1 | Web research into a list in the CRM, for example local businesses without a website; respects site terms and privacy law (GDPR) |
 | 15.13 | Ad drafts | V1 | Google and Meta ads written, with images and targeting; you launch them and set the budget. Ready-to-use ads plus a bulk-upload file for Google's and Meta's import tools; or the user's own developer access; or, as the user's choice after a warning, the agent fills in Ads Manager and stops before Launch (decisions §28, §29) |
 | 15.14 | Review and mention monitoring | V1 | Through the web watcher (5.5) |
+| 15.15 | **Video studio** | V1 | Our own studio for AI video: text and image to video, camera-motion presets, effects, and a timeline editor, in our own design and names (the same kinds of tools as Higgsfield, not a copy of it). Models through credits (OpenRouter video) or locally (Wan 2.2); the editor built on OpenCut (MIT), animated graphics on Revideo or Motion Canvas (MIT) (decisions §33) |
 
 Everything that publishes, sends or spends money needs your approval (4.5). In V1 the user publishes social posts themselves in a click (15.4), so no platform has to approve our app; automatic publishing comes after V1 (decisions §24). WhatsApp, as a chat channel, stays bring-your-own (decisions §15).
 
@@ -459,15 +466,15 @@ Settled decisions live in [decisions.md](decisions.md) (Electron, Node, Stripe d
 
 | # | Open decision | Needed by | Leaning |
 |---|---|---|---|
-| 1 | How the shell is sandboxed on Windows and macOS, and which commands count as risky (3.8) | Phase 1 | Separate process per command in an allowed folder with a timeout; OS sandbox where available; a risky-command list reviewed with the guardrail tests |
-| 2 | Which local models ship as defaults, by laptop tier (2.1, 1.4) | Phase 1 | A small model for search and embeddings built in; a 7–8B instruct model suggested on 16 GB laptops |
+| 1 | ~~Shell commands~~ | Decided | Any command, sandboxed; risky ones ask with "allow once" or "always"; a short list always asks (decisions §33) |
+| 2 | ~~Local models~~ | Decided | A full catalogue by hardware, tiny to large, all downloadable for offline use; licences checked (decisions §33) |
 | 3 | ~~GitHub owner~~ | Decided | The EcotechCore organisation owns `titan117-web`, `titan117-desktop` and `titan117-pop` (decisions §6) |
-| 4 | Open-source base for the app builder, the QA agent and browser control, after a licence check (6.19) | Phases 7–8 | OpenCode plus Playwright; bolt.diy, Dyad and open-lovable for ideas |
-| 5 | Paid data provider for SEO keywords and positions to recommend in the setup guide (14.6, 14.7) | Phase 12 | DataForSEO, on the user's own account |
-| 6 | Video provider for AI clips (2.7, 5.1) | Phase 14 | fal.ai or Replicate |
-| 7 | Terms of OpenAI, Cursor, Google and xAI for running their coding tools (13.14) | Phase 7 | Check each; experimental with an API-key mode until clear (decisions §20) |
-| 8 | Trademark check on "Titan117" and our own restyle of the eyes logo | Before beta | Check the name now; restyle in phase 18 |
-| 9 | Legal basics: privacy policy, terms, GDPR deletion plan, open-source licence audit | Phase 2 (pages online), phase 18 (audit) | Privacy policy and terms online with the web app basics |
+| 4 | ~~Open-source bases~~ | Decided | Compare the best candidates at each phase start and take the best MIT, Apache or BSD code (decisions §33) |
+| 5 | ~~SEO data~~ | Decided | Free and open-source first (Search Console, our own crawler); paid data only on the user's account; an SEO skill for code (decisions §33) |
+| 6 | ~~Video provider~~ | Decided | OpenRouter video through credits; Wan 2.2 locally; a video studio of our own (decisions §33) |
+| 7 | ~~Running other coding tools~~ | Decided | The T3 Code model as a user option; a quick terms confirmation per tool in phase 7 (decisions §33) |
+| 8 | ~~Trademark~~ | Decided | Keep "Titan117 by EcotechCore"; no "Titan117" mark exists, but "Titan" is crowded in software, so file our own EU trademark before launch (decisions §33) |
+| 9 | ~~Legal pages~~ | Decided | Drafted comprehensively in phase 2, reviewed once by a Romanian lawyer before launch (decisions §33) |
 | 10 | ~~OpenRouter's OK for our credits~~ | Decided | Confirmed by OpenRouter on 8 Nov 2026 (decisions §12) |
 | 11 | ~~One resale rule~~ | Decided | Only OpenRouter goes through credits; every other paid service is the user's own account, with a guided setup (decisions §31) |
 | 12 | ~~Chat channels: whose bot~~ | Decided | The user's own bot with a guided setup, connected straight from the laptop (decisions §28) |

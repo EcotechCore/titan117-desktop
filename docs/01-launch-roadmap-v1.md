@@ -67,7 +67,8 @@ Feature numbers point to the feature map.
 
 ### 3 · Titan and memory
 - Titan with files, sandboxed shell, browser, code execution, MCP connectors (3.6–3.12).
-- Memory you can see and edit, scopes, learned skills (3.1–3.5).
+- Memory you can see and edit, scopes, learned skills (3.1–3.5); remembering how past tasks were solved (3.13).
+- Scripts that call Titan's tools through the local tool API (4.10); speech as a tool (3.14).
 - Prompt-injection test suite, including exfiltration attempts.
 - Network policy per task: site lists, ask before new sites after private data, block requests carrying private content (security.md A3).
 
@@ -85,6 +86,7 @@ Feature numbers point to the feature map.
 
 ### 7 · Coding engine and code builder
 - OpenCode in headless mode inside the engine; approvals routed to ours; repos, plan and act, diffs, tests, git, pull requests, project memory, sub-agents, code review, open in editor, remote coding tasks (§13, 5.7).
+- Running on other machines: the user's servers over SSH and cloud sandboxes on their own account (3.15).
 - Your own coding tools (13.14): detect installed, signed-in Claude Code, Codex, Cursor's agent, OpenCode and Antigravity; run the unmodified program through the sandboxed shell and our approvals; show its output as a task; fall back to our engine when it's missing or signed out (decisions §20).
 
 ### 8 · App builder: web
@@ -104,7 +106,7 @@ Feature numbers point to the feature map.
 - QA tester (5.2); SEO agent with audit, speed, fixes, Search Console, ranks, keywords, content, competitors, languages, local SEO, AI visibility, re-audits (5.8, §14).
 
 ### 13 · Automation
-- Scheduler, web watcher, recorder and replay, logins from the keychain, computer use in a VM and on the user's desktop, recording other desktop apps (5.5, 5.6, §8).
+- Scheduler with schedules in plain words (8.10), web watcher, recorder and replay, logins from the keychain, computer use in a VM and on the user's desktop, recording other desktop apps (5.5, 5.6, §8).
 
 ### 14 · Marketing and video
 - Brand kit, promo video, social posts, content calendar, ready to post with reminders (15.4, no platform APIs, decisions §24), newsletters, sequences, landing pages, images, analytics, reports, lead finding, ad drafts, monitoring (5.1, 5.9, §15). Video on Revideo or Motion Canvas plus FFmpeg; X is a bring-your-own connector with guided setup (decisions §15). Apply for the LinkedIn, Meta and TikTok app reviews early.
