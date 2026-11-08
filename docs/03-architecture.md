@@ -31,14 +31,15 @@ Three pieces: a **thin cloud**, a **local engine** on the user's laptop, and two
 
 **The rule behind it:** the work happens on the laptop; the cloud only does what must be shared or paid for (accounts, plans, credits, devices, remote commands, things the user chooses to share). Company data stays on the laptop unless the user shares it or sends it to a cloud model they picked.
 
-## 2. Two repositories
+## 2. Repositories
 
-Decided 15 Oct 2026 (feature map, decision 16).
+Decided 15 Oct 2026 (feature map, decision 16); `titan117-pop` added 7 Nov 2026. All three belong to the **EcotechCore** GitHub organisation (decisions §6).
 
 | Repository | Contains | Deploys |
 |---|---|---|
 | `titan117-web` | Next.js web app; **the Convex backend** (schema, functions, guardrails); the shared package `@titan117/shared` | Web app to Vercel on every merge; Convex functions; the shared package to a private registry (GitHub Packages) |
 | `titan117-desktop` | Electron shell; the Titan engine; built-in agents and tools; the `titan` SDK for sidebar apps | Signed installers for Windows and macOS when a version is tagged; auto-updates |
+| `titan117-pop` | The product owner portal: a Next.js app for the owner and employees; installs `@titan117/shared`; no backend of its own (its admin functions live in `titan117-web`'s Convex) | Its own Vercel project at its own address (for example `admin.titan117.com`), on every merge |
 
 ### The shared package `@titan117/shared`
 
@@ -47,13 +48,13 @@ Decided 15 Oct 2026 (feature map, decision 16).
 - The generated Convex client (function names and argument types; no server code).
 - Maybe later: shared UI components, here or in `@titan117/ui`.
 
-### Rules that keep the two repos in step
+### Rules that keep the repos in step
 
 1. Backend changes land first and stay backward compatible: add fields and functions, don't change or remove old ones while desktop versions still use them.
 2. Every protocol message carries a version; an outdated desktop app shows "please update" instead of failing.
 3. A compatibility test in the desktop repo runs against the latest backend in CI.
-4. Updating `@titan117/shared` in the desktop repo is a deliberate commit at a fixed version.
-5. Docs: shared product docs are edited in `titan117-web` and copied to the desktop repo; a CI check fails if the copy is out of date (decision 17).
+4. Updating `@titan117/shared` in the desktop and portal repos is a deliberate commit at a fixed version.
+5. Docs: shared product docs are edited in `titan117-web` and copied to the desktop and portal repos (`scripts/sync-docs.py`); a CI check fails if a copy is out of date (decision 17).
 
 ## 3. The desktop app
 
@@ -66,7 +67,7 @@ Two processes: a **window** (the interface) and the **Titan engine** (the work).
 - A crashing tool or agent doesn't take the interface down.
 - The shell can change later (Electron or Tauri) without rewriting the engine.
 
-### The shell: Electron (recommended, open decision 1)
+### The shell: Electron (decided, decisions §12)
 
 | | Electron | Tauri |
 |---|---|---|
@@ -91,7 +92,9 @@ A background process in TypeScript (Node or Bun). Its parts:
 | Documents index | Watched folders, parsing, OCR, search (§7) | Same store; parsers like Docling or MarkItDown |
 | Scheduler and job queue | Scheduled and long tasks with checkpoints, resume after sleep (1.5, 1.6, 8.1) | SQLite |
 | Tools | Browser (Playwright), sandboxed shell, files, code, MCP client, web search | Each in its own process where possible |
-| Coding engine | All code work: the code builder and the app builder (§13, §6) | OpenCode in headless server mode, as a child process (leaning, open decision 11) |
+| Coding engine | All code work: the code builder and the app builder (§13, §6) | OpenCode in headless server mode, as a child process, pinned behind our adapter (decisions §12). Works on GitHub as the user: their git setup, and a GitHub user access token from our GitHub App's device flow, kept in the keychain (decisions §25) |
+| Your own coding tools | Hands a coding task to a tool the user already has (feature 13.14, decisions §20) | One adapter per tool that starts the vendor's unmodified CLI as a child process through the sandboxed shell, in the task's folder; reads its output stream; maps its permission prompts to our approvals. Never reads, copies or forwards the tool's credentials |
+| Mail | One inbox for the user's mail accounts (3.6, decisions §27) | Gmail and Outlook through their own sign-in, others over IMAP and SMTP; mail stored and indexed only on the laptop; cloud models reach it only directly (local, own key, or a per-user capped OpenRouter key), never through our proxy |
 | Local models | Running models on the laptop | llama.cpp (MIT), built in |
 | Components manager | Downloads, updates and removes heavy parts (1.13) | Our code |
 | Requirements checker | "You need this first" cards before a task starts (1.16–1.19) | Our code |
@@ -105,7 +108,7 @@ A background process in TypeScript (Node or Bun). Its parts:
 | Sidebar app data | One database per app (6.12) |
 | Artifacts and their versions | Files plus an index in SQLite |
 | Downloaded models, browsers, emulators, VM images | The components folder, shown with sizes |
-| API keys, passwords, tokens | **The OS keychain only** (Electron `safeStorage` or the system keychain) |
+| API keys, passwords, tokens (including the user's GitHub token, decisions §25) | **The OS keychain only** (Electron `safeStorage` or the system keychain) |
 
 ## 4. The web app and our cloud
 
@@ -113,14 +116,26 @@ A background process in TypeScript (Node or Bun). Its parts:
 
 Next.js on Vercel, built on the Ninjathons patterns (guardrail wrappers, entitlements, phases and progress docs).
 
-- Marketing pages, sign-up and sign-in.
+- Marketing pages (moved in from `homepage-grid/` in phase 2, following its design.md), sign-up and sign-in.
 - Account, plan, credits and invoices.
 - Devices: pair, see online or offline, unpair (9.2).
 - Remote control: start and watch agents, answer approvals (9.3, 9.4).
 - Shared artifacts viewer with comments (17.13, 17.14).
 - Marketplace browsing (§10).
 
-The web app holds no company data and runs no agents.
+The web app holds no company data and runs no agents. **Everything a chat channel can do, the web app can do too** (start, watch, approve, cancel, results, add a file).
+
+### Product owner portal
+
+A separate Next.js app, in its own repo (`titan117-pop`), at its own address (for example `admin.titan117.com`) for us: error reports (§22 of the decisions), accounts and plans, credit corrections, kill switches for add-ons and coding-tool adapters, releases. It has no backend of its own: it calls admin-only Convex functions that live in `titan117-web`. Clerk organisation with MFA enforced (leaning: a separate Clerk application for staff, so staff and customer accounts never mix), `adminQuery`/`adminMutation` only, every view and change written to `adminAudit` ([security.md](security.md) B6).
+
+### End-to-end encryption of remote control
+
+- **Keys:** each device (laptop, browser, phone) makes its own X25519 key pair; private keys stay in the OS keychain or as a non-extractable browser key. Convex stores public keys per device.
+- **Pairing:** the new device scans the laptop's QR; both show the same 6-character code derived from the two public keys; the user confirms on the laptop, which then trusts that key.
+- **Messages:** commands are sealed to the target laptop's key; events and results to every paired device of the account (libsodium, XChaCha20-Poly1305). Convex keeps ciphertext plus routing metadata: device, command type, time, size, status.
+- **Revoking:** the removed device's key is deleted, and the laptop rotates its own key and re-shares it with the remaining devices; "Revoke all devices" resets every pairing.
+- **Chat channels are not end-to-end** (the platform sees the message); the app says so when a channel is linked.
 
 ### Convex
 
@@ -141,7 +156,7 @@ Sign-in for both apps. The desktop app signs in through the system browser and a
 
 ### Payments
 
-Subscriptions first, credits to top up. **Stripe directly or Clerk Billing is open (decision 2).** Ninjathons chose Stripe directly for regional prices, one-time payments and EU VAT; one-time credit purchases are a strong reason to do the same here. Either way, only the payment webhook writes `entitlements` and credit top-ups.
+Subscriptions first, credits to top up. **Stripe directly** (decided 16 Oct 2026, decisions §12): regional prices, one-time credit purchases and EU VAT. Only the payment webhook writes `entitlements` and credit top-ups. Credits pay only for OpenRouter (models and search); every other paid service is the user's own account (decisions §31).
 
 ## 5. How model calls flow
 
@@ -191,6 +206,21 @@ The router also handles: model per agent and per step (2.3), escalation from che
 5. Errors go back to the agents until the checks pass or the budget runs out.
 6. A new version is saved; optionally the app is added to the sidebar (6.2).
 
+### Sending an error report
+
+1. A crash (Electron's crash reporter) or an error in the engine, an agent or a tool is caught and written to the local log, with keys and tokens redacted.
+2. The window shows "Something went wrong" with the full report; nothing is sent until the user says so (or has chosen "send automatically").
+3. The engine sends it through the cloud bridge to Convex (`errorReports`); offline, it waits in the offline queue.
+4. Convex groups it by signature (`errorGroups`) and returns a reference ID; the product owner portal (`titan117-pop`) shows groups, counts, versions and alerts.
+5. When a release fixes a group, the app shows "Fixed in 1.4, update now?" to users who reported it.
+
+### Building an add-on on request
+
+1. The user asks Titan for something we don't have; Titan proposes the add-on (an agent and skills, a tool, or a sidebar app) and the permissions it needs.
+2. After the user's OK, the agent builder, the coding engine or the app builder creates it as a package with a `titan.json` manifest.
+3. It installs through the same permissions screen and sandbox as a marketplace item, with a version to roll back to.
+4. The core (engine, permission layer, credits, licence, updates) is outside every agent's allowed folders, so nothing can modify it.
+
 ### Sharing an artifact
 
 1. The user clicks Share; the artifact (only that one) is uploaded to Convex storage.
@@ -209,7 +239,7 @@ Code we copy and adapt (MIT, Apache 2.0, BSD), tracked in a sources list:
 
 | Area | Projects |
 |---|---|
-| Coding engine | OpenCode (MIT, leaning) |
+| Coding engine | OpenCode (MIT, decided) |
 | Browser and testing | Playwright, axe-core, Lighthouse, Unlighthouse |
 | Local models | llama.cpp |
 | Search and reading | ddgs, open-webSearch (to check), Mozilla Readability, Trafilatura, Crawl4AI (to check) |
@@ -232,23 +262,26 @@ The full rules, each with what enforces it, are in [guardrails.md](guardrails.md
 - Shell and coding tasks run in separate processes, limited to allowed folders.
 - Web content is data, never instructions; agents can't write it into memory as rules (4.9).
 - Secrets only in the OS keychain, never in memory, recordings or logs.
-- Remote commands only from paired devices of the same account; end-to-end encryption later (9.5).
+- Remote commands only from paired devices of the same account; **end-to-end encryption in V1** (9.5, design below); remote control off by default, two-factor to switch it on, laptop-only approvals for the riskiest actions ([security.md](security.md) A1).
+- A network policy per task: site lists, asking before new sites after private data, blocking requests that carry private content (A3).
+- The product owner portal: named people, two-factor, every view logged (B6).
+- The threat model, accepted risks, vulnerability reporting and the incident checklist: [security.md](security.md).
 - Signed installers and signed updates.
 - Marketplace items: permissions screen, sandbox, dependency scan, pinned commits (§10).
 
 ## 10. Building and releasing
 
-| | `titan117-web` | `titan117-desktop` |
-|---|---|---|
-| CI on every pull request | Typecheck, lint, tests, Convex function checks | Typecheck, lint, tests, compatibility test against the backend, docs copy check, a check of what's inside the build |
-| Release | Merge to main deploys Vercel and Convex | A version tag builds, signs and publishes installers; the app auto-updates |
-| Signing | n/a | Apple developer account (notarization) and a Windows code-signing certificate |
+| | `titan117-web` | `titan117-desktop` | `titan117-pop` |
+|---|---|---|---|
+| CI on every pull request | Typecheck, lint, tests, Convex function checks | Typecheck, lint, tests, compatibility test against the backend, docs copy check, a check of what's inside the build | Typecheck, lint, tests, docs copy check |
+| Release | Merge to main deploys Vercel and Convex | A version tag builds, signs and publishes installers; the app auto-updates | Merge to main deploys its Vercel project |
+| Signing | n/a | Apple developer account (notarization) and a Windows code-signing certificate | n/a |
 
 ## 11. What gets built first
 
 Superseded by the [roadmap](01-launch-roadmap-v1.md) (16 Oct 2026), which splits the whole V1 into 19 phases. The first steps are the same:
 
-1. **Setup:** both repos, Convex, Clerk, CI, signed desktop builds, the shared package.
+1. **Setup:** the repos, Convex, Clerk, CI, signed desktop builds, the shared package.
 2. **Accounts and money:** web sign-up, plans, the credit ledger, payments.
 3. **Desktop and engine core:** Electron shell, engine, local API, chat with local and OpenRouter models, the model router, the components manager, setup cards.
 4. **Memory and tools:** memory, files, browser, shell, web search, approvals.

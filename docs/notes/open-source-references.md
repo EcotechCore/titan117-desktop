@@ -4,8 +4,8 @@
 
 ## How to use this file
 
-- **Where the code lives:** clone each project into **`C:\Users\dniss\Officials\titan117-references\<area>\<project>`**, outside both product repos, so reference code never ends up in them by accident. The "Folder" column below is the path inside that root.
-- **Pin it:** shallow-clone (`git clone --depth 1`), then write the commit into the project's row (the **Commit** column). Update deliberately, not by habit. **Downloaded 17 Oct 2026:** 53 study repos (about 7 GB); commits and licence checks below. On Windows, clone with `-c core.longpaths=true` (n8n and Twenty need it).
+- **Where the code lives:** clone each project into **`D:\Officials\titan117-references\<area>\<project>`**, next to the three repos but outside them (a local folder, never pushed), so reference code never ends up in them by accident. The "Folder" column below is the path inside that root.
+- **Pin it:** shallow-clone (`git clone --depth 1`), then write the commit into the project's row (the **Commit** column). Update deliberately, not by habit. **Clone per phase, just before it starts**, not everything at once. (The 53 study repos, about 7 GB, downloaded on 17 Oct 2026 are no longer on this machine; the commits and licence checks recorded below are still valid.) On Windows, clone with `-c core.longpaths=true` (n8n and Twenty need it).
 - **Licence first:** open the project's `LICENSE` file and fill in the **Licence checked** column before reading code to copy. Rows marked *to check* below are what we believe, not confirmed.
 - **Reuse rule (decisions §4):** MIT, Apache 2.0, BSD, ISC: copy and adapt, keep notices, add a row to the sources list. **MPL 2.0:** use as a library unchanged; changes to its own files must stay MPL. **GPL, AGPL, fair-code, source-available:** ideas only, or run unchanged as a separate program.
 - **Treat it as untrusted:** read it, don't run it. No `npm install` or install scripts in the reference folder; if a project must be run to understand it, do it in a VM.
@@ -211,6 +211,16 @@ The projects most like Titan117: local-first desktop apps (Electron) that run pe
 | [gitleaks/gitleaks](https://github.com/gitleaks/gitleaks) | Secret scanning (also our CI) | MIT | Lib | `market/gitleaks` | | |
 
 ---
+
+## Website and brand
+
+| Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
+|---|---|---|---|---|---|---|
+| [pingdotgg/t3code](https://github.com/pingdotgg/t3code) | Orchestrates Claude Code, Codex, Cursor, OpenCode, Antigravity and Grok from one window with the user's own sign-ins: the model for feature 13.14 (decisions §20) | MIT | Ideas | not cloned | MIT | |
+| [jeremy-prt/bloub](https://github.com/jeremy-prt/bloub) | Agent avatars: one SVG shape morphing through 15 states (thinking, notify, orbit…), 8 shapes, 16 expressions, eyes that follow the pointer. Its framework-free `src/bot/` engine will draw the logo and every agent avatar; the homepage logo's eyes run its bundled build (`homepage-grid/assets/bot.js`) | MIT | Code | `avatars/bloub` | MIT (Jérémy Perret, 2026) | `b4bb3c1` |
+| [ayangabryl/asciify-engine](https://github.com/ayangabryl/asciify-engine) | ASCII backgrounds. The old mockup's ASCII field (`mockup/src/js/10-bg.js`, removed with the mockups on 7 Nov 2026; still in git history) ported its `caustics`, `contour` and `ripple` scenes, its value noise and its lantern hover (`src/field/field-shaders.ts`, `src/field/glyph-field.ts`): lines one cell wide via `fwidth` | MIT | Code | not cloned | MIT (ayangabryl, 2026) | `8925e5b` |
+
+**Note:** bloub's author describes it as a recreation of the x.ai bot avatar. The code is MIT, but the look is xAI's: before launch we restyle it (our own shapes, eyes and colours) (decisions §9).
 
 ## Also worth doing
 
