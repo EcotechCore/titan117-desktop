@@ -131,7 +131,7 @@ Example tasks for Titan: sort the downloads folder; build an Excel report from a
 
 | # | Feature | Stage | Notes |
 |---|---|---|---|
-| 6.1 | **Web**: websites and web apps | V1 | React, TypeScript, Tailwind, shadcn/ui, Convex as the default backend; local dev server for the preview |
+| 6.1 | **Web**: websites and web apps | V1 | React, TypeScript, Tailwind, shadcn/ui; the backend in the **user's own** Convex account (connected with a guided setup), or a local database for apps that stay on the laptop; local dev server for the preview (decisions §32) |
 | 6.2 | **Option: add to the Titan117 sidebar** (internal apps: CRM, inventory, invoices) | V1 | Off by default; a choice when creating a web app, or later. Adds the `titan` SDK (db, ai, auth, agent), runs sandboxed, and joins the shared data layer (6.11); otherwise the app is a normal standalone project |
 | 6.3 | **Mobile**: iOS and Android | V1 | React Native and Expo; preview in the browser (react-native-web), on a phone by QR code in Expo Go, or in a simulator (iOS only on a Mac) |
 | 6.4 | **Desktop**: Windows and macOS apps | V1 | Tauri template; runs locally as its preview; builds installers |
@@ -147,7 +147,7 @@ Example tasks for Titan: sort the downloads folder; build an Excel report from a
 | 6.9 | Visual edit | V1 | Click an element in the preview and describe the change |
 | 6.10 | Model roles and escalation | V1 | See "Models in the builder" below |
 | 6.11 | One shared data layer for sidebar apps | V1 | Only for apps added to the sidebar (6.2); lets the agent answer across them |
-| 6.12 | Local database per app, optional sync | V1 | |
+| 6.12 | Local database per app, optional sync | V1 | Sync between the user's own devices and team members goes through our cloud **end to end encrypted**, so we can't read it (decisions §32) |
 | 6.13 | Versions and one-click rollback | V1 | |
 | 6.14 | Agents maintain and fix apps | V1 | |
 | 6.15 | Publish web | V1 | One-click deploy and custom domain, to the user's own Vercel, Netlify or Cloudflare account, connected as the user with a guided setup; they own and pay for their hosting (decisions §30) |
@@ -260,7 +260,7 @@ Like Lovable, the builder uses several models, each for the job it does best; li
 | 11.3 | Credit ledger and top-ups | V1 | In Convex, atomic deductions |
 | 11.4 | OpenRouter proxy with metering | V1 | A streaming route on Vercel holds our one secret key; Convex keeps the ledger and the rules (decisions §12). OpenRouter confirmed this model is allowed (8 Nov 2026) |
 | 11.5 | BYOK | V1 | Key kept on the device, in the OS keychain |
-| 11.6 | Teams, roles, audit log | V1 | |
+| 11.6 | Teams, roles, audit log | V1 | Agents, apps and data shared between team members' laptops go through our cloud end to end encrypted to each member's devices; we see who is in the team, never what they share (decisions §32) |
 | 11.7 | Agency and white-label plan | V1 | |
 | 11.8 | **Product owner portal** | V1 | Our own admin app in its own repo (`titan117-pop`) at its own address, for the owner and employees: error reports (§19), accounts and plans, credit corrections, kill switches, releases; two-factor required; every view logged (decisions §23) |
 
@@ -333,7 +333,7 @@ Out of reach with open source: backlink databases, competitors' traffic estimate
 | 15.7 | Landing pages | V1 | Built by the app builder (§6), with SEO (§14) and a form that feeds the CRM |
 | 15.8 | Images for posts and ads | V1 | Image models through OpenRouter or local, on the brand kit |
 | 15.9 | Videos | V1 | The promo video agent (5.1), cut to each platform's format |
-| 15.10 | Website analytics | V1 | Privacy-friendly analytics built into sites we generate (ideas from Umami, MIT; Plausible is AGPL); reads Google Analytics for other sites |
+| 15.10 | Website analytics | V1 | Privacy-friendly analytics built into sites we generate (ideas from Umami, MIT; Plausible is AGPL), stored in the site's own backend in the user's account, never in our cloud; reads Google Analytics for other sites, as the user (decisions §32) |
 | 15.11 | Campaign reports | V1 | What was posted and sent, and what it brought: clicks, sign-ups, leads |
 | 15.12 | Lead finding | V1 | Web research into a list in the CRM, for example local businesses without a website; respects site terms and privacy law (GDPR) |
 | 15.13 | Ad drafts | V1 | Google and Meta ads written, with images and targeting; you launch them and set the budget. Ready-to-use ads plus a bulk-upload file for Google's and Meta's import tools; or the user's own developer access; or, as the user's choice after a warning, the agent fills in Ads Manager and stops before Launch (decisions §28, §29) |

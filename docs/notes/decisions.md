@@ -37,6 +37,7 @@ Every decision taken so far, newest at the bottom of the table. Where this file 
 | 17 Oct 2026 | No free plan and no trial (trial ruled out 18 Oct): the app works only with an active subscription | [13](#13-pricing) |
 | 17 Oct 2026 | Signed licence lease for offline use (14 days, offline mode in V1); the app locks when it expires or the subscription ends | [17](#17-offline-use-and-licence) |
 | 18 Oct 2026 | Logo: an agent avatar (bloub engine) with an angry face; ~~a neon hexagon whose eyes follow the cursor~~ (since 7 Nov: the angry eyes beside TITAN117, ink at rest, tomato on hover); old helmet files, mockups and stand-in media deleted | [9](#9-brand) |
+| 8 Nov 2026 | Local by default: our cloud may hold only a short list (account, plan, credits, devices, encrypted remote messages, licence, reports the user sends, what the user shares, marketplace listings, admin audit). No user passwords, keys or tokens ever; anything synced or shared between a user's devices or team members is end to end encrypted | [32](#32-local-by-default-what-our-cloud-may-hold) |
 | 8 Nov 2026 | Paid services: only OpenRouter (models and search) goes through our credits; every other paid service (AI video, SEO data, device farms, hosting, email sending, ads) is the user's own account, which they create and pay for, with our guided setup | [31](#31-paid-services) |
 | 8 Nov 2026 | Search: credits, the user's own key, or the browser on the user's request; free background mode dropped. Published sites go to the user's own hosting account; share links stay ours with a report and takedown process | [30](#30-search-and-hosting) |
 | 8 Nov 2026 | Browser automation is the user's choice on any site, their own apps included: the agent prepares everything, warns where a site's terms forbid automation, never bypasses CAPTCHAs or bot detection, and stops before publish, launch or pay for the user to click. A self-correcting browser agent is a core strength | [29](#29-the-users-choice-browser-automation) |
@@ -355,9 +356,27 @@ Decided 17 Oct 2026.
 - **Free first, and the user's word wins (8 Nov 2026, feature 1.25):** a paid service is never required by default. Agents reach for free options first (local models, open-source tools, free tiers that allow commercial use, or building it themselves) and suggest a paid service only when it's clearly better, with the free alternative next to it. If the user says "no paid services", for a task or as a workspace setting, agents respect it, like Claude Code follows such an instruction, and say plainly when something can't be done for free. Examples: AI video clips become motion graphics made by the open-source video engine; keyword data becomes Search Console data; device farms become the local emulators; hosting uses a free tier.
 - **Later, optional:** a provider moves into credits only if it allows reselling in writing (saved in `vendor-answers/`) and users ask for it.
 
+## 32. Local by default: what our cloud may hold
+
+- **8 Nov 2026:** after re-checking every doc for slips like §25, the rule is written as a closed list. **Our cloud (Convex, the proxy, Vercel) may hold only:**
+  1. **The Titan117 account:** email, name, sign-in. Passwords for **our own** accounts are handled by Clerk (stored hashed by Clerk, never by us; passkeys suggested first). This is the only password anywhere in our cloud.
+  2. **Plan and credits:** subscription, credit ledger, usage counts (no prompts; prompts pass through the proxy and are never stored, §12).
+  3. **Devices:** names, versions, last seen, public keys (never private keys).
+  4. **Remote control messages, end to end encrypted** (§23): we store ciphertext and routing metadata only.
+  5. **The licence lease** we sign.
+  6. **Error reports the user chose to send** (§22).
+  7. **What the user chooses to share** (17.13): readable by the people they share it with, deletable any time.
+  8. **Marketplace listings, installs and ratings** (§10; the code stays on GitHub).
+  9. **Our own records:** the admin audit (§23), billing records Stripe needs.
+- **Never in our cloud:** the user's passwords, API keys, tokens, bot tokens, app passwords or cookies for any service; their files, documents, memory, mail, chats with agents, recordings or browsing; their apps' data and analytics. All of that stays on the laptop, with secrets in the OS keychain (guardrails §8).
+- **Sync and teams:** data synced between a user's own devices (6.12) or shared with team members (11.6) goes through our cloud **end to end encrypted** to those devices, like remote control; we see that a team exists and who is in it, never what it shares.
+- **Apps users build** keep their data in the user's own backend (their Convex account, a local database, their hosting), never ours (6.1, 6.15, 15.10).
+- **Connections act as the user:** every outside service is the user's own account, acting as the user (§25, §28, §31). Nothing acts in Titan117's name in a user's accounts.
+- **Enforced** (guardrails §12): a new Convex table needs a row in the data table below naming which item of the list it belongs to; tables for items 4 and sync hold only ciphertext, checked by a test that reads them after a scripted session.
+
 ## 11. Deleting data
 
-To write in phase 2, as in Ninjathons: account deletion with a grace period, then a batched hard delete in our cloud, Clerk and payments. **Every new Convex table gets a row here when it's created.**
+To write in phase 2, as in Ninjathons: account deletion with a grace period, then a batched hard delete in our cloud, Clerk and payments. **Every new Convex table gets a row here when it's created, naming which item of the §32 list it belongs to; a table that fits none isn't allowed.**
 
 | Data | Tables | On account deletion |
 |---|---|---|

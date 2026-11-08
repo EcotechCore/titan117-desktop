@@ -58,6 +58,8 @@ A tricked agent doesn't need to "send" anything; opening a web address with priv
 
 ### A5. The user's secrets and data
 
+**What our cloud may hold is a closed list** (decisions §32): the Titan117 account (its password handled by Clerk, hashed), plan and credits, devices and public keys, end-to-end encrypted remote messages, the licence, reports the user sends and what they choose to share. Never the user's passwords, keys or tokens for any service, their files, memory, mail or app data; those stay on the laptop, secrets in the OS keychain. Sync and team sharing are end to end encrypted.
+
 Already in the guardrails, summarised: API keys and passwords only in the OS keychain (§8); other vendors' logins never touched (§8, decisions §20); agents only in allowed folders, shell sandboxed, add-ons sandboxed (§4, §7); memory visible and deletable; error reports opt-in and shown in full (§12); account deletion removes everything we hold.
 
 **GitHub:** agents act as the user, with the user's own git setup and a GitHub token the user grants (device flow, limited to the repos they pick, expires after 8 hours). The token stays in the laptop's keychain and never reaches our cloud; pushes and pull requests need approval (decisions §25).

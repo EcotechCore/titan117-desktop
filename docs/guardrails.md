@@ -145,7 +145,7 @@ Why these rules: remote control lets a task started from the web, a phone or cha
 
 - **No feature that uses a third-party service is specified or built until its row in [`notes/external-services.md`](notes/external-services.md) answers six questions:** whose account, who it acts as, where the credentials live, which approvals or reviews the vendor requires, what the terms forbid (resale, automation, scraping), and who pays.
 - **Facts come from the vendor's own documentation or terms**, with the date and a link. A blog post or forum answer is a lead, not a source. Anything not checked says "To verify".
-- **Default when in doubt:** the user's own account, acting as the user, credentials in their keychain, the vendor's official API and sign-in flow. Resell through credits only where the vendor allows it in writing.
+- **Default when in doubt:** the user's own account, acting as the user, credentials in their keychain, the vendor's official API and sign-in flow. Only OpenRouter goes through our credits; every other paid service is the user's own account (decisions §31).
 - A feature-map note or a spec never names a mechanism ("through the GitHub App", "through credits") without that row.
 
 *Enforced by:* the phase start review: a phase doesn't start while one of its services says "To verify" or an open decision it depends on is unanswered; the pull request checklist (§15); review of every feature-map and spec change.
@@ -157,6 +157,7 @@ Why these rules: remote control lets a task started from the web, a phone or cha
 - Account deletion: a grace period, then a full delete in our cloud and of Clerk and payment data; local data is the user's to delete from the app.
 - Nothing collected that isn't needed; analytics without personal content.
 - **Error reports are opt-in and shown in full** before sending (decisions §22); they never include file contents, prompts, memory, keys, passwords or tokens unless the user ticks a box for that one report, and never anything from "local models only" folders. Kept 90 days. *Enforced by:* a test that builds a report from a session full of fake secrets, prompts and files and checks none of them are in it; the default setting test (always ask); the data table row in decisions §11.
+- **Our cloud holds only the closed list in decisions §32** (account, plan and credits, devices, encrypted remote messages, licence, reports the user sends, what the user shares, marketplace listings, our own records). Never a user's passwords, keys, tokens or cookies, files, memory, mail, chats, recordings or app data; sync and team sharing are end to end encrypted. *Enforced by:* the data table in decisions §11 (every table names its list item, or it isn't merged); a CI check that the tables in the Convex schema match the data table; a test that reads every table after a scripted session full of fake secrets and content and finds none of them in readable form.
 - **Mail never reaches our servers** (decisions §27): not Convex, not the proxy, not error reports or sync; remotely only end to end encrypted. *Enforced by:* a test that a task reading mail never calls the proxy, a test that error reports and sync payloads drop mail content, and the network policy (security.md A3).
 
 ## 12b. The product owner portal

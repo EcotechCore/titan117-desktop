@@ -168,7 +168,7 @@ Subscriptions first, credits to top up. **Stripe directly** (decided 16 Oct 2026
 | Our credits, option A: proxy | Engine → our proxy (edge function) → OpenRouter; Convex keeps the ledger | Passes through |
 | Our credits, option B: a key per user | Engine → OpenRouter with a per-user key whose spending limit we set from the user's credits; usage synced into the ledger | No |
 
-**Decided 17 Oct 2026: option A, our proxy** ([decisions §12](notes/decisions.md#12-tech-stack)): one secret OpenRouter key on our server, a streaming route on Vercel, credits deducted in Convex. The same proxy carries web search and the video and image providers. Users' own keys go direct from the engine. Option B (per-user sub-keys) is an optional later optimization.
+**Decided 17 Oct 2026: option A, our proxy** ([decisions §12](notes/decisions.md#12-tech-stack)): one secret OpenRouter key on our server, a streaming route on Vercel, credits deducted in Convex. The same proxy carries OpenRouter's web search; every other paid service is the user's own account (decisions §31). Users' own keys go direct from the engine. Option B (a capped per-user key) is used only for tasks that read mail, so mail never passes through our proxy (decisions §27).
 
 The router also handles: model per agent and per step (2.3), escalation from cheap to strong models (6.10), provider filters by data policy (no training, US or EU hosts) for company data, and costs shown before a task (2.5). Web search through credits (16.2) follows the same path as model calls.
 
@@ -299,6 +299,6 @@ The full phase plan, with a check that marks each phase done, belongs in the roa
 
 Decided 16 Oct 2026 ([decisions §12](notes/decisions.md#12-tech-stack)): **Electron**, the engine on **Node**, **Stripe directly**, **OpenCode** pinned behind our adapter.
 
-Also decided: credits through **our proxy** with one secret OpenRouter key (§5, option A); per-user sub-keys maybe later.
+Also decided: credits through **our proxy** with one secret OpenRouter key (§5, option A); capped per-user keys only for mail tasks (decisions §27).
 
 Also decided: shared UI in its own package, `@titan117/ui` ([decisions §14](notes/decisions.md#14-product-defaults)).
