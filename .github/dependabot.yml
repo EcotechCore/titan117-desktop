@@ -1,0 +1,12 @@
+# Keeps dependencies and the pinned action commits current (guardrails §11, §13).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

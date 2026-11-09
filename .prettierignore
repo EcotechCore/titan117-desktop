@@ -4,3 +4,8 @@ pnpm-lock.yaml
 LICENSE.md
 tsconfig.json
 tsconfig.*.json
+mockup
+docs
+# Copied verbatim from titan117-web; keep identical.
+scripts/check-licenses.mjs
+scripts/check-pinned-actions.mjs

@@ -53,7 +53,7 @@ Decided 15 Oct 2026 (feature map, decision 16); `titan117-pop` added 7 Nov 2026.
 1. Backend changes land first and stay backward compatible: add fields and functions, don't change or remove old ones while desktop versions still use them.
 2. Every protocol message carries a version; an outdated desktop app shows "please update" instead of failing.
 3. A compatibility test in the desktop repo runs against the latest backend in CI.
-4. Updating `@titan117/shared` in the desktop and portal repos is a deliberate commit at a fixed version.
+4. Updating `@titan117/shared` in the desktop and portal repos is a deliberate commit at a fixed version. It is published to GitHub Packages as `@ecotechcore/titan117-shared` and installed under its own name with an npm alias (decisions §35).
 5. Docs: shared product docs are edited in `titan117-web` and copied to the desktop and portal repos (`scripts/sync-docs.py`); a CI check fails if a copy is out of date (decision 17).
 
 ## 3. The desktop app

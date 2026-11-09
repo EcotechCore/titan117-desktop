@@ -1,0 +1,113 @@
+# CI for titan117-desktop (guardrails §16). Every action is pinned to a commit
+# (guardrails §13); Dependabot keeps the pins current.
+#
+# Not here yet, added with the phase that brings them: the prompt injection
+# suite (phase 3) and the compatibility test against the backend (phase 1,
+# with the first protocol messages).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, lint, test, build contents
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint (engine guardrail and no web imports included)
+        run: pnpm lint
+      - name: Test (window settings and lint-rule tests included)
+        run: pnpm test
+      - name: Typecheck and build
+        run: pnpm build
+      - name: What's inside the build
+        run: pnpm check:build
+
+  windows:
+    name: Windows app builds
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Unsigned during development (decisions §16); signing comes before the first external testers.
+      - name: Build the unpacked Windows app
+        run: pnpm build:unpack
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+  docs:
+    name: Docs copy is current
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: desktop
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: EcotechCore/titan117-web
+          path: web
+      - name: Compare with titan117-web (decisions §6)
+        run: python3 web/scripts/sync-docs.py --check --repo desktop
+
+  supply-chain:
+    name: Licences, vulnerable dependencies, pinned actions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Licence check (guardrails §11)
+        run: pnpm check:licenses
+      - name: Known-vulnerable dependencies (guardrails §11)
+        run: pnpm audit --audit-level high
+      - name: Actions pinned to commits (guardrails §13)
+        run: node scripts/check-pinned-actions.mjs
+
+  secrets:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # gitleaks (MIT), the CLI rather than its action, which needs a licence
+      # key for organisations. The download is checked against its checksum.
+      - name: Gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+          ./gitleaks git --redact --no-banner --exit-code 1 .

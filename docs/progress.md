@@ -2,13 +2,13 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** planning is done (feature map, architecture, guardrails, design, mockups, roadmap). **Next step:** phase 0, Setup, when you say so: the two repos, CI, the shared packages and an empty Electron app running on Windows. Nothing else is open before it.
+**Now:** phase 0, Setup, is in progress (9 Nov 2026): the code side is built and checked locally in all three repos. **Next step:** two-factor required on the EcotechCore organisation; branch protection on `main` in the three repos; the Convex dev deployment, Clerk dev instance, Stripe test mode and OpenRouter key in local `.env` files; the portal deployed to Vercel behind Clerk two-factor; the first `@titan117/shared` publish and read access for the desktop and portal repos; a CI check of the repository settings.
 
 ## Phases
 
 | # | Phase | Status | Started | Finished |
 |---|---|---|---|---|
-| 0 | Setup | Not started | | |
+| 0 | Setup | In progress | 9 Nov 2026 | |
 | 1 | Engine core | Not started | | |
 | 2 | Accounts and money | Not started | | |
 | 3 | Titan and memory | Not started | | |

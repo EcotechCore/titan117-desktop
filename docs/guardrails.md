@@ -138,7 +138,7 @@ Why these rules: remote control lets a task started from the web, a phone or cha
 
 - Lockfiles committed; installs in CI use them exactly.
 - **Known-vulnerable dependencies fail CI** (npm audit or an OSV scan). Automated update pull requests (Dependabot or Renovate) keep them current.
-- **Licence check in CI**: MIT, Apache 2.0, BSD and ISC allowed; GPL, AGPL and unknown licences fail unless listed as a separate program we run unchanged.
+- **Licence check in CI**: MIT, Apache 2.0, BSD and ISC allowed, and licences with the same or fewer conditions; GPL, AGPL and unknown licences fail unless listed as a separate program we run unchanged. Every other licence needs a named exception with its reason in `scripts/check-licenses.mjs` (decisions §35).
 - **Every project we copy code from** gets a row in the sources list (project, licence, what we took, commit), and its notice in the third-party licences file shipped with the app.
 
 ## 11b. External services
