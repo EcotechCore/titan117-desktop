@@ -47,5 +47,6 @@
     "vitest": "^5.1.0"
   },
   "productName": "Titan117",
-  "private": true
+  "private": true,
+  "packageManager": "pnpm@12.14.0"
 }
