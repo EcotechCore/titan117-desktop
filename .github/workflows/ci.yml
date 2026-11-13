@@ -110,4 +110,4 @@ jobs:
           curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
           echo "${SHA256}  gitleaks.tgz" | sha256sum -c -
           tar -xzf gitleaks.tgz gitleaks
-          ./gitleaks git --redact --no-banner --exit-code 1 .
+          ./gitleaks git --redact --verbose --no-banner --exit-code 1 .

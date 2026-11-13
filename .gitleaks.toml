@@ -1,0 +1,14 @@
+# Gitleaks configuration (secret scanning in CI, guardrails §8).
+# The default rules, plus an allowlist for values that are known to be fake.
+# Add a value here only if it can never be a real secret, with its reason.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake Clerk keys used only so `next build` runs in CI (.github/workflows/ci.yml)"
+regexes = [
+  # Publishable key for clerk.example.com, a domain that can't be a Clerk instance.
+  '''pk_test_Y2xlcmsuZXhhbXBsZS5jb20k''',
+  '''sk_test_placeholder''',
+]
