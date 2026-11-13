@@ -113,7 +113,7 @@ A stolen signing certificate or a compromised build could push malware to **ever
 Our own admin app, in its own repo (`titan117-pop`), separate from the user web app, at its own address (for example `admin.titan117.com`), for the product owner and employees: error reports (§22), accounts and plans, credits (corrections only as new ledger rows with a reason), kill switches for add-ons and coding-tool adapters (§20), releases.
 
 - **Only named people**, admin role set from the Convex CLI, never from a screen.
-- **Two-factor required** (Clerk organisation with MFA enforced).
+- **Two-factor required** (a separate staff Clerk application with MFA required, and the portal refuses sessions without a second factor; decisions §36).
 - **Every view and change is logged** (`adminAudit`: who, what, when), and the log can't be edited.
 - Read-only by default; anything that changes a user's account asks for a reason.
 

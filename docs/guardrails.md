@@ -165,7 +165,7 @@ Why these rules: remote control lets a task started from the web, a phone or cha
 Our own admin app ([security.md](security.md) B6), in its own repo `titan117-pop`, separate from the user web app, at its own address: error reports, accounts and plans, credit corrections, kill switches, releases.
 
 - Only named people; the admin role is set from the Convex CLI, never from a screen.
-- **Two-factor required** (Clerk organisation with MFA enforced).
+- **Two-factor required** (a separate staff Clerk application with MFA required, and the portal refuses sessions without a second factor; decisions §36). Until Clerk Pro the empty portal runs with sign-in only, switched explicitly; two-factor is required before it shows any data (decisions §37).
 - **Every view and change logged** in `adminAudit` (who, what, when), append-only.
 - Read-only by default; a change to a user's account asks for a reason; credit corrections are new ledger rows.
 

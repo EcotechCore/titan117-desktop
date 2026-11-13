@@ -17,7 +17,7 @@ Related: [architecture](03-architecture.md) · [guardrails](guardrails.md) · [d
 
 | # | Phase | Repo | Depends on | Done when |
 |---|---|---|---|---|
-| 0 | Setup | all | — | Every repo builds in CI; an empty app builds and runs locally on Windows; the portal's empty app deploys behind two-factor |
+| 0 | Setup | all | — | Every repo builds in CI; an empty app builds and runs locally on Windows; the portal's empty app deploys behind staff sign-in (two-factor from Clerk Pro, required before phase 5; decisions §37) |
 | 1 | Engine core | desktop | 0 | Chat with a local and an OpenRouter model works; a tool call waits for approval; denial tests pass |
 | 2 | Accounts and money | web, desktop | 0 | A test purchase adds credits; a task deducts them; an API key in the keychain works; an ended subscription locks the app |
 | 3 | Titan and memory | desktop | 1 | Titan finishes 10 scripted everyday tasks; the prompt-injection suite passes |
@@ -79,6 +79,7 @@ Feature numbers point to the feature map.
 ### 5 · Install and setup
 - Plug-and-play installer, setup wizard, hardware check, components manager, requirement cards, alternatives, setup checklist, health check, keep awake, checkpoints, notifications, auto-update (1.3–1.6, 1.9–1.21).
 - Offline mode and the offline queue (1.22, 1.24): every feature checked with the network off.
+- **Before the portal shows any data:** Clerk Pro, two-factor required for staff and the `PORTAL_TWO_FACTOR` switch removed (decisions §37).
 - Error reports end to end (§19, decisions §22): crash reporter, "Something went wrong" card with the full report shown first, Report a problem, the always-ask setting, offline queue, reference IDs; in `titan117-web` the `errorReports` and `errorGroups` tables and their admin functions; in `titan117-pop` the error screens with grouping and alerts.
 
 ### 6 · Folder agent

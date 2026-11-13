@@ -127,7 +127,7 @@ The web app holds no company data and runs no agents. **Everything a chat channe
 
 ### Product owner portal
 
-A separate Next.js app, in its own repo (`titan117-pop`), at its own address (for example `admin.titan117.com`) for us: error reports (§22 of the decisions), accounts and plans, credit corrections, kill switches for add-ons and coding-tool adapters, releases. It has no backend of its own: it calls admin-only Convex functions that live in `titan117-web`. Clerk organisation with MFA enforced (leaning: a separate Clerk application for staff, so staff and customer accounts never mix), `adminQuery`/`adminMutation` only, every view and change written to `adminAudit` ([security.md](security.md) B6).
+A separate Next.js app, in its own repo (`titan117-pop`), at its own address (for example `admin.titan117.com`) for us: error reports (§22 of the decisions), accounts and plans, credit corrections, kill switches for add-ons and coding-tool adapters, releases. It has no backend of its own: it calls admin-only Convex functions that live in `titan117-web`. A separate Clerk application for staff with MFA required, so staff and customer accounts never mix (decisions §36), `adminQuery`/`adminMutation` only, every view and change written to `adminAudit` ([security.md](security.md) B6).
 
 ### End-to-end encryption of remote control
 
