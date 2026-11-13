@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 13 Nov 2026 · CI green, secret scanning config, branch protection
+
+The first CI run (9 Nov) failed before installing anything: `package.json` didn't name the pnpm version, and pnpm 12 also records it in the lockfile. Fixed in two commits; every job now passes, including the unpacked Windows build on a Windows runner. `.gitleaks.toml` added (the same file as in the web repo) and the scan prints its findings. **Branch protection on `main`** (guardrails §13), set with this commit: changes only through pull requests, every CI job required and up to date with `main`, admins included, no force-pushes or deletions. No review is required while there is one developer.
+
 ### 7 Nov 2026 · Shared docs synced (third repo)
 
 Shared docs and CLAUDE.md synced from `titan117-web` with `scripts/sync-docs.py`: a third repo, `titan117-pop` (the product owner portal), and the EcotechCore organisation as owner of all three (decisions §6). No code changed.
