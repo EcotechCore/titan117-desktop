@@ -9,3 +9,4 @@ docs
 # Copied verbatim from titan117-web; keep identical.
 scripts/check-licenses.mjs
 scripts/check-pinned-actions.mjs
+scripts/check-repo-settings.mjs

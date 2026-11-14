@@ -91,6 +91,10 @@ jobs:
         run: pnpm audit --audit-level high
       - name: Actions pinned to commits (guardrails §13)
         run: node scripts/check-pinned-actions.mjs
+      - name: Repository settings (guardrails §13)
+        run: node scripts/check-repo-settings.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
   secrets:
     name: Secret scanning

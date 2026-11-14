@@ -2,13 +2,12 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 0, Setup, is in progress (9 Nov 2026): the code side is built and checked locally in all three repos. **Next step:** two-factor required on the EcotechCore organisation; branch protection on `main` in the three repos; the Convex dev deployment, Clerk dev instance, Stripe test mode and OpenRouter key in local `.env` files; the portal deployed to Vercel behind Clerk two-factor; the first `@titan117/shared` publish and read access for the desktop and portal repos; a CI check of the repository settings.
-
+**Now:** phase 0, Setup, is done (14 Nov 2026). **Next step:** phase 1, Engine core, when you say so. Before it: read the phase 1 open-source references, decide the shell sandbox (open decision 2), and an OpenRouter development key in the desktop repo's local `.env`.
 ## Phases
 
 | # | Phase | Status | Started | Finished |
 |---|---|---|---|---|
-| 0 | Setup | In progress | 9 Nov 2026 | |
+| 0 | Setup | Done | 9 Nov 2026 | 14 Nov 2026 |
 | 1 | Engine core | Not started | | |
 | 2 | Accounts and money | Not started | | |
 | 3 | Titan and memory | Not started | | |
@@ -31,6 +30,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 14 Nov 2026 · Phase 0 done
+
+Phase 0's check is met for this repo: CI passes, and the empty app builds and runs on Windows (details in the web repo's log). A CI step now checks the repository settings on every run (`scripts/check-repo-settings.mjs`): `main` protected, rules applying to admins, every CI job a required check. The pull request rule isn't visible to that check and is confirmed by hand when settings change. Not checked: macOS.
 
 ### 13 Nov 2026 · CI green, secret scanning config, branch protection
 
