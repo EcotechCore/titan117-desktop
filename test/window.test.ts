@@ -35,6 +35,9 @@ describe('window settings', () => {
     expect(csp).toContain("script-src 'self'")
     expect(csp).not.toContain('unsafe-inline')
     expect(csp).not.toContain('unsafe-eval')
+    // The only thing the page may connect to is the engine's local API.
+    expect(csp).toContain("connect-src 'self' http://127.0.0.1:*")
+    expect(csp).not.toMatch(/connect-src[^;]*https?:\/\/(?!127\.0\.0\.1)/)
   })
 })
 
@@ -51,7 +54,9 @@ describe('links and navigation', () => {
   })
 
   it('stays on the app page in production', () => {
-    expect(isAllowedNavigation('file:///app/out/renderer/index.html')).toBe(true)
+    expect(isAllowedNavigation('titan117://app/index.html')).toBe(true)
+    expect(isAllowedNavigation('titan117://evil/index.html')).toBe(false)
+    expect(isAllowedNavigation('file:///app/out/renderer/index.html')).toBe(false)
     expect(isAllowedNavigation('https://evil.example')).toBe(false)
   })
 

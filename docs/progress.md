@@ -2,13 +2,14 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 0, Setup, is done (14 Nov 2026). **Next step:** phase 1, Engine core, when you say so. Before it: read the phase 1 open-source references, decide the shell sandbox (open decision 2), and an OpenRouter development key in the desktop repo's local `.env`.
+**Now:** phase 1, Engine core, is done (14 Nov 2026). **Next step:** phase 2, Accounts and money, when you say so. Before it: commit phase 1 through a pull request.
+
 ## Phases
 
 | # | Phase | Status | Started | Finished |
 |---|---|---|---|---|
 | 0 | Setup | Done | 9 Nov 2026 | 14 Nov 2026 |
-| 1 | Engine core | Not started | | |
+| 1 | Engine core | Done | 14 Nov 2026 | 14 Nov 2026 |
 | 2 | Accounts and money | Not started | | |
 | 3 | Titan and memory | Not started | | |
 | 4 | Web search and artifacts | Not started | | |
@@ -30,6 +31,59 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 14 Nov 2026 · Phase 1 done
+
+Phase 1's check is met. Seen in the real app on Windows, run from the build with the development key in `.env`, after the owner updated the Visual C++ runtime (14.36 to 14.52):
+
+- **Local chat:** Qwen2.5 1.5B Instruct was downloaded from the Models view (1.1 GB) and answered a question; the estimate said "Free · runs on this laptop" and the step was logged at no cost. Qwen3 4B (2.3 GB, added to the catalogue, Apache 2.0) listed a folder through the `list_folder` tool. llama.cpp runs on the graphics card through Vulkan; the CUDA build was not accepted on this laptop.
+- **OpenRouter chat and a tool approval:** with Claude Haiku 5.5, "read notes.txt, then write summary.txt" read the file at once, then showed the approval card and "Needs you" in the sidebar, the title bar and the details panel. The file did not exist until Approve was clicked; afterwards it did, and the timeline says "approved by you". Each step's cost showed as under $0.01.
+- **Outside content as data:** the notes file held a planted line telling the agent to write `hacked.txt`. The agent wrote only the summary and told the user about the line.
+- Lint, typecheck, build, build contents, licences and 110 tests pass.
+
+**Fixed while checking**
+- The llama.cpp check now runs in the background: the first start took about 50 seconds and held up the window's first screen. The Models view says "checking the graphics card…" meanwhile.
+- The graphics card's memory no longer counts memory a built-in chip shares with the system (it read 25 GB instead of 8).
+- Steps and cost now update while a task runs, not only when it ends; a model changed in settings shows in the message box; blank lines left by a thinking model are trimmed.
+
+**Not checked**
+- The folder dialog: it is a native dialog the test could not click, so the test folder was written straight into the local database and removed afterwards. Worth one click by hand.
+- Deny in the real app (covered by tests), the 7B model, the CUDA back end, macOS, a keyboard-only pass.
+
+**Left open** (as in the entry below, plus)
+- The first local answer after starting the app takes about a minute while the model loads; later ones are quick. A loading note in the thread would help.
+- Qwen3 4B miscounted the two files as three: small local models make mistakes like this; phase 3's test tasks will show which sizes are good enough for which jobs.
+
+### 14 Nov 2026 · Phase 1: engine core built, its check still open
+
+On the branch `phase-1-engine-core`, nothing committed. Choices made while building are in decisions §38, **to be confirmed**.
+
+**Built**
+- **Engine process and local API (1.1):** the engine (`src/engine/`) runs as an Electron utility process, apart from the window. The window reaches it only over HTTP on `127.0.0.1` with a per-install token; events arrive as a stream. Other origins, other host names and requests without the token are refused. The page is served from `titan117://app`. A second launch brings the first window forward instead of starting a second engine; a crashed engine is started again.
+- **Permission and approval layer (4.5):** tools exist only through `defineTool`, which declares risk and permissions. `read` runs at once, `write` waits for the user (approve, always in this task, deny), `external` always asks and is laptop-only. Three tools: list a folder, read a file, write a file.
+- **Allowed folders:** chosen only in the folder dialog; `../`, absolute paths, links, the app's own folders and credential folders are refused.
+- **Budgets (4.8):** steps, working time, cost and loop detection stop a task and say why.
+- **Outside content as data (4.9):** file content reaches the model inside markers it can't forge, with the rule that nothing inside is an instruction.
+- **Local database and activity timeline (1.7, 1.8):** SQLite through Node's built-in driver; every model call, tool call, approval, refusal and stop is logged with agent, model, cost and who approved.
+- **Model router (2.1–2.3, 2.5):** local models through node-llama-cpp (two Qwen2.5 models, licences checked, each marked for this laptop) and OpenRouter with a development key from `.env`; the cost of a step is shown before sending.
+- **Error capture (19.1):** engine, tool and model errors go to a redacted local log and an `errors` table; Electron's crash reporter keeps crashes on the laptop. Nothing is sent anywhere.
+- **The window:** design.md 0.2 (sidebar, start screen, task thread with steps and approval cards, message box with model and cost, details panel with the activity log, Approvals and Models views).
+
+**Checked**
+- Lint, typecheck, build, the build-contents check, the licence check (550 packages) and 110 tests pass. `pnpm audit --audit-level high` passes (2 low, 3 moderate reported).
+- Tests cover: every tool's denial test and the coverage test; folder escapes; approval waits, denials, "always", external actions, laptop-only answers; the local API's refusals (no token, wrong token, other origins, another host name, no folders route); budgets; redaction of keys in logs, errors and every stored row; OpenRouter streaming and errors, with OpenRouter faked.
+- In the real app, run from the build and from the unpacked Windows app: it starts, the engine answers, the start screen and the Models view show (with OpenRouter's real model list), the packaged app has no cloud key, and a second launch starts no second engine.
+
+**Not checked, so phase 1 is not done**
+- **No chat was seen in the real app**, with a local or an OpenRouter model, and so no tool approval either: there is no OpenRouter key in `.env`, and local models can't start on this laptop. The task thread, approval card and details panel have only been exercised through the engine's tests, not seen on screen.
+- **Local models:** llama.cpp's prebuilt Windows binaries crash the process that loads them when the Microsoft Visual C++ runtime is older than 14.40; this laptop has 14.36 (confirmed by loading the same binary with a newer runtime beside it). The engine now tries llama.cpp in a side process first and shows "local models can't start on this laptop yet" instead of crashing. Model download, loading, tool calls from a local model and the graphics card back ends are untested.
+- The folder dialog (a native dialog), macOS, dark mode (design.md has no dark theme yet), a keyboard-only pass.
+
+**Left open**
+- Figtree and the Unbounded wordmark aren't bundled (both are OFL fonts, which need a named licence exception); the window uses the system font. Titan's eyes are a simple drawing, not the animated eyes from the mockup. Answers show as plain text, not formatted.
+- Not built: the tray (the engine stops when the window closes), title-bar task tabs, search, the compatibility test against the backend (no protocol messages yet), the full local model catalogue.
+- For phase 5: ship the Visual C++ runtime with the app; slim the packaged llama.cpp binaries (the unpacked app is 1.1 GB); the side process uses Electron's run-as-Node mode, which hardened builds often switch off.
+- For phase 2: keys in the keychain instead of `.env`; credits instead of dollars in budgets and estimates.
 
 ### 14 Nov 2026 · Phase 0 done
 
