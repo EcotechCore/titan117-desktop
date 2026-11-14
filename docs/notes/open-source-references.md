@@ -35,11 +35,11 @@ The projects most like Titan117: local-first desktop apps (Electron) that run pe
 | [electron/electron](https://github.com/electron/electron) | The shell; security checklist, utility processes | MIT | Lib | `core/electron` | | |
 | [electron-userland/electron-builder](https://github.com/electron-userland/electron-builder) | Packaging, signing, `electron-updater` auto-update | MIT | Lib | `core/electron-builder` | | |
 | [block/goose](https://github.com/block/goose) | Desktop agent app with MCP built in: agent loop, tool permissions, Electron UI | Apache 2.0 | Code | `core/goose` | Apache 2.0 | `bfcc6ee6f1ee` |
-| [vercel/ai](https://github.com/vercel/ai) | Model abstraction, streaming, tool calls, MCP client | Apache 2.0 | Lib | `core/vercel-ai` | Apache 2.0 | `fce9210c6405` |
-| [withcatai/node-llama-cpp](https://github.com/withcatai/node-llama-cpp) | Running llama.cpp from Node, model download, GPU detection | MIT | Lib | `core/node-llama-cpp` | MIT | `10e58c743b93` |
+| [vercel/ai](https://github.com/vercel/ai) | Model abstraction, streaming, tool calls, MCP client. Not used in phase 1 (our own small OpenRouter client, decisions §38); a candidate again for phases 2 and 3 | Apache 2.0 | Lib | `core/vercel-ai` | Apache 2.0 | `fce9210c6405` |
+| [withcatai/node-llama-cpp](https://github.com/withcatai/node-llama-cpp) | Running llama.cpp from Node, model download, GPU detection. Used in phase 1 at 3.22.3; its Windows binaries need the Visual C++ runtime 14.40 or newer (decisions §38) | MIT | Lib | `core/node-llama-cpp` | MIT | `10e58c743b93` |
 | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | Local inference engine | MIT | Lib | `core/llama-cpp` | | |
 | [ollama/ollama](https://github.com/ollama/ollama) | Model management UX, model library ideas | MIT | Ideas | `core/ollama` | MIT | `d1ed3fd13ac7` |
-| [WiseLibs/better-sqlite3](https://github.com/WiseLibs/better-sqlite3) | Local database from Node | MIT | Lib | `core/better-sqlite3` | | |
+| [WiseLibs/better-sqlite3](https://github.com/WiseLibs/better-sqlite3) | Local database from Node. Not used: phase 1 uses Node's built-in SQLite (decisions §38) | MIT | Lib | `core/better-sqlite3` | | |
 | [OpenRouterTeam](https://github.com/OpenRouterTeam) SDKs and examples | Key management API, streaming, usage | *to check* | Lib | `core/openrouter` | | |
 
 ## Phase 2 · Accounts and money

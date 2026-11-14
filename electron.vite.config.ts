@@ -21,7 +21,17 @@ function devCsp(): Plugin {
 }
 
 export default defineConfig({
-  main: {},
+  // Two bundles: the shell (index) and the engine process it starts (engine).
+  main: {
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/main/index.ts'),
+          engine: resolve('src/engine/main.ts')
+        }
+      }
+    }
+  },
   // Bundled, so the sandboxed preload needs nothing but `electron` at run time.
   preload: {
     build: {

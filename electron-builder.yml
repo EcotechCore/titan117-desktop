@@ -19,6 +19,9 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  # llama.cpp's binaries are loaded from disk, so they can't sit inside the archive.
+  - node_modules/node-llama-cpp/**
+  - node_modules/@node-llama-cpp/**
 win:
   executableName: Titan117
 nsis:

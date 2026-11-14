@@ -33,6 +33,10 @@ export function isSafeExternalUrl(url: string): boolean {
   }
 }
 
+/** In production the page is served from our own scheme: `titan117://app`. */
+export const APP_SCHEME = 'titan117'
+export const APP_ORIGIN = `${APP_SCHEME}://app`
+
 /**
  * Where the window itself may navigate: only the app's own page (the dev
  * server in development). Everything else is refused; external links go
@@ -42,7 +46,7 @@ export function isAllowedNavigation(url: string, devServerUrl?: string): boolean
   try {
     const target = new URL(url)
     if (devServerUrl) return target.origin === new URL(devServerUrl).origin
-    return target.protocol === 'file:'
+    return target.protocol === `${APP_SCHEME}:` && target.host === 'app'
   } catch {
     return false
   }

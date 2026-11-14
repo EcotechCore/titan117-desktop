@@ -1,2 +1,4 @@
 allowBuilds:
   electron-winstaller: true
+  # Prebuilt binaries come as optional packages; its build-from-source script is not run.
+  node-llama-cpp: false

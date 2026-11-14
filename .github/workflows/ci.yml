@@ -2,8 +2,8 @@
 # (guardrails §13); Dependabot keeps the pins current.
 #
 # Not here yet, added with the phase that brings them: the prompt injection
-# suite (phase 3) and the compatibility test against the backend (phase 1,
-# with the first protocol messages).
+# suite (phase 3) and the compatibility test against the backend (with the
+# first protocol messages to the cloud, phase 2).
 name: CI
 
 on:
@@ -33,7 +33,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Lint (engine guardrail and no web imports included)
         run: pnpm lint
-      - name: Test (window settings and lint-rule tests included)
+      - name: Test (denial tests, local API refusals and lint-rule tests included)
         run: pnpm test
       - name: Typecheck and build
         run: pnpm build
