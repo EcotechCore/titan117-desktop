@@ -23,6 +23,7 @@ import { ApprovalsView, ModelsView } from './Views'
 import { MemoryView } from './Memory'
 import { ConnectorsView } from './Connectors'
 import { play, record, type Recording } from './voice'
+import { VoiceBar } from './VoiceBar'
 
 const PROMPTS = [
   'Find every invoice in my folder and total them in a CSV.',
@@ -162,35 +163,47 @@ function App(): React.JSX.Element {
     dispatch({ type: 'cloud', models: m.cloud, own: m.own })
   }, [])
 
-  /** Voice input: press to record, press again to turn it into text (on this laptop). */
-  async function toggleVoice(): Promise<void> {
-    if (voice === 'transcribing') return
-    if (voice === 'off') {
-      try {
-        recording.current = await record()
-        setVoice('recording')
-      } catch {
-        fail(new Error('The microphone could not be used. Check that Titan117 may use it.'))
-      }
-      return
+  /** Voice input: press to record; Done turns it into text on this laptop, Cancel drops it. */
+  async function startVoice(): Promise<void> {
+    if (voice !== 'off') return
+    try {
+      recording.current = await record()
+      setVoice('recording')
+    } catch {
+      fail(new Error('The microphone could not be used. Check that Titan117 may use it.'))
     }
+  }
+
+  const finishVoice = useCallback(async () => {
+    const current = recording.current
+    if (!current) return
     setVoice('transcribing')
     try {
-      const pcm16 = await recording.current!.stop()
+      const pcm16 = await current.stop()
       const { text: heard } = await client.current!.send<{ text: string }>(
         'POST',
         '/v1/speech/transcribe',
         { pcm16 }
       )
-      if (heard) setText((current) => (current ? `${current} ${heard}` : heard))
-      input.current?.focus()
+      if (heard) setText((existing) => (existing ? `${existing} ${heard}` : heard))
+      else fail(new Error('No speech was heard. Try again a little closer to the microphone.'))
     } catch (error) {
       fail(error)
     } finally {
       recording.current = null
       setVoice('off')
+      input.current?.focus()
     }
-  }
+  }, [fail])
+
+  const cancelVoice = useCallback(() => {
+    recording.current?.cancel()
+    recording.current = null
+    setVoice('off')
+    input.current?.focus()
+  }, [])
+
+  const micLevel = useCallback(() => recording.current?.level() ?? 0, [])
 
   const readAloud = useCallback(
     (spoken: string) => {
@@ -412,7 +425,16 @@ function App(): React.JSX.Element {
               </p>
             )}
             <div className="box">
+              {voice !== 'off' && (
+                <VoiceBar
+                  state={voice}
+                  level={micLevel}
+                  onDone={() => void finishVoice()}
+                  onCancel={cancelVoice}
+                />
+              )}
               <textarea
+                style={voice !== 'off' ? { display: 'none' } : undefined}
                 ref={input}
                 rows={2}
                 placeholder={task ? 'Reply to Titan' : 'Describe a task'}
@@ -451,21 +473,16 @@ function App(): React.JSX.Element {
                   </select>
                 </label>
                 <span className="cost mono">{model && estimate ? estimate.label : ''}</span>
-                <button
-                  className="voice"
-                  aria-label={
-                    voice === 'recording'
-                      ? 'Stop recording and write it out'
-                      : voice === 'transcribing'
-                        ? 'Writing out what you said'
-                        : 'Speak instead of typing'
-                  }
-                  aria-pressed={voice === 'recording'}
-                  disabled={voice === 'transcribing'}
-                  onClick={() => void toggleVoice()}
-                >
-                  <Icon name="mic" />
-                </button>
+                {voice === 'off' && (
+                  <button
+                    className="voice"
+                    aria-label="Speak instead of typing"
+                    title="Speak instead of typing"
+                    onClick={() => void startVoice()}
+                  >
+                    <Icon name="mic" />
+                  </button>
+                )}
                 {busy ? (
                   <button
                     className="send"
