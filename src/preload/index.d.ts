@@ -21,6 +21,19 @@ declare global {
       addFolder(): Promise<boolean>
       removeFolder(path: string): Promise<boolean>
       onEngineRestart(listener: () => void): void
+      /** Auto-update (1.10): its state, and installing a downloaded update. */
+      updates: {
+        state(): Promise<{ state: string; version?: string; why?: string; message?: string }>
+        install(): Promise<boolean>
+        onChange(
+          listener: (state: {
+            state: string
+            version?: string
+            why?: string
+            message?: string
+          }) => void
+        ): void
+      }
       /** A notification was clicked: open that task (1.9). */
       onOpenTask(listener: (taskId: string) => void): void
       /** The user's own API keys. A key goes in once and never comes back to the page. */

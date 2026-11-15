@@ -490,6 +490,48 @@ const DENIALS: Record<string, () => Promise<void>> = {
     expect(existsSync(target)).toBe(false)
   },
 
+  async browser_download() {
+    const b = bench()
+    b.browser.labels.set('7', 'Download invoice')
+    b.browser.downloads.set('7', {
+      name: 'invoice.pdf',
+      data: Buffer.from('%PDF-1.7'),
+      url: 'https://shop.example/invoice.pdf'
+    })
+    // Denied: nothing clicked, nothing written.
+    expect((await b.run({ name: 'browser_download', input: { ref: '7' } }, 'deny')).status).toBe(
+      'refused'
+    )
+    expect(b.browser.clicked).toEqual([])
+    expect(existsSync(join(b.allowed, 'invoice.pdf'))).toBe(false)
+    // Approved, but into a folder that isn't allowed: refused.
+    expect(
+      (await b.run({ name: 'browser_download', input: { ref: '7', folder: b.outside } }, 'approve'))
+        .status
+    ).toBe('refused')
+    expect(existsSync(join(b.outside, 'invoice.pdf'))).toBe(false)
+    // A program is never saved, even approved.
+    b.browser.labels.set('8', 'Get the app')
+    b.browser.downloads.set('8', {
+      name: 'setup.exe',
+      data: Buffer.from('MZ'),
+      url: 'https://shop.example/setup.exe'
+    })
+    expect((await b.run({ name: 'browser_download', input: { ref: '8' } }, 'approve')).status).toBe(
+      'refused'
+    )
+    expect(existsSync(join(b.allowed, 'setup.exe'))).toBe(false)
+    // Approved into an allowed folder: saved, and a second one doesn't overwrite it.
+    expect((await b.run({ name: 'browser_download', input: { ref: '7' } }, 'approve')).status).toBe(
+      'done'
+    )
+    expect((await b.run({ name: 'browser_download', input: { ref: '7' } }, 'approve')).status).toBe(
+      'done'
+    )
+    expect(existsSync(join(b.allowed, 'invoice.pdf'))).toBe(true)
+    expect(existsSync(join(b.allowed, 'invoice (2).pdf'))).toBe(true)
+  },
+
   async browser_open() {
     const b = bench()
     expect(

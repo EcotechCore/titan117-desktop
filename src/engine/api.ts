@@ -34,7 +34,7 @@ import type { MemoryStore } from './memory'
 import type { RecordStore } from './records'
 import type { CallOutcome } from './permissions'
 import { ArtifactError, type ArtifactStore } from './artifacts'
-import { convert, ConvertError, FORMATS, type ExportFormat } from './lib/convert'
+import { convert, ConvertError, FORMATS, zipArtifacts, type ExportFormat } from './lib/convert'
 import { SearchError, DEFAULT_SEARCH_SETTINGS, siteOf } from './lib/search'
 import { ShareError, type ShareService } from './lib/share'
 import { ReportError, type ReportService } from './lib/reports'
@@ -387,6 +387,31 @@ export function createApi(deps: {
         const file = await convert(detail.artifact, version.content, format)
         return { name: file.name, mime: file.mime, base64: file.data.toString('base64') }
       }
+      case 'POST artifacts/:id': {
+        // `/v1/artifacts/zip`: several artifacts (or versions) as one ZIP (17.21, 17.22).
+        if (id !== 'zip') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        const store = need(deps.artifacts)
+        const raw = field(body, 'items')
+        if (!Array.isArray(raw) || !raw.length || raw.length > 50)
+          throw new ApiError(400, 'BAD_REQUEST', 'Choose between 1 and 50 artifacts.')
+        const items = raw.map((entry) => {
+          const artifactId = String(field(entry, 'id') ?? '')
+          const v = field(entry, 'version')
+          const detail = store.get(artifactId)
+          const version = typeof v === 'number' ? store.version(artifactId, v) : detail.current
+          return {
+            artifact: detail.artifact,
+            content: version.content,
+            version: version.version !== detail.artifact.version ? version.version : undefined
+          }
+        })
+        const zip = await zipArtifacts(items, field(body, 'every') === true)
+        const name =
+          items.length === 1
+            ? `${items[0].artifact.title.replace(/[<>:"/\\|?*]+/g, ' ').trim() || 'Artifact'}.zip`
+            : `Titan117 artifacts (${items.length}).zip`
+        return { name, base64: zip.toString('base64') }
+      }
       case 'POST artifacts/:id/share': {
         const store = need(deps.artifacts)
         const { artifact } = store.get(id!)
@@ -405,6 +430,25 @@ export function createApi(deps: {
             .unshare(old)
             .catch(() => undefined)
         return { artifact: store.setShare(id!, shared) }
+      }
+      case 'GET artifacts/:id/comments':
+      case 'POST artifacts/:id/comments': {
+        const shareId = need(deps.artifacts).shareId(id!)
+        if (!shareId) throw new ApiError(400, 'BAD_REQUEST', 'This artifact is not shared.')
+        const op = field(body, 'op')
+        const comments = await need(deps.shares).comments(
+          shareId,
+          op === 'reply'
+            ? { op: 'reply', text: String(field(body, 'text') ?? '') }
+            : op === 'hide'
+              ? {
+                  op: 'hide',
+                  commentId: String(field(body, 'commentId') ?? ''),
+                  hidden: field(body, 'hidden') === true
+                }
+              : { op: 'list' }
+        )
+        return { comments }
       }
       case 'DELETE artifacts/:id/share': {
         const store = need(deps.artifacts)

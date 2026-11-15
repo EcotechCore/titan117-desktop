@@ -16,6 +16,13 @@ contextBridge.exposeInMainWorld('titan117', {
   onEngineRestart: (listener: () => void) => {
     ipcRenderer.on('engine:restarted', () => listener())
   },
+  updates: {
+    state: () => ipcRenderer.invoke('update:state'),
+    install: () => ipcRenderer.invoke('update:install'),
+    onChange: (listener: (state: unknown) => void) => {
+      ipcRenderer.on('update:state', (_event, state) => listener(state))
+    }
+  },
   /** A notification was clicked (1.9): open that task. */
   onOpenTask: (listener: (taskId: string) => void) => {
     ipcRenderer.on('task:open', (_event, taskId: string) => listener(String(taskId)))

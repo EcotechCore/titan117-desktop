@@ -1572,3 +1572,24 @@ textarea.edit {
   flex-wrap: wrap;
   margin-bottom: 8px;
 }
+
+.pick {
+  accent-color: var(--accent);
+  flex: none;
+}
+
+.share-comments ol {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.share-comments li p {
+  margin: 2px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.share-comments li.hidden {
+  opacity: 0.55;
+}

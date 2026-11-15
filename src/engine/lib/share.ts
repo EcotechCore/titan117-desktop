@@ -16,9 +16,26 @@ export class ShareError extends Error {
   }
 }
 
+export interface ShareComment {
+  id: string
+  name: string
+  text: string
+  fromOwner: boolean
+  at: number
+  hidden: boolean
+}
+
 export interface ShareService {
   share(input: { title: string; kind: string; html: string }): Promise<{ id: string; url: string }>
   unshare(id: string): Promise<void>
+  /** Comments on a shared page (17.14): list, reply, hide or show. */
+  comments(
+    id: string,
+    op:
+      | { op: 'list' }
+      | { op: 'reply'; text: string }
+      | { op: 'hide'; commentId: string; hidden: boolean }
+  ): Promise<ShareComment[]>
 }
 
 function explain(status: number): string {
@@ -67,6 +84,30 @@ export function createShareService(deps: {
       const body = (await response.json()) as { id?: string; url?: string }
       if (!body.id || !body.url) throw new ShareError("Sharing didn't work. Try again.")
       return { id: body.id, url: body.url }
+    },
+
+    async comments(id, op) {
+      const { token, apiBase } = account()
+      const call = async (body: unknown): Promise<Response> => {
+        let response: Response
+        try {
+          response = await deps.fetch(
+            `${apiBase}/shares/${encodeURIComponent(id)}/comments/owner`,
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify(body)
+            }
+          )
+        } catch {
+          throw new ShareError('No internet connection: comments need it.')
+        }
+        if (!response.ok) throw new ShareError(explain(response.status))
+        return response
+      }
+      if (op.op !== 'list') await call(op)
+      const body = (await (await call({ op: 'list' })).json()) as { comments?: ShareComment[] }
+      return body.comments ?? []
     },
 
     async unshare(id) {

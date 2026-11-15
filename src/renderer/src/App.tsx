@@ -56,6 +56,8 @@ function App(): React.JSX.Element {
   const [reportMode, setReportMode] = useState<ReportMode>('ask')
   // The first-launch wizard (1.12), until it's finished or skipped.
   const [wizard, setWizard] = useState(false)
+  // A downloaded update waiting for a restart (1.10).
+  const [update, setUpdate] = useState<string | null>(null)
 
   const { engine, view, model } = state
   const taskId = view.kind === 'task' ? view.id : null
@@ -108,6 +110,13 @@ function App(): React.JSX.Element {
   useEffect(() => {
     window.titan117.onEngineRestart(() => setAttempt((n) => n + 1))
     window.titan117.onOpenTask((id) => dispatch({ type: 'view', view: { kind: 'task', id } }))
+    const onUpdate = (s: { state: string; version?: string }): void =>
+      setUpdate(s.state === 'ready' ? (s.version ?? '') : null)
+    window.titan117.updates.onChange(onUpdate)
+    void window.titan117.updates
+      .state()
+      .then(onUpdate)
+      .catch(() => undefined)
   }, [])
 
   // Open a task: load its messages, approvals and activity once.
@@ -426,6 +435,29 @@ function App(): React.JSX.Element {
 
       <main className="work">
         {account && <LeaseWarning view={account} />}
+        {update !== null && (
+          <div className="note offline-switch" role="status">
+            <span>Titan117 {update} is ready.</span>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                const running = state.tasks.some(
+                  (t) => t.status === 'running' || t.status === 'waiting'
+                )
+                if (
+                  running &&
+                  !window.confirm(
+                    'A task is still working. Restart now? It carries on after the update.'
+                  )
+                )
+                  return
+                void window.titan117.updates.install()
+              }}
+            >
+              Restart to update
+            </button>
+          </div>
+        )}
         {!engine.online && (
           <div className="note offline-bar" role="status">
             <strong>Offline.</strong> Local models, your files and tools keep working. Cloud models,
@@ -716,6 +748,19 @@ function App(): React.JSX.Element {
           onFull={() => dispatch({ type: 'artifactFull' })}
           onClose={() => dispatch({ type: 'artifact', id: null })}
           onProblem={fail}
+          onAsk={(text) => {
+            if (!model) return dispatch({ type: 'view', view: { kind: 'models' } })
+            client.current
+              ?.send<{ task: Task }>('POST', '/v1/tasks', { text, model })
+              .then(({ task: created }) => {
+                dispatch({
+                  type: 'detail',
+                  detail: { task: created, messages: [], approvals: [], activity: [] }
+                })
+                dispatch({ type: 'view', view: { kind: 'task', id: created.id } })
+              })
+              .catch(fail)
+          }}
         />
       )}
 

@@ -32,6 +32,17 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Phase 4 leftovers and auto-update
+
+Built on `phase-4-leftovers`, on top of `phase-5-installer` (the web side in `titan117-web` on the same branch name). Decisions §50, **to be confirmed**.
+
+- **ZIP (17.21, 17.22):** tick artifacts in the gallery and download them as one ZIP (best format, or every format); "Every format (ZIP)" in the panel for the version on screen. Seen in the real app: an offer and a project plan came out as `Offer/Offer.docx` and `Project plan/Project plan.pptx`.
+- **Browser downloads:** `browser_download` saves a file a site offers into an allowed folder after approval; never programs or scripts, 200 MB at most, never over an existing file. Its denial test covers a refusal, a folder outside, a program and a second download not overwriting the first.
+- **Comments on shared pages (17.14):** in the Share section: every comment, reply on the page, hide or show, and "Apply with Titan".
+- **Auto-update (1.10):** electron-updater, off until a signing certificate and an update address exist; when on, "Restart to update" in the window.
+- **Tests:** 6 new here; 276 in all; build and build-contents check pass.
+- **Not checked:** comments and replies against our real web app (need a live share, the owner's step); a real download from a real site in the browser; auto-update for real (needs signing and an update address).
+
 ### 15 Nov 2026 · Phase 5: Microsoft's runtime inside the installer
 
 With the owner's OK, `scripts/fetch-vc-redist.mjs` fetched Microsoft's Visual C++ redistributable (14.44.35211, Authenticode signature valid, Microsoft Corporation); `pnpm build:win` now ships it in `resources\vendor` (installer 235 MB).

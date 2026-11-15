@@ -159,6 +159,75 @@ export const browserClick = defineTool<{ ref: string }>({
   }
 })
 
+/** Programs and scripts: never downloaded by an agent (decisions §50). */
+const PROGRAM = /\.(exe|msi|msix|appx|bat|cmd|com|scr|ps1|psm1|vbs|vbe|js|jse|wsf|hta|jar|dll|sys|reg|lnk|app|dmg|pkg|sh|command|apk)$/i
+
+/** A name that is safe as a file name on Windows and macOS. */
+function safeFile(name: string): string {
+  return (
+    [...name]
+      .map((c) => (c.charCodeAt(0) < 32 || '<>:"/\\|?*'.includes(c) ? ' ' : c))
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^\.+/, '')
+      .slice(0, 120) || 'download'
+  )
+}
+
+export const browserDownload = defineTool<{ ref: string; folder?: string }>({
+  name: 'browser_download',
+  description:
+    'Click a control on the current page that downloads a file (an invoice, a report, a statement) and save the file into an allowed folder. Asks the user first. Programs and scripts are never downloaded.',
+  params: {
+    type: 'object',
+    properties: {
+      ref: { type: 'string', description: 'The number of the download link or button.' },
+      folder: {
+        type: 'string',
+        description: 'Where to save it, inside an allowed folder. Default: the first allowed folder.'
+      }
+    },
+    required: ['ref']
+  },
+  risk: 'write',
+  permissions: { browser: true, folders: 'write' },
+  describe: (input) =>
+    `Download the file behind control ${input.ref} and save it in ${input.folder ? `"${input.folder}"` : 'the first allowed folder'}`,
+  async run(input, ctx) {
+    await finalStepCheck(input.ref, ctx, 'Click')
+    const label = await ctx.browser.label(input.ref)
+    if (PROGRAM.test(label))
+      throw new PermissionError("That looks like a program. Titan doesn't download programs; download it yourself if you trust it.")
+    const file = await ctx.browser.download(input.ref)
+    const name = safeFile(file.name)
+    if (PROGRAM.test(name))
+      throw new PermissionError(
+        `"${name}" is a program or script. Titan doesn't download those; download it yourself if you trust it.`
+      )
+    const folder = (input.folder ?? '.').replace(/[\\/]+$/, '') || '.'
+    // Never over an existing file: "invoice (2).pdf".
+    const taken = new Set(
+      (await ctx.files.list(folder).catch(() => [])).map((e) => e.name.toLowerCase())
+    )
+    let saved = name
+    for (let n = 2; taken.has(saved.toLowerCase()) && n < 1000; n++)
+      saved = name.replace(/(\.[^.]+)?$/, ` (${n})$1`)
+    const path = `${folder}/${saved}`
+    await ctx.files.writeBytes(path, file.data)
+    return {
+      output: `Saved "${name}" (${Math.max(1, Math.round(file.data.length / 1024))} KB) as ${path}. It was not opened.`,
+      summary: `Downloaded ${name} from ${(() => {
+        try {
+          return new URL(file.url).hostname
+        } catch {
+          return 'the page'
+        }
+      })()} into ${path}`
+    }
+  }
+})
+
 export const browserType = defineTool<{ ref: string; text: string; submit?: boolean }>({
   name: 'browser_type',
   description:
@@ -231,6 +300,7 @@ export const browserTools = [
   browserOpen,
   browserView,
   browserClick,
+  browserDownload,
   browserType,
   browserSelect,
   browserBack

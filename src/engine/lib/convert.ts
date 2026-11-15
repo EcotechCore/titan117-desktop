@@ -22,6 +22,7 @@ import {
 import ExcelJS from 'exceljs'
 import { marked, type Token, type Tokens } from 'marked'
 import PptxGenJS from 'pptxgenjs'
+import { zipSync } from 'fflate'
 
 import { artifactHtml, splitSlides } from '../../shared/artifact-html'
 import type { ArtifactKind } from '../../shared/protocol'
@@ -500,4 +501,42 @@ export async function convert(
         sheetToCsv(artifact.kind === 'chart' ? chartAsSheet(content) : parseSheet(content))
       )
   }
+}
+
+/** The first format in each kind's list: what "best format" means in a ZIP. */
+export const BEST: Record<ArtifactKind, ExportFormat> = {
+  document: 'docx',
+  page: 'html',
+  spreadsheet: 'xlsx',
+  chart: 'xlsx',
+  diagram: 'mmd',
+  slides: 'pptx'
+}
+
+/**
+ * Several artifacts, or one in several formats, as one ZIP (features 17.21,
+ * 17.22): `every` puts each in every format that fits; otherwise its best one.
+ * Each artifact gets its own folder; an older version says so in its name.
+ */
+export async function zipArtifacts(
+  items: { artifact: { kind: ArtifactKind; title: string }; content: string; version?: number }[],
+  every: boolean
+): Promise<Buffer> {
+  const files: Record<string, Uint8Array> = {}
+  const folders = new Set<string>()
+  for (const item of items) {
+    let folder = fileName(item.artifact.title, '').replace(/\.$/, '')
+    for (let n = 2; folders.has(folder.toLowerCase()); n++)
+      folder = `${fileName(item.artifact.title, '').replace(/\.$/, '')} ${n}`
+    folders.add(folder.toLowerCase())
+    const formats = every ? FORMATS[item.artifact.kind] : [BEST[item.artifact.kind]]
+    for (const format of formats) {
+      const file = await convert(item.artifact, item.content, format)
+      const name = item.version
+        ? file.name.replace(/(\.[a-z]+)$/, ` v${item.version}$1`)
+        : file.name
+      files[`${folder}/${name}`] = new Uint8Array(file.data)
+    }
+  }
+  return Buffer.from(zipSync(files, { level: 6 }))
 }

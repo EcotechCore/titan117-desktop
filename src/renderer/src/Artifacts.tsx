@@ -17,6 +17,7 @@ import {
   when
 } from './artifact-lib'
 import type { EngineClient } from './engine'
+import { ShareComments } from './ShareComments'
 import { Icon } from './ui'
 
 type Mode = 'view' | 'edit' | 'versions' | 'share'
@@ -28,7 +29,8 @@ export function ArtifactPanel({
   full,
   onFull,
   onClose,
-  onProblem
+  onProblem,
+  onAsk
 }: {
   client: EngineClient
   id: string
@@ -38,6 +40,8 @@ export function ArtifactPanel({
   onFull(): void
   onClose(): void
   onProblem(error: unknown): void
+  /** Start a task with this text (a comment to apply). */
+  onAsk?(text: string): void
 }): React.JSX.Element {
   const [detail, setDetail] = useState<ArtifactDetail | null>(null)
   const [shown, setShown] = useState<ArtifactVersion | null>(null)
@@ -135,6 +139,28 @@ export function ArtifactPanel({
         )
         await window.titan117.artifacts.save(old ? name(format) : file.name, file.base64)
       }
+    } catch (error) {
+      onProblem(error)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /** This version in every format that fits, as one ZIP (17.22). */
+  async function zipEvery(): Promise<void> {
+    if (!shown) return
+    setMenu(false)
+    setBusy('Preparing the files…')
+    try {
+      const file = await client.send<{ name: string; base64: string }>(
+        'POST',
+        '/v1/artifacts/zip',
+        {
+          items: [{ id: artifact.id, version: shown.version }],
+          every: true
+        }
+      )
+      await window.titan117.artifacts.save(file.name, file.base64)
     } catch (error) {
       onProblem(error)
     } finally {
@@ -250,6 +276,9 @@ export function ArtifactPanel({
                     {d.label}
                   </button>
                 ))}
+                <button role="menuitem" onClick={() => void zipEvery()}>
+                  Every format (ZIP)
+                </button>
                 <button
                   role="menuitem"
                   onClick={() => {
@@ -339,6 +368,13 @@ export function ArtifactPanel({
                   Unshare
                 </button>
               </div>
+              <ShareComments
+                client={client}
+                artifactId={artifact.id}
+                title={artifact.title}
+                onAsk={(text) => onAsk?.(text)}
+                onProblem={onProblem}
+              />
             </>
           ) : (
             <>
@@ -481,6 +517,25 @@ export function ArtifactsView({
 }): React.JSX.Element {
   const [list, setList] = useState<Artifact[]>([])
   const [query, setQuery] = useState('')
+  // Several at once as one ZIP (17.21).
+  const [picked, setPicked] = useState<string[]>([])
+  const [every, setEvery] = useState(false)
+
+  async function zipPicked(): Promise<void> {
+    try {
+      const file = await client!.send<{ name: string; base64: string }>(
+        'POST',
+        '/v1/artifacts/zip',
+        {
+          items: picked.map((id) => ({ id })),
+          every
+        }
+      )
+      await window.titan117.artifacts.save(file.name, file.base64)
+    } catch (error) {
+      onProblem(error)
+    }
+  }
 
   useEffect(() => {
     if (!client) return
@@ -535,8 +590,36 @@ export function ArtifactsView({
       {list.length === 0 && (
         <p className="empty">{query ? 'Nothing with that title.' : 'No artifacts yet.'}</p>
       )}
+      {picked.length > 0 && (
+        <div className="row row-tint">
+          <span className="row-main">
+            {picked.length} chosen ·{' '}
+            <label>
+              <input type="checkbox" checked={every} onChange={(e) => setEvery(e.target.checked)} />{' '}
+              every format, not just the best one
+            </label>
+          </span>
+          <button className="btn btn-primary" onClick={() => void zipPicked()}>
+            <Icon name="down" /> Download as ZIP
+          </button>
+          <button className="btn" onClick={() => setPicked([])}>
+            Clear
+          </button>
+        </div>
+      )}
       {list.map((a) => (
         <div key={a.id} className="row">
+          <input
+            type="checkbox"
+            className="pick"
+            aria-label={`Choose ${a.title}`}
+            checked={picked.includes(a.id)}
+            onChange={(e) =>
+              setPicked((list) =>
+                e.target.checked ? [...list, a.id] : list.filter((x) => x !== a.id)
+              )
+            }
+          />
           <span className="row-icon">
             <Icon name="file" />
           </span>

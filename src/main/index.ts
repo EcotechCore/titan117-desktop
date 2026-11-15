@@ -21,6 +21,7 @@ import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { Account, type AccountView } from './lib/account'
+import { startUpdates, type UpdateState } from './lib/updates'
 import { Keys } from './lib/keys'
 import { ConnectorSecrets } from './lib/connector-secrets'
 import {
@@ -84,7 +85,12 @@ function developmentKey(): string {
  * the development web app and Convex deployment; a packaged build uses the
  * production addresses, set before the first external testers (phase 18).
  */
-const PRODUCTION = { webUrl: 'https://titan117.com', apiUrl: null as string | null }
+const PRODUCTION = {
+  webUrl: 'https://titan117.com',
+  apiUrl: null as string | null,
+  // Where signed releases are published (feature 1.10); set with code signing (decisions §50).
+  updateUrl: null as string | null
+}
 
 function accountConfig(): { webUrl: string | null; apiUrl: string | null } {
   if (!is.dev) return PRODUCTION
@@ -335,6 +341,31 @@ async function saveAs(
   if (result.canceled || !result.filePath) return null
   await writeChosenFile(result.filePath, data)
   return result.filePath
+}
+
+// ---------------------------------------------------------------- updates
+
+let updates: ReturnType<typeof startUpdates> | null = null
+
+function registerUpdates(): void {
+  updates = startUpdates({
+    packaged: app.isPackaged,
+    url: is.dev ? process.env['TITAN117_UPDATE_URL'] || null : PRODUCTION.updateUrl,
+    onChange: (state: UpdateState) => {
+      for (const window of BrowserWindow.getAllWindows())
+        window.webContents.send('update:state', state)
+    }
+  })
+  ipcMain.handle('update:state', (event) => {
+    if (!fromOurPage(event)) throw new Error('Refused.')
+    return updates?.state() ?? { state: 'off', why: 'Not started.' }
+  })
+  // Only when the user presses it; the window asks first if a task is running.
+  ipcMain.handle('update:install', (event) => {
+    if (!fromOurPage(event)) throw new Error('Refused.')
+    updates?.install()
+    return true
+  })
 }
 
 function registerArtifacts(): void {
@@ -596,6 +627,7 @@ function start(): void {
   loadDevelopmentEnv()
   registerBridge()
   registerArtifacts()
+  registerUpdates()
   startAccount()
   startEngine()
   createWindow()
