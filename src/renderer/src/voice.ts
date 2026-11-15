@@ -6,6 +6,8 @@ export interface Recording {
   /** Stop and return the recording as 16 kHz mono 16-bit samples, base64. */
   stop(): Promise<string>
   cancel(): void
+  /** How loud the microphone is right now, 0 to 1: drives the sound bars. */
+  level(): number
 }
 
 export async function record(): Promise<Recording> {
@@ -16,9 +18,25 @@ export async function record(): Promise<Recording> {
     if (event.data.size) chunks.push(event.data)
   }
   recorder.start()
-  const release = (): void => stream.getTracks().forEach((t) => t.stop())
+  // A live meter, so the user can see the microphone is hearing them.
+  const meter = new AudioContext()
+  const analyser = meter.createAnalyser()
+  analyser.fftSize = 1024
+  meter.createMediaStreamSource(stream).connect(analyser)
+  const wave = new Uint8Array(analyser.fftSize)
+  const release = (): void => {
+    stream.getTracks().forEach((t) => t.stop())
+    void meter.close().catch(() => undefined)
+  }
 
   return {
+    level() {
+      analyser.getByteTimeDomainData(wave)
+      let sum = 0
+      for (const v of wave) sum += ((v - 128) / 128) ** 2
+      // Speech sits around 0.02-0.2 RMS; scale it so normal talking fills the bars.
+      return Math.min(1, Math.sqrt(sum / wave.length) * 6)
+    },
     cancel() {
       if (recorder.state !== 'inactive') recorder.stop()
       release()

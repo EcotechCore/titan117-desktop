@@ -1109,3 +1109,67 @@ textarea.edit {
 .approval-review pre.cmd {
   white-space: pre-wrap;
 }
+.voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 4px 2px 8px;
+}
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: rec-pulse 1.2s ease-in-out infinite;
+  flex: none;
+}
+@keyframes rec-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.rec-time {
+  color: var(--soft);
+  min-width: 34px;
+}
+.meter {
+  flex: 1;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.meter span {
+  flex: 1;
+  min-width: 2px;
+  max-width: 6px;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: height 80ms linear;
+}
+.rec-hint {
+  font-size: 12px;
+  min-width: 64px;
+}
+.voice-done {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--white);
+}
+.voice-done:hover {
+  background: #f4533a;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot {
+    animation: none;
+  }
+  .meter span {
+    transition: none;
+  }
+}

@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Phase 3: a live sound meter while you speak
+
+At the owner's request after trying voice input: while recording, the message box shows a pulsing dot, a timer, sound bars that move with your voice ("Speak now" until it hears you, then "Listening"), Cancel (Escape) and Done (Enter); then "Writing out what you said…" until the text arrives. If nothing was heard, it says so. Checked in the built app with Chromium's test microphone; the owner's own microphone is still to try.
+
 ### 15 Nov 2026 · Phase 3: Titan and memory, built; the check is met
 
 Built on `phase-3-titan` (decisions §43, to be confirmed). **Phase 3's check is met:** `pnpm eval:titan` ran the ten everyday tasks and the three prompt-injection scenarios against real models through OpenRouter, **13 of 13 with Claude Haiku 5.5 ($0.02) and 13 of 13 with GPT-6 Luna ($0.02)**, and the deterministic injection suite passes in the normal tests. **Seen in the real app on Windows:** a task wrote a file and ran a command after the approval cards (the second offered "Always allow `echo` in this folder"); memory added from the Memory view; speech read a sentence aloud with the Windows voice and Whisper wrote it back nearly word for word (7 seconds) inside the app's own engine.
