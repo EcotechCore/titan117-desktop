@@ -21,6 +21,11 @@ contextBridge.exposeInMainWorld('titan117', {
     save: (provider: string, key: string) => ipcRenderer.invoke('keys:save', provider, key),
     remove: (provider: string) => ipcRenderer.invoke('keys:remove', provider)
   },
+  connectors: {
+    setSecrets: (id: string, secrets: Record<string, string>) =>
+      ipcRenderer.invoke('connectors:setSecrets', id, secrets),
+    removeSecrets: (id: string) => ipcRenderer.invoke('connectors:removeSecrets', id)
+  },
   account: {
     status: () => ipcRenderer.invoke('account:status'),
     signIn: () => ipcRenderer.invoke('account:signIn'),

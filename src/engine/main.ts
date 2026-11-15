@@ -11,6 +11,7 @@ type FromShell =
   | { type: 'removeFolder'; path: string }
   | { type: 'account'; account: AccountState }
   | { type: 'keys'; keys: OwnKeys }
+  | { type: 'connectorSecrets'; secrets: Record<string, Record<string, string>> }
   | { type: 'shutdown' }
 
 function env(name: string): string {
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
       else if (data.type === 'removeFolder') engine.removeFolder(data.path)
       else if (data.type === 'account') engine.setAccount(data.account)
       else if (data.type === 'keys') engine.setKeys(data.keys)
+      else if (data.type === 'connectorSecrets') engine.setConnectorSecrets(data.secrets)
       else if (data.type === 'shutdown') void engine.close().finally(() => process.exit(0))
     } catch (error) {
       engine.parts.log.capture('engine', error, { message: data.type })

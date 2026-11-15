@@ -13,7 +13,12 @@ import type {
 } from '../../shared/protocol'
 
 export type View =
-  { kind: 'start' } | { kind: 'task'; id: string } | { kind: 'approvals' } | { kind: 'models' }
+  | { kind: 'start' }
+  | { kind: 'task'; id: string }
+  | { kind: 'approvals' }
+  | { kind: 'models' }
+  | { kind: 'memory' }
+  | { kind: 'connectors' }
 
 export interface AppState {
   status: 'connecting' | 'ready' | 'lost'
@@ -30,6 +35,8 @@ export interface AppState {
   showDetails: boolean
   model: string | null
   problem: string | null
+  /** Bumped when memory, skills, past tasks or connectors change: their views reload. */
+  changed: Record<string, number>
 }
 
 export const initialState: AppState = {
@@ -44,7 +51,8 @@ export const initialState: AppState = {
   view: { kind: 'start' },
   showDetails: true,
   model: null,
-  problem: null
+  problem: null,
+  changed: {}
 }
 
 export type Action =
@@ -148,6 +156,11 @@ function onEvent(state: AppState, event: EngineEvent): AppState {
             }
           }
         : state
+    case 'changed':
+      return {
+        ...state,
+        changed: { ...state.changed, [event.what]: (state.changed[event.what] ?? 0) + 1 }
+      }
   }
 }
 

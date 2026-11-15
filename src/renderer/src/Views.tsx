@@ -31,7 +31,8 @@ export function ApprovalsView({
     <div className="list-view">
       <h1 className="view-title">Approvals</h1>
       <p className="muted">
-        Titan asks before it changes anything. Nothing here runs until you say so.
+        Titan asks before it changes anything. Nothing here runs until you say so. Deleting,
+        sending, posting and paying always ask.
       </p>
       {approvals.length === 0 && <p className="empty">Nothing is waiting for you.</p>}
       {approvals.map((approval) => (

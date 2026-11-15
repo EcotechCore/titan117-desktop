@@ -13,7 +13,13 @@ import type { Budget } from '../budgets'
 import { createPermissionLayer, type PermissionLayer } from '../permissions'
 import { registerSecret } from '../redact'
 import { createRouter } from '../router'
-import { createRuntime, type Runtime } from '../runtime'
+import { AGENT, createRuntime, type Runtime } from '../runtime'
+import { createMemoryStore, type MemoryStore } from '../memory'
+import { createRecordStore, type RecordStore } from '../records'
+import { createBrowserHost, type BrowserHost } from './browser'
+import { createConnectorHub, type ConnectorHub } from './mcp'
+import { createSkillStore, type SkillStore } from './skills'
+import { createSpeechEngine, type SpeechEngine } from './speech'
 import { createStore, type Store } from '../store'
 import { builtInTools, createRegistry, type AnyTool } from '../tools'
 import { getMeta, openDb, setMeta, type Db } from './db'
@@ -63,6 +69,12 @@ export interface EngineOptions {
   tools?: AnyTool[]
   budget?: Budget
   port?: number
+  /** The network for tools (web pages); tests pass a fake. Model calls use `fetch`. */
+  toolFetch?: Fetch
+  /** Show the browser window (the app) or keep it hidden (tests). */
+  browserHeadless?: boolean
+  browser?: BrowserHost
+  speech?: SpeechEngine
 }
 
 export interface Engine {
@@ -73,6 +85,8 @@ export interface Engine {
   setAccount(account: AccountState): void
   /** The user's own API keys; only providers present have one. */
   setKeys(keys: OwnKeys): void
+  /** Connector secrets from the keychain, per connector id (feature 3.6). */
+  setConnectorSecrets(secrets: Record<string, Record<string, string>>): void
   close(): Promise<void>
   /** For tests. */
   parts: {
@@ -83,6 +97,12 @@ export interface Engine {
     permissions: PermissionLayer
     local: LocalModels
     events: EngineEvent[]
+    memory: MemoryStore
+    skills: SkillStore
+    records: RecordStore
+    connectors: ConnectorHub
+    /** The token a running task's scripts use (feature 4.10). */
+    scriptToken(taskId: string): string | null
   }
 }
 
@@ -131,8 +151,86 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   const folders = (): string[] => getMeta<string[]>(db, 'folders', [])
   const policy = (): FolderPolicy => ({ allowed: folders(), core })
 
-  const tools = createRegistry(options.tools ?? builtInTools)
-  const permissions = createPermissionLayer({ tools, store, log, folders: policy })
+  const changed = (what: 'memory' | 'skills' | 'records' | 'connectors') => (): void =>
+    emit({ type: 'changed', what })
+  const memory = createMemoryStore(db, changed('memory'))
+  const skills = createSkillStore(
+    options.dataDir ? join(options.dataDir, 'skills') : null,
+    changed('skills')
+  )
+  const records = createRecordStore({
+    db,
+    store,
+    sites: (id) => store.sites.list(id),
+    onChange: changed('records')
+  })
+  const connectors = createConnectorHub({
+    db,
+    log,
+    onChange: changed('connectors'),
+    cwd: () => folders()[0]
+  })
+  const scratchRoot = join(options.dataDir ?? tmpdir(), 'scratch')
+  const browser =
+    options.browser ??
+    createBrowserHost({
+      profileDir: join(
+        options.dataDir ?? join(tmpdir(), `titan117-browser-${process.pid}`),
+        'browser-profile'
+      ),
+      headless: options.browserHeadless ?? false
+    })
+  const speech =
+    options.speech ??
+    createSpeechEngine({
+      modelsDir: join(options.dataDir ?? tmpdir(), 'components', 'speech'),
+      scratchDir: join(scratchRoot, 'speech')
+    })
+
+  // Scripts a task writes call its tools with a token of their own (feature 4.10).
+  const scriptTokens = new Map<string, string>()
+  let serverPort = 0
+  const scriptToken = (taskId: string): string | null => {
+    if (!runtimeRef?.isRunning(taskId)) return null
+    let value = scriptTokens.get(taskId)
+    if (!value) {
+      value = randomBytes(32).toString('hex')
+      registerSecret(value)
+      scriptTokens.set(taskId, value)
+    }
+    return value
+  }
+  let runtimeRef: Runtime | null = null
+
+  const tools = createRegistry(options.tools ?? builtInTools, () => connectors.tools())
+  const permissions = createPermissionLayer({
+    tools,
+    store,
+    log,
+    folders: policy,
+    services: {
+      memory,
+      skills,
+      records,
+      browser,
+      speech: (files) => speech.access(files),
+      scratchRoot,
+      fetch: options.toolFetch,
+      enginePorts: () => [serverPort],
+      toolApi: (taskId) => {
+        const value = scriptToken(taskId)
+        return value ? { url: `http://127.0.0.1:${serverPort}`, token: value } : null
+      },
+      answers: {
+        get: (key) => getMeta<Record<string, boolean>>(db, 'answers', {})[key] ?? null,
+        set: (key, value) =>
+          setMeta(db, 'answers', {
+            ...getMeta<Record<string, boolean>>(db, 'answers', {}),
+            [key]: value
+          })
+      }
+    }
+  })
 
   const local = createLocalModels({
     db,
@@ -198,8 +296,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     tools,
     folders,
     locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
-    budget: options.budget
+    budget: options.budget,
+    memory,
+    skills,
+    records
   })
+  runtimeRef = runtime
 
   const handle = createApi({
     appVersion: options.appVersion,
@@ -224,6 +326,27 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         openai: !!ownKeys.openai,
         google: !!ownKeys.google
       })
+    },
+    memory,
+    skills,
+    records,
+    connectors,
+    speech,
+    async scriptCall(taskId, name, input) {
+      const task = store.getTask(taskId)
+      const signal = runtime.signal(taskId)
+      if (!task || !signal)
+        return { status: 'refused', output: 'Refused: the task is not running.' }
+      if (name === 'run_code')
+        return { status: 'refused', output: "Refused: a script can't start another script." }
+      return permissions.execute(
+        {
+          id: `script-${randomBytes(6).toString('hex')}`,
+          name: String(name),
+          input: (input ?? {}) as Record<string, unknown>
+        },
+        { taskId, agent: AGENT, model: task.model, signal, via: 'script' }
+      )
     }
   })
 
@@ -231,9 +354,16 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     token,
     allowedOrigins: options.allowedOrigins,
     handle,
-    port: options.port
+    port: options.port,
+    scriptTask(given) {
+      for (const [taskId, value] of scriptTokens)
+        if (value === given && runtime.isRunning(taskId)) return taskId
+      return null
+    }
   })
+  serverPort = server.port
   publish = server.publish
+  void connectors.connectAll()
   log.info('engine started', { port: server.port, version: options.appVersion })
 
   function saveFolders(next: string[]): string[] {
@@ -258,6 +388,11 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       ownKeys = next
       emit({ type: 'settings', defaultModel: getMeta<string | null>(db, 'defaultModel', null) })
     },
+    setConnectorSecrets(next) {
+      for (const values of Object.values(next))
+        for (const value of Object.values(values)) registerSecret(value)
+      connectors.setSecrets(next)
+    },
     setAccount(next) {
       registerSecret(next.token)
       account = next
@@ -266,9 +401,24 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     async close() {
       await server.close()
+      await browser.close()
+      await connectors.close()
       await local.dispose()
       db.close()
     },
-    parts: { db, store, log, runtime, permissions, local, events }
+    parts: {
+      db,
+      store,
+      log,
+      runtime,
+      permissions,
+      local,
+      events,
+      memory,
+      skills,
+      records,
+      connectors,
+      scriptToken
+    }
   }
 }

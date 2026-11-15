@@ -46,7 +46,7 @@ The work is split into phases instead. Each phase builds on the ones before it a
 | 10 | Name and logo | Logo decided: the angry eyes and TITAN117 (§9); **open:** trademark check and our own restyle before beta |
 | 11 | Legal basics | **Open:** privacy policy and terms (phase 2), GDPR deletion plan, licence audit (§11) |
 | 12 | GitHub organisation | Decided: EcotechCore owns all three repos, including the new `titan117-pop` (decisions §6) |
-| 13 | Shell sandbox and risky commands | **Open:** needed for phase 3, when the shell tool is built (decisions §38) |
+| 13 | Shell sandbox and risky commands | **Decided** 15 Nov 2026 (decisions §43): Seatbelt on macOS; on Windows approvals and a scrubbed environment, an OS sandbox revisited before the public beta |
 
 ## Set up before phase 0
 

@@ -8,6 +8,7 @@ import {
   net,
   protocol,
   safeStorage,
+  session,
   utilityProcess,
   type IpcMainInvokeEvent,
   type UtilityProcess
@@ -18,9 +19,11 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { Account, type AccountView } from './lib/account'
 import { Keys } from './lib/keys'
+import { ConnectorSecrets } from './lib/connector-secrets'
 import {
   APP_ORIGIN,
   APP_SCHEME,
+  allowPermission,
   isAllowedNavigation,
   isSafeExternalUrl,
   windowWebPreferences
@@ -87,6 +90,7 @@ function accountConfig(): { webUrl: string | null; apiUrl: string | null } {
 
 let account: Account | null = null
 let keys: Keys | null = null
+let connectorSecrets: ConnectorSecrets | null = null
 
 function keychain(): { encrypt(text: string): Buffer; decrypt(data: Buffer): string } | null {
   return safeStorage.isEncryptionAvailable()
@@ -100,6 +104,9 @@ function keychain(): { encrypt(text: string): Buffer; decrypt(data: Buffer): str
 /** The user's own API keys go to the engine only (features 2.9, 11.5). */
 function pushKeys(): void {
   if (keys) engine?.postMessage({ type: 'keys', keys: keys.all() })
+  // Connector tokens too (feature 3.6): to the engine only.
+  if (connectorSecrets)
+    engine?.postMessage({ type: 'connectorSecrets', secrets: connectorSecrets.all() })
 }
 /** How often a running app asks for a fresh lease, so an ended plan locks soon after (decisions §17). */
 const RENEW_EVERY_MS = 30 * 60 * 1000
@@ -156,6 +163,7 @@ function startAccount(): void {
     onChange: () => pushAccount()
   })
   keys = new Keys(app.getPath('userData'), keychain())
+  connectorSecrets = new ConnectorSecrets(app.getPath('userData'), keychain())
   renewLease()
   setInterval(renewLease, RENEW_EVERY_MS)
   // The lease can run out while the app is open: look again every minute.
@@ -295,6 +303,21 @@ function registerBridge(): void {
     return removed
   })
 
+  // Connector secrets go in from the window and never come back out.
+  ipcMain.handle('connectors:setSecrets', async (event, id: unknown, secrets: unknown) => {
+    if (!fromOurPage(event) || !connectorSecrets) throw new Error('Refused.')
+    const result = connectorSecrets.set(id, secrets)
+    if (result.ok) pushKeys()
+    return result
+  })
+
+  ipcMain.handle('connectors:removeSecrets', async (event, id: unknown) => {
+    if (!fromOurPage(event) || !connectorSecrets) throw new Error('Refused.')
+    connectorSecrets.remove(id)
+    pushKeys()
+    return true
+  })
+
   ipcMain.handle('folders:remove', async (event, path: unknown) => {
     if (!fromOurPage(event) || typeof path !== 'string') throw new Error('Refused.')
     engine?.postMessage({ type: 'removeFolder', path })
@@ -373,6 +396,33 @@ function start(): void {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
+
+  // The microphone for voice input, for our own page only; every other permission is refused.
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) =>
+    callback(
+      allowPermission(
+        permission,
+        {
+          mediaTypes: (details as { mediaTypes?: string[] }).mediaTypes,
+          requestingUrl: details.requestingUrl
+        },
+        devServerUrl
+      )
+    )
+  )
+  session.defaultSession.setPermissionCheckHandler(
+    (_contents, permission, requestingOrigin, details) =>
+      allowPermission(
+        permission,
+        {
+          mediaTypes: (details as { mediaType?: string }).mediaType
+            ? [(details as { mediaType?: string }).mediaType as string]
+            : ['audio'],
+          requestingUrl: details.requestingUrl ?? requestingOrigin
+        },
+        devServerUrl
+      )
+  )
 
   loadDevelopmentEnv()
   registerBridge()

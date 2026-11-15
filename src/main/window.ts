@@ -51,3 +51,19 @@ export function isAllowedNavigation(url: string, devServerUrl?: string): boolean
     return false
   }
 }
+
+/**
+ * The only browser permission the window gets: the microphone, for voice
+ * input (feature 3.14), and only for the app's own page. Camera, screen,
+ * location, notifications and the rest are refused.
+ */
+export function allowPermission(
+  permission: string,
+  details: { mediaTypes?: string[]; requestingUrl?: string },
+  devServerUrl?: string
+): boolean {
+  if (permission !== 'media') return false
+  if (!isAllowedNavigation(details.requestingUrl ?? '', devServerUrl)) return false
+  const types = details.mediaTypes ?? []
+  return types.length > 0 && types.every((t) => t === 'audio')
+}

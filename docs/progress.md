@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 2, Accounts and money, is done (15 Nov 2026). **Next step:** phase 3, Titan and memory, when you say so.
+**Now:** phase 3, Titan and memory, is built and its check is met (15 Nov 2026), on `phase-3-titan` (desktop) and `phase-3-docs` (web), waiting for the owner's review. **Next step:** the owner confirms decisions §43, tries the microphone and a real connector, and merges; then phase 4, Web search and artifacts.
 
 ## Phases
 
@@ -11,7 +11,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 0 | Setup | Done | 9 Nov 2026 | 14 Nov 2026 |
 | 1 | Engine core | Done | 14 Nov 2026 | 14 Nov 2026 |
 | 2 | Accounts and money | Done | 15 Nov 2026 | 15 Nov 2026 |
-| 3 | Titan and memory | Not started | | |
+| 3 | Titan and memory | Check met, owner's review | 15 Nov 2026 | |
 | 4 | Web search and artifacts | Not started | | |
 | 5 | Install and setup | Not started | | |
 | 6 | Folder agent | Not started | | |
@@ -31,6 +31,22 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 15 Nov 2026 · Phase 3: Titan and memory, built; the check is met
+
+Built on `phase-3-titan` (decisions §43, to be confirmed). **Phase 3's check is met:** `pnpm eval:titan` ran the ten everyday tasks and the three prompt-injection scenarios against real models through OpenRouter, **13 of 13 with Claude Haiku 5.5 ($0.02) and 13 of 13 with GPT-6 Luna ($0.02)**, and the deterministic injection suite passes in the normal tests. **Seen in the real app on Windows:** a task wrote a file and ran a command after the approval cards (the second offered "Always allow `echo` in this folder"); memory added from the Memory view; speech read a sentence aloud with the Windows voice and Whisper wrote it back nearly word for word (7 seconds) inside the app's own engine.
+
+- **Tools** (all through the permission layer, each with a denial test): files (list, read, write, search, move, new folder, delete: always asks), `run_command` (the sandboxed shell; which commands ask is in `tools/shell-rules.ts`), `run_code` (JavaScript on the app's Node, Python if installed), `web_fetch`, the browser (`browser_open`, view, click, type, select, back: Playwright on the laptop's Edge or Chrome, `lib/browser.ts`), memory (`memory_search`, `memory_save`, `memory_forget`), skills (`skill_read`, `skill_save`), `past_tasks`, speech (`speak`, `transcribe`), and connector tools from MCP servers (`lib/mcp.ts`).
+- **The network policy per task** (`lib/web.ts`, `privacy.ts`): site lists, a question before a new site once the task has read private data, and private passages (as fingerprints) blocked from leaving in addresses, form fields, uploads, commands and scripts, also encoded. In the browser every request goes through it; a real-browser test shows the hidden-image trick blocked.
+- **Memory, skills, past tasks** (`memory.ts`, `lib/skills.ts`, `records.ts`): shared and per-agent memory with full-text search; skills as Markdown files in the data folder; a record of every task that used tools; all in Titan's instructions at the start of a run.
+- **Scripts call Titan's tools** (feature 4.10): `titan.call()` through `POST /v1/tool-calls` with a per-task token; tested with a script that read 30 files and returned one line.
+- **Window:** Memory (remembered, skills, past tasks; add, edit, forget, delete), Connectors (add a program or an address, secrets to the keychain, tools with how each asks), approval cards that show scripts and skills to review and "Always allow … in this folder", step labels for every tool, a microphone button and "Read aloud". The window may use the microphone and nothing else (`allowPermission`, tested).
+- **Shell:** connector secrets in the keychain (`src/main/lib/connector-secrets.ts`), sent to the engine only.
+- New local tables `task_sites`, `shell_allows`, `memories` (+ full-text index), `task_records` (+ index), `connectors`; `approvals.always_label`. Nothing new in Convex.
+- New dependencies: `playwright-core` 1.65.1 (Apache 2.0), `@modelcontextprotocol/sdk` 1.32.2 (MIT), `@huggingface/transformers` 4.3.2 (Apache 2.0, with ONNX Runtime, MIT). Licence check passes. `SOURCES.md` lists the code adapted from Codex.
+- **217 tests** (+80): denial tests for all 24 tools, shell rules, the leak detector, real shell commands, scripts, memory, skills, records, connectors with a real MCP server, speech, the window's permission, the injection suite. Lint, typecheck and build pass.
+- **Not checked:** macOS (the Seatbelt sandbox, `say`); the microphone button with a real microphone (the speech path behind it was checked); a connector to a real service; Python scripts (no Python on this laptop).
+- **Not built in phase 3, for the owner to place:** the one inbox for Gmail, Outlook and IMAP (3.6, decisions §27; needs Google's verification and Microsoft's publisher check, still "to verify"), code execution in containers, SSH and cloud sandboxes (3.15, planned for phase 7), Kokoro voices (its phonemizer is GPL), browser downloads (phase 4). Before the public beta: an OS sandbox for commands on Windows (decisions §43.1).
 
 ### 15 Nov 2026 · Phase 2 done
 

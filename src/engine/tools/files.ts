@@ -1,7 +1,7 @@
 /**
  * The first tools: files inside the folders the user allowed. Reading runs
- * without asking; writing waits for the user. Deleting, the shell, the
- * browser and the rest arrive with Titan in phase 3.
+ * without asking; writing, moving and new folders wait for the user;
+ * deleting always asks (feature 4.5).
  */
 import { defineTool } from './lib/define-tool'
 
@@ -23,6 +23,7 @@ export const listFolder = defineTool<{ path: string }>({
   risk: 'read',
   permissions: { folders: 'read' },
   untrustedOutput: true,
+  privateOutput: true,
   describe: (input) => `List the folder ${input.path}`,
   async run(input, ctx) {
     const entries = await ctx.files.list(input.path)
@@ -47,6 +48,7 @@ export const readFile = defineTool<{ path: string }>({
   risk: 'read',
   permissions: { folders: 'read' },
   untrustedOutput: true,
+  privateOutput: true,
   describe: (input) => `Read the file ${input.path}`,
   async run(input, ctx) {
     const { text, truncated } = await ctx.files.read(input.path)
@@ -79,3 +81,107 @@ export const writeFile = defineTool<{ path: string; content: string }>({
     return { output: what, summary: what }
   }
 })
+
+export const searchFiles = defineTool<{ folder?: string; name?: string; text?: string }>({
+  name: 'search_files',
+  description:
+    'Find files inside the allowed folders by name (patterns like *.pdf or invoice*) and, optionally, by text they contain. Returns paths and matching lines.',
+  params: {
+    type: 'object',
+    properties: {
+      folder: { type: 'string', description: 'Where to look. Default: the first allowed folder.' },
+      name: {
+        type: 'string',
+        description: 'A file-name pattern, e.g. *.csv. Default: every file.'
+      },
+      text: { type: 'string', description: 'Only files containing this text (case-insensitive).' }
+    },
+    required: []
+  },
+  risk: 'read',
+  permissions: { folders: 'read' },
+  untrustedOutput: true,
+  privateOutput: true,
+  describe: (input) =>
+    `Search ${input.folder ?? 'the allowed folder'} for ${input.name ?? 'files'}`,
+  async run(input, ctx) {
+    const hits = await ctx.files.search(input.folder ?? '.', input.name ?? '*', input.text)
+    const output = hits.length
+      ? hits
+          .map((h) => (h.lines.length ? `${h.path}\n  ${h.lines.join('\n  ')}` : h.path))
+          .join('\n')
+      : 'Nothing found.'
+    return { output, summary: `Searched ${input.folder ?? '.'}: ${hits.length} found` }
+  }
+})
+
+export const moveFile = defineTool<{ from: string; to: string }>({
+  name: 'move_file',
+  description:
+    'Move or rename a file or folder inside the allowed folders. Never replaces an existing file. The user is asked first.',
+  params: {
+    type: 'object',
+    properties: {
+      from: { type: 'string', description: 'The file or folder now.' },
+      to: { type: 'string', description: 'Its new path (or new name in the same folder).' }
+    },
+    required: ['from', 'to']
+  },
+  risk: 'write',
+  permissions: { folders: 'write' },
+  describe: (input) => `Move ${input.from} to ${input.to}`,
+  async run(input, ctx) {
+    await ctx.files.move(input.from, input.to)
+    const what = `Moved ${input.from} to ${input.to}`
+    return { output: what, summary: what }
+  }
+})
+
+export const makeFolder = defineTool<{ path: string }>({
+  name: 'make_folder',
+  description:
+    'Create a folder (and any missing parents) inside the allowed folders. The user is asked first.',
+  params: {
+    type: 'object',
+    properties: { path: { type: 'string', description: 'The new folder.' } },
+    required: ['path']
+  },
+  risk: 'write',
+  permissions: { folders: 'write' },
+  describe: (input) => `Create the folder ${input.path}`,
+  async run(input, ctx) {
+    await ctx.files.makeFolder(input.path)
+    const what = `Created the folder ${input.path}`
+    return { output: what, summary: what }
+  }
+})
+
+export const deleteFile = defineTool<{ path: string }>({
+  name: 'delete_file',
+  description:
+    'Delete a file or an empty folder inside the allowed folders. Always asks the user, every time.',
+  params: {
+    type: 'object',
+    properties: { path: { type: 'string', description: 'The file or empty folder to delete.' } },
+    required: ['path']
+  },
+  // Deleting always asks (feature 4.5, guardrails §4).
+  risk: 'external',
+  permissions: { folders: 'write' },
+  describe: (input) => `Delete ${input.path} (it can't be undone)`,
+  async run(input, ctx) {
+    const kind = await ctx.files.remove(input.path)
+    const what = `Deleted the ${kind} ${input.path}`
+    return { output: what, summary: what }
+  }
+})
+
+export const fileTools = [
+  listFolder,
+  readFile,
+  writeFile,
+  searchFiles,
+  moveFile,
+  makeFolder,
+  deleteFile
+]

@@ -82,6 +82,88 @@ const MIGRATIONS: string[] = [
     stack text,
     context text
   );
+  `,
+  // Phase 3: Titan and memory.
+  `
+  -- What "always" means on an approval card, when it isn't "always in this task".
+  alter table approvals add column always_label text;
+
+  -- Sites a task may reach (security.md A3).
+  create table task_sites (
+    task_id text not null references tasks(id) on delete cascade,
+    host text not null,
+    primary key (task_id, host)
+  );
+
+  -- Shell commands the user always allows in one folder (feature 3.8).
+  create table shell_allows (
+    folder text not null,
+    command text not null,
+    created_at integer not null,
+    primary key (folder, command)
+  );
+
+  -- Memory the user can see, edit and delete (features 3.2-3.4).
+  -- scope: 'shared' (every agent) or 'agent:<name>' (that agent only).
+  create table memories (
+    id text primary key,
+    scope text not null,
+    kind text not null,
+    text text not null,
+    source text not null,
+    task_id text,
+    created_at integer not null,
+    updated_at integer not null
+  );
+  create index memories_scope on memories(scope);
+  create virtual table memories_fts using fts5(text, content='memories', content_rowid='rowid');
+  create trigger memories_ai after insert on memories begin
+    insert into memories_fts(rowid, text) values (new.rowid, new.text);
+  end;
+  create trigger memories_ad after delete on memories begin
+    insert into memories_fts(memories_fts, rowid, text) values ('delete', old.rowid, old.text);
+  end;
+  create trigger memories_au after update on memories begin
+    insert into memories_fts(memories_fts, rowid, text) values ('delete', old.rowid, old.text);
+    insert into memories_fts(rowid, text) values (new.rowid, new.text);
+  end;
+
+  -- How past tasks were solved (feature 3.13). Local only.
+  create table task_records (
+    id text primary key,
+    task_id text not null unique,
+    agent text not null,
+    goal text not null,
+    outcome text not null,
+    steps text not null,
+    failed text not null,
+    worked text not null,
+    places text not null,
+    created_at integer not null
+  );
+  create virtual table task_records_fts using fts5(
+    goal, steps, failed, worked, places, content='task_records', content_rowid='rowid'
+  );
+  create trigger task_records_ai after insert on task_records begin
+    insert into task_records_fts(rowid, goal, steps, failed, worked, places)
+      values (new.rowid, new.goal, new.steps, new.failed, new.worked, new.places);
+  end;
+  create trigger task_records_ad after delete on task_records begin
+    insert into task_records_fts(task_records_fts, rowid, goal, steps, failed, worked, places)
+      values ('delete', old.rowid, old.goal, old.steps, old.failed, old.worked, old.places);
+  end;
+
+  -- MCP connectors the user added (feature 3.6). Their secrets are in the keychain.
+  create table connectors (
+    id text primary key,
+    name text not null,
+    kind text not null,
+    command text,
+    args text not null default '[]',
+    url text,
+    enabled integer not null default 1,
+    created_at integer not null
+  );
   `
 ]
 

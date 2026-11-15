@@ -49,3 +49,18 @@ export function redactDeep<T>(value: T): T {
   }
   return value
 }
+
+/** The secrets the engine holds, for the network check that blocks them going out (security.md A3). */
+export function knownSecrets(): string[] {
+  return [...exact]
+}
+
+/** True when text carries something shaped like a key or token. */
+export function looksSecret(text: string): boolean {
+  return PATTERNS.some((pattern) => {
+    pattern.lastIndex = 0
+    const hit = pattern.test(text)
+    pattern.lastIndex = 0
+    return hit
+  })
+}
