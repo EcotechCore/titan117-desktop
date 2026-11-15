@@ -174,6 +174,8 @@ function onEvent(state: AppState, event: EngineEvent): AppState {
             }
           }
         : state
+    case 'online':
+      return state.engine ? { ...state, engine: { ...state.engine, online: event.online } } : state
     case 'error':
       return { ...state, lastError: { errorId: event.errorId, source: event.source } }
     case 'artifact':

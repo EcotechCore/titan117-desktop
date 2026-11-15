@@ -79,6 +79,8 @@ export interface Settings {
   setDefaultModel(model: string | null): void
   folders(): string[]
   cloudKey(): boolean
+  /** Whether the engine can reach the internet (1.22). */
+  online(): boolean
   cloudVia(): 'own' | 'credits' | 'dev' | null
   ownKeys(): Record<KeyProvider, boolean>
 }
@@ -449,6 +451,7 @@ export function createApi(deps: {
           folders: settings.folders(),
           defaultModel: settings.defaultModel(),
           cloudKey: settings.cloudKey(),
+          online: settings.online(),
           cloudVia: settings.cloudVia(),
           ownKeys: settings.ownKeys(),
           hardware: local.hardware(),

@@ -30,6 +30,7 @@ import { ArtifactError, type ArtifactAccess, type ArtifactStore } from './artifa
 import { convert, ConvertError, type ExportFormat } from './lib/convert'
 import { ReadError, type PageReader } from './lib/read'
 import { SearchError, type SearchAccess, type SearchService } from './lib/search'
+import { isNetworkFailure } from './lib/online'
 import type { PageAccess } from './tools/lib/define-tool'
 
 export interface CallContext {
@@ -481,6 +482,15 @@ export function createPermissionLayer(deps: {
         }
       } catch (error) {
         if (error instanceof PermissionError) return refuse(call, ctx, error.message)
+        // Offline (1.22): say so plainly; it isn't a bug to report.
+        if (isNetworkFailure(error)) {
+          activity(ctx, 'error', tool.name, `${tool.name}: no internet connection`, approvedBy)
+          return {
+            status: 'failed',
+            output:
+              'No internet connection: this needs the internet. Work offline with files and local tools, or try again later.'
+          }
+        }
         if (
           error instanceof MemoryError ||
           error instanceof SkillError ||

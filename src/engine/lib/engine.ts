@@ -43,6 +43,7 @@ import { createSearchService, DEFAULT_SEARCH_SETTINGS } from './search'
 import { createShareService } from './share'
 import { createReportService, type ReportService } from './reports'
 import { createSetupService } from './setup'
+import { createConnectivity, type Connectivity } from './online'
 import { findBrowserChannel } from './browser'
 import type { SetupInterest } from '../../shared/protocol'
 import type { SearchSettings } from '../../shared/protocol'
@@ -85,6 +86,8 @@ export interface EngineOptions {
   browserHeadless?: boolean
   browser?: BrowserHost
   speech?: SpeechEngine
+  /** The internet came back (1.24): the shell renews the licence lease. */
+  onOnline?: () => void
 }
 
 export interface Engine {
@@ -113,6 +116,7 @@ export interface Engine {
     connectors: ConnectorHub
     artifacts: ArtifactStore
     reports: ReportService
+    connectivity: Connectivity
     /** The token a running task's scripts use (feature 4.10). */
     scriptToken(taskId: string): string | null
   }
@@ -149,6 +153,19 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     if (!options.dataDir && event.type !== 'delta') events.push(event)
     publish(event)
   }
+
+  // Online or offline (1.22, 1.24): learned from the engine's own requests.
+  const connectivity = createConnectivity({
+    fetch: engineFetch(options.fetch),
+    onChange(online) {
+      emit({ type: 'online', online })
+      if (!online) return
+      // Back online: what waited goes.
+      void reportsRef?.flush().then(() => reportsRef?.checkFixed())
+      options.onOnline?.()
+    }
+  })
+  let reportsRef: ReportService | null = null
 
   const store = createStore(db, emit)
   store.closeInterrupted()
@@ -245,7 +262,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       browser,
       speech: (files) => speech.access(files),
       scratchRoot,
-      fetch: options.toolFetch,
+      fetch: connectivity.track(options.toolFetch ?? fetch),
       enginePorts: () => [serverPort],
       toolApi: (taskId) => {
         const value = scriptToken(taskId)
@@ -283,8 +300,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   })
   // Finding out whether llama.cpp starts can take a minute; the window doesn't wait for it.
   local.warm()
-  const fetchOut = engineFetch(options.fetch, () =>
-    account.proxyUrl ? [new URL(account.proxyUrl).origin] : []
+  const fetchOut = connectivity.track(
+    engineFetch(options.fetch, () => (account.proxyUrl ? [new URL(account.proxyUrl).origin] : []))
   )
   const openrouter = createOpenRouter({ fetch: fetchOut, access: cloud })
   const direct = (
@@ -319,6 +336,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         : null,
     onChange: changed('reports')
   })
+  reportsRef = reports
   // Every caught error: the window may offer a report (19.2); "send automatically" sends it.
   log.onCapture((errorId, source) => {
     emit({ type: 'error', errorId, source })
@@ -409,6 +427,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     tools,
     folders,
     locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
+    online: () => connectivity.online(),
     budget: options.budget,
     memory,
     skills,
@@ -432,6 +451,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       },
       folders,
       cloudKey: () => cloud() !== null,
+      online: () => connectivity.online(),
       cloudVia: () => cloud()?.via ?? null,
       ownKeys: () =>
         Object.fromEntries(KEY_PROVIDERS.map((p) => [p, !!ownKeys[p]])) as Record<
@@ -530,6 +550,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     async close() {
       reports.close()
+      connectivity.close()
       await server.close()
       await browser.close()
       await connectors.close()
@@ -550,6 +571,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       connectors,
       artifacts,
       reports,
+      connectivity,
       scriptToken
     }
   }

@@ -59,5 +59,7 @@ Each item says **when it's needed**. "Now" means a phase can't close without it.
 
 - [ ] **Decisions §45, error reports** (before phase 5 closes): reports sent through our web app (not the phase 15 bridge); any signed-in device, 20 a day; home folder shown as `~`; automatic sending at most once a minute; native crash dumps never sent; no "attach this task" option until phase 6.
 - [ ] **Decisions §46, setup and health** (before phase 5 closes): the three-step wizard, uses deciding the checklist, the health check leaving search keys untested, the disk thresholds.
+- [ ] **Decisions §47, offline** (before phase 5 closes): offline noticed from failed requests and a 20-second check with OpenRouter; cloud tasks stop and offer a local model; dropped connections aren't error reports; reports and the lease catch up when online.
+- [ ] **Turn off Wi-Fi once** with the app open: check the Offline banner, a cloud task stopping with "Continue with … (local)", and that it all clears when Wi-Fi is back (not checked in the real window: the network can't be cut from here without changing system settings).
 - [ ] **Clerk Pro and required staff two-factor** (section 3) unblock the portal's error screens; until then reports are stored and grouped but only readable through Convex.
 - [ ] Try it once signed in: Report a problem, Send, and check the reference appears (needs the web app with these routes deployed).

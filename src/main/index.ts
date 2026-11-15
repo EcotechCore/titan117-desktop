@@ -209,6 +209,10 @@ function startEngine(): void {
     child.once('exit', () => reject(new Error('The engine stopped before it was ready.')))
   })
   connection.catch(() => undefined)
+  // The engine is back online (1.24): renew the lease now rather than in up to 30 minutes.
+  child.on('message', (message: { type?: string }) => {
+    if (message?.type === 'online') renewLease()
+  })
 
   child.once('exit', (code) => {
     if (engine === child) engine = null

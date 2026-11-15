@@ -13,6 +13,7 @@ import type { Logger } from './lib/log'
 import type { SkillStore } from './lib/skills'
 import type { MemoryStore } from './memory'
 import { ModelError } from './models/types'
+import { isNetworkFailure, OFFLINE_NOTE } from './lib/online'
 import type { PermissionLayer } from './permissions'
 import { formatRecord, type RecordStore } from './records'
 import type { Router } from './router'
@@ -142,6 +143,8 @@ export function createRuntime(deps: {
   records?: RecordStore
   /** Why Titan117 is locked (decisions §17), or null when it may work. */
   locked?: () => string | null
+  /** Whether the internet can be reached; a cloud model's step waits for it (1.22). */
+  online?: () => boolean
   budget?: Budget
   now?: () => number
 }): Runtime {
@@ -222,6 +225,20 @@ export function createRuntime(deps: {
 
         const task = store.getTask(taskId)!
         const route = router.route(task.model)
+        // Offline with a cloud model: stop cleanly at this step, so the user can switch to a local one.
+        if (route.source !== 'local' && deps.online && !deps.online()) {
+          store.log({
+            taskId,
+            kind: 'error',
+            agent: AGENT,
+            model: task.model,
+            tool: null,
+            summary: OFFLINE_NOTE,
+            costUsd: 0,
+            approvedBy: null
+          })
+          return finish('stopped', OFFLINE_NOTE)
+        }
         const messages: ChatMessage[] = store.listMessages(taskId).map((m) => m.message)
 
         const result = await route.provider.turn({
@@ -315,6 +332,20 @@ export function createRuntime(deps: {
       }
     } catch (error) {
       if (signal.aborted) return finish('stopped', 'You stopped this task.')
+      // The connection dropped mid-step: not a bug, so no error report, and the task can go on later.
+      if (isNetworkFailure(error) || (deps.online && !deps.online())) {
+        store.log({
+          taskId,
+          kind: 'error',
+          agent: AGENT,
+          model: null,
+          tool: null,
+          summary: OFFLINE_NOTE,
+          costUsd: 0,
+          approvedBy: null
+        })
+        return finish('stopped', OFFLINE_NOTE)
+      }
       const friendly = error instanceof ModelError
       const id = log.capture('runtime', error, { taskId })
       const note = friendly

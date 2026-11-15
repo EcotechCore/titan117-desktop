@@ -1558,3 +1558,17 @@ textarea.edit {
   margin-top: 6px;
 }
 .facts.hw { grid-template-columns: 90px 1fr; }
+
+/* ---------- offline (1.22) ---------- */
+.offline-bar {
+  margin: 10px 16px 0;
+  background: var(--side);
+  border: 1px solid var(--line);
+}
+.offline-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}

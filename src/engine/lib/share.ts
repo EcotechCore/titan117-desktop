@@ -51,11 +51,18 @@ export function createShareService(deps: {
           'This artifact contains something that looks like a key or token, so it was not shared. Remove it and try again.'
         )
       const { token, apiBase } = account()
-      const response = await deps.fetch(`${apiBase}/shares`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, kind, html })
-      })
+      let response: Response
+      try {
+        response = await deps.fetch(`${apiBase}/shares`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, kind, html })
+        })
+      } catch {
+        throw new ShareError(
+          'No internet connection: sharing needs it. Try again when you are online.'
+        )
+      }
       if (!response.ok) throw new ShareError(explain(response.status))
       const body = (await response.json()) as { id?: string; url?: string }
       if (!body.id || !body.url) throw new ShareError("Sharing didn't work. Try again.")

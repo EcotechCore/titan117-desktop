@@ -419,14 +419,23 @@ export function createSearchService(deps: {
 
     const keys = deps.keys()
     const full = { ...request, query }
-    const answer =
-      source === 'credits'
-        ? await viaOpenRouter(full, lists)
-        : source === 'exa'
-          ? await viaExa(full, lists, keys.exa!)
-          : source === 'tavily'
-            ? await viaTavily(full, lists, keys.tavily!)
-            : await viaBrave(full, lists, keys.brave!)
+    let answer: SearchAnswer
+    try {
+      answer =
+        source === 'credits'
+          ? await viaOpenRouter(full, lists)
+          : source === 'exa'
+            ? await viaExa(full, lists, keys.exa!)
+            : source === 'tavily'
+              ? await viaTavily(full, lists, keys.tavily!)
+              : await viaBrave(full, lists, keys.brave!)
+    } catch (error) {
+      if (error instanceof SearchError) throw error
+      // The provider couldn't be reached (1.22).
+      throw new SearchError(
+        'No internet connection: web search needs it. Try again when you are online.'
+      )
+    }
     // Whatever the provider did with the filters, nothing from a blocked site gets through.
     answer.results = answer.results
       .filter((r) => {

@@ -32,6 +32,19 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Phase 5: offline mode and the offline queue
+
+Built on `phase-5-offline`, on top of `phase-5-setup`. Decisions §47, **to be confirmed**.
+
+- **Knowing it's offline (1.22):** every request the engine and its tools make is watched; a network failure marks it offline, a check every 20 seconds notices the internet coming back. The window gets the change at once.
+- **Cloud tasks offline:** they stop at the next step with a plain note instead of failing (no error card, no report); the window offers "Continue with <local model> (local)" or points to Models.
+- **Online-only features** (web pages, search, sharing) say "No internet connection: … needs it."
+- **The queue (1.24):** error reports waiting go as soon as the internet is back; the shell renews the licence lease at once.
+- **Offline banner** with what still works.
+- **The 14-day lock** was already tested (account.test.ts: unlocked on day 13 offline, locked on day 14).
+- **Tests:** 5 new; 265 in all; build passes.
+- **Not checked:** the banner and the Continue button in the real window (the laptop's network can't be cut from here without changing system settings; on the owner checklist), a whole local-model task offline end to end (local models are faked in tests), macOS.
+
 ### 15 Nov 2026 · Phase 5: setup, checklist and health check
 
 Built on `phase-5-setup`, on top of `phase-5-error-reports`. Decisions §46, **to be confirmed**.

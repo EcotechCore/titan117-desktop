@@ -29,7 +29,9 @@ async function main(): Promise<void> {
     appVersion: env('TITAN117_VERSION'),
     coreDirs: [dataDir, env('TITAN117_APP_DIR')],
     allowedOrigins: JSON.parse(env('TITAN117_ORIGINS')) as string[],
-    openRouterKey: process.env['OPENROUTER_API_KEY'] ?? null
+    openRouterKey: process.env['OPENROUTER_API_KEY'] ?? null,
+    // Back online (1.24): the shell renews the licence lease.
+    onOnline: () => process.parentPort.postMessage({ type: 'online' })
   })
 
   // Error capture (feature 19.1): nothing fails silently.

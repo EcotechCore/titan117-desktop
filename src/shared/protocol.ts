@@ -133,6 +133,8 @@ export interface EngineState {
   defaultModel: string | null
   /** Whether cloud models can be used now. Never a key or token itself. */
   cloudKey: boolean
+  /** Whether the engine can reach the internet now (1.22). */
+  online: boolean
   /** Where OpenRouter calls go: the user's own key, our credits proxy, a development key, or nowhere. */
   cloudVia: 'own' | 'credits' | 'dev' | null
   /** Which of the user's own API keys are saved (features 2.9, 11.5). Never the keys themselves. */
@@ -174,6 +176,8 @@ export type EngineEvent =
       type: 'changed'
       what: 'memory' | 'skills' | 'records' | 'connectors' | 'artifacts' | 'reports'
     }
+  /** The engine went offline or came back online (1.22). */
+  | { type: 'online'; online: boolean }
   /** An error was caught (19.2): the window may offer to send a report. */
   | { type: 'error'; errorId: string; source: string }
   /** An agent made or changed an artifact: the window opens it beside the chat. */

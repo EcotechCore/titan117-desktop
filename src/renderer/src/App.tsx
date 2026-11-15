@@ -425,6 +425,12 @@ function App(): React.JSX.Element {
 
       <main className="work">
         {account && <LeaseWarning view={account} />}
+        {!engine.online && (
+          <div className="note offline-bar" role="status">
+            <strong>Offline.</strong> Local models, your files and tools keep working. Cloud models,
+            web search and sharing wait for the internet; error reports wait and go by themselves.
+          </div>
+        )}
         {state.lastError && reportMode === 'ask' && (
           <div className="note note-error error-card" role="alert">
             <span>
@@ -532,6 +538,32 @@ function App(): React.JSX.Element {
 
         {(view.kind === 'start' || view.kind === 'task') && (
           <div className="composer">
+            {task?.status === 'stopped' && task.note?.startsWith('No internet') && (
+              <div className="note offline-switch">
+                <span>This task stopped because the internet is gone.</span>
+                {ready[0] ? (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      const local = `local:${ready[0].id}`
+                      chooseModel(local)
+                      client.current
+                        ?.send('POST', `/v1/tasks/${task.id}/messages`, {
+                          text: 'Continue with the local model.',
+                          model: local
+                        })
+                        .catch(fail)
+                    }}
+                  >
+                    Continue with {ready[0].name} (local)
+                  </button>
+                ) : (
+                  <span className="muted">
+                    Download a local model in Models to keep working offline.
+                  </span>
+                )}
+              </div>
+            )}
             {state.problem && (
               <p className="note note-error" role="alert">
                 {state.problem}
