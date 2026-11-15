@@ -34,6 +34,7 @@ function toTask(r: Row): Task {
     note: (r.note as string | null) ?? null,
     steps: r.steps as number,
     costUsd: r.cost_usd as number,
+    mode: r.mode === 'research' ? 'research' : 'normal',
     createdAt: r.created_at as number,
     updatedAt: r.updated_at as number
   }
@@ -73,7 +74,7 @@ function toActivity(r: Row): Activity {
 }
 
 export interface Store {
-  createTask(input: { title: string; agent: string; model: string }): Task
+  createTask(input: { title: string; agent: string; model: string; mode?: Task['mode'] }): Task
   getTask(id: string): Task | null
   listTasks(): Task[]
   updateTask(
@@ -114,13 +115,13 @@ export interface Store {
 
 export function createStore(db: Db, emit: Emit): Store {
   const store: Store = {
-    createTask({ title, agent, model }) {
+    createTask({ title, agent, model, mode }) {
       const now = Date.now()
       const id = randomUUID()
       db.prepare(
-        `insert into tasks (id, title, agent, model, status, created_at, updated_at)
-         values (?, ?, ?, ?, 'running', ?, ?)`
-      ).run(id, redact(title).slice(0, 120), agent, model, now, now)
+        `insert into tasks (id, title, agent, model, status, mode, created_at, updated_at)
+         values (?, ?, ?, ?, 'running', ?, ?, ?)`
+      ).run(id, redact(title).slice(0, 120), agent, model, mode ?? 'normal', now, now)
       const task = store.getTask(id)!
       emit({ type: 'task', task })
       return task

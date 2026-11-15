@@ -8,7 +8,7 @@
  * arrive in phase 11.
  */
 import type { ChatMessage, Task } from '../shared/protocol'
-import { createBudgetMeter, DEFAULT_BUDGET, type Budget } from './budgets'
+import { createBudgetMeter, DEFAULT_BUDGET, RESEARCH_BUDGET, type Budget } from './budgets'
 import type { Logger } from './lib/log'
 import type { SkillStore } from './lib/skills'
 import type { MemoryStore } from './memory'
@@ -29,7 +29,20 @@ export interface PromptContext {
   skills?: { name: string; description: string }[]
   pastTasks?: string[]
   platform?: NodeJS.Platform
+  /** Deep research (feature 16.8). */
+  research?: boolean
 }
+
+/** Deep research's own instructions (16.8, decisions §44; ideas from GPT Researcher). */
+export const RESEARCH_RULES = [
+  'This task is DEEP RESEARCH. Work like a careful analyst:',
+  '1. Plan: write down the questions the report must answer.',
+  "2. Search widely: several web_search calls with different words, in the user's language and in English where that finds more.",
+  '3. Read the best sources with web_fetch: official, primary and recent first; read_site for a company or institution.',
+  '4. Cross-check: a fact that matters needs two independent sources, or say that it rests on one. Note where sources disagree.',
+  '5. Finish with ONE document artifact (artifact_create, kind "document"): a short summary first, then sections, tables where they help, a numbered citation like [1] after every fact from the web, and a final "## Sources" section listing each as "[n] [Title](address)". Say what you could not find.',
+  'Then answer in the chat with two or three sentences and point to the report.'
+].join('\n')
 
 export function systemPrompt(folders: string[], context: PromptContext = {}): string {
   const platform = context.platform ?? process.platform
@@ -44,12 +57,14 @@ export function systemPrompt(folders: string[], context: PromptContext = {}): st
     'Reading runs at once. Changing files, most commands and scripts ask the user first; deleting, sending, posting and paying always ask. If the user denies something, do not try again another way.',
     'If a tool is refused, tell the user what was refused and why, and stop that line of work.',
     'For bulk work (many files, many pages), write one run_code script that calls your tools with titan.call and prints a short summary, instead of many separate tool calls.',
-    'Read web pages with web_fetch, or browser_open when a page needs clicking; not with the shell. Use the file tools for files and run_command for real commands.',
+    'Search the web with web_search, then read the best pages with web_fetch (read_site for a whole site, browser_open when a page needs clicking); not with the shell. Every fact from the web gets its address next to it. Use the file tools for files and run_command for real commands.',
+    'When the answer is something to keep, look at or share (a report, offer, table, chart, diagram, slides, a small tool), make it with artifact_create instead of writing it all in the chat, then say in a sentence or two what it holds. To change it, use artifact_update with the whole new content.',
     'In the browser, never solve CAPTCHAs or hide that you are automated; stop before the final publish, send or pay step and let the user approve it.',
     'Save to memory what the user tells you about themselves, their company and their preferences (memory_save). Never save keys or passwords.',
     'Before a kind of task you may have done before, check past_tasks. After finishing a task the user is likely to repeat, offer to save it as a skill (skill_save).',
     UNTRUSTED_RULE
   ]
+  if (context.research) lines.push('', RESEARCH_RULES)
   if (context.memories?.length)
     lines.push(
       '',
@@ -94,7 +109,7 @@ function specFor(tool: {
 }
 
 export interface Runtime {
-  start(text: string, model: string): Task
+  start(text: string, model: string, mode?: Task['mode']): Task
   send(taskId: string, text: string, model?: string): Task
   cancel(taskId: string): void
   isRunning(taskId: string): boolean
@@ -159,10 +174,14 @@ export function createRuntime(deps: {
   }
 
   async function run(taskId: string, signal: AbortSignal): Promise<void> {
-    const meter = createBudgetMeter(deps.budget ?? DEFAULT_BUDGET, deps.now)
+    const research = store.getTask(taskId)?.mode === 'research'
+    const meter = createBudgetMeter(
+      deps.budget ?? (research ? RESEARCH_BUDGET : DEFAULT_BUDGET),
+      deps.now
+    )
     const startCost = store.getTask(taskId)?.costUsd ?? 0
     const startSteps = store.getTask(taskId)?.steps ?? 0
-    const context = promptContext(taskId)
+    const context = { ...promptContext(taskId), research }
 
     function finish(status: Task['status'], note: string | null): void {
       store.updateTask(taskId, {
@@ -267,6 +286,11 @@ export function createRuntime(deps: {
             signal
           })
           meter.resume()
+          // A search through credits counts towards the task's budget (16.12).
+          if (outcome.status === 'done' && outcome.costUsd) {
+            meter.addCost(outcome.costUsd)
+            store.updateTask(taskId, { costUsd: startCost + meter.costUsd })
+          }
           store.addMessage(taskId, {
             role: 'tool',
             callId: call.id,
@@ -330,7 +354,7 @@ export function createRuntime(deps: {
   }
 
   return {
-    start(text, model) {
+    start(text, model, mode = 'normal') {
       const lock = deps.locked?.()
       if (lock) throw new RuntimeError('LOCKED', lock)
       const message = clean(text)
@@ -338,7 +362,8 @@ export function createRuntime(deps: {
       const task = store.createTask({
         title: message.split('\n')[0].slice(0, 80),
         agent: AGENT,
-        model
+        model,
+        mode: mode === 'research' ? 'research' : 'normal'
       })
       store.log({
         taskId: task.id,

@@ -26,6 +26,11 @@ import type { Store } from './store'
 import { checkInput, type Assessment, type ToolContext } from './tools/lib/define-tool'
 import type { AnyTool, ToolRegistry } from './tools'
 import { wrapUntrusted } from './untrusted'
+import { ArtifactError, type ArtifactAccess, type ArtifactStore } from './artifacts'
+import { convert, ConvertError, type ExportFormat } from './lib/convert'
+import { ReadError, type PageReader } from './lib/read'
+import { SearchError, type SearchAccess, type SearchService } from './lib/search'
+import type { PageAccess } from './tools/lib/define-tool'
 
 export interface CallContext {
   taskId: string
@@ -37,7 +42,7 @@ export interface CallContext {
 }
 
 export type CallOutcome =
-  | { status: 'done'; output: string }
+  | { status: 'done'; output: string; costUsd?: number }
   /** The layer or the user said no. The tool did not run. */
   | { status: 'refused'; output: string }
   /** The tool ran and failed. */
@@ -55,6 +60,8 @@ export interface PermissionLayer {
   sawPrivate(taskId: string, text: string, source: string, quiet?: boolean): void
   /** The task ended: let go of its browser page. */
   release(taskId: string): Promise<void>
+  /** Services made after the layer (search needs the model router). */
+  useServices(more: Partial<Services>): void
 }
 
 /** Optional services; a tool that needs a missing one is refused. */
@@ -74,6 +81,12 @@ export interface Services {
   answers?: { get(key: string): boolean | null; set(key: string, value: boolean): void }
   /** The network for tools (tests pass a fake). */
   fetch?: typeof fetch
+  /** Web search (§16). */
+  search?: SearchService
+  /** Reading pages as clean text (16.5). */
+  pages?: PageReader
+  /** Artifacts (§17). */
+  artifacts?: ArtifactStore
 }
 
 interface Waiting {
@@ -136,7 +149,8 @@ export function createPermissionLayer(deps: {
     kind: 'refused' | 'approval' | 'tool' | 'error',
     tool: string,
     summary: string,
-    approvedBy: string | null = null
+    approvedBy: string | null = null,
+    costUsd = 0
   ): void {
     store.log({
       taskId: ctx.taskId,
@@ -145,7 +159,7 @@ export function createPermissionLayer(deps: {
       model: ctx.model,
       tool,
       summary: ctx.via === 'script' && kind === 'tool' ? `${summary} (from a script)` : summary,
-      costUsd: 0,
+      costUsd,
       approvedBy
     })
   }
@@ -295,10 +309,84 @@ export function createPermissionLayer(deps: {
       ? needService(services.speech, 'Speech')(files)
       : denied<SpeechAccess>('speech')
 
+    const searchService = services.search
+    const search: SearchAccess = p.search
+      ? needService(searchService, 'Web search').forAgent(ctx.agent, (query) => {
+          // A query is a request too: private passages never leave in one (security.md A3).
+          const leak = state.privacy.leak(query)
+          if (leak)
+            throw new PermissionError(
+              `Blocked: this search would send private content (from ${leak.source}). Nothing was sent.`
+            )
+        })
+      : denied<SearchAccess>('web search')
+
+    const siteOk = (host: string): boolean => searchService?.allowedSite(ctx.agent, host) ?? true
+    const pages: PageAccess = p.network
+      ? {
+          async read(url) {
+            let host: string
+            try {
+              host = new URL(url).hostname
+            } catch {
+              throw new PermissionError('That is not a web address.')
+            }
+            if (!siteOk(host))
+              throw new PermissionError(`${host} is not on ${ctx.agent}'s list of sites to use.`)
+            return needService(services.pages, 'Reading pages').read(url, net, ctx.signal)
+          },
+          allowedByRobots: (url) =>
+            needService(services.pages, 'Reading pages').allowedByRobots(url, net, ctx.signal),
+          allowedSite: siteOk
+        }
+      : denied<PageAccess>('the network')
+
+    const artifactStore = services.artifacts
+    const artifacts: ArtifactAccess = p.artifacts
+      ? {
+          create(input) {
+            if (p.artifacts !== 'write')
+              throw new PermissionError('This tool may read artifacts, not make them.')
+            return needService(artifactStore, 'Artifacts').create({
+              ...input,
+              taskId: ctx.taskId,
+              author: ctx.agent
+            })
+          },
+          update(id, input) {
+            if (p.artifacts !== 'write')
+              throw new PermissionError('This tool may read artifacts, not change them.')
+            return needService(artifactStore, 'Artifacts').update(id, {
+              ...input,
+              author: ctx.agent
+            })
+          },
+          read(id, version) {
+            const detail = needService(artifactStore, 'Artifacts').get(id)
+            const v = version ?? detail.artifact.version
+            return {
+              artifact: detail.artifact,
+              content: needService(artifactStore, 'Artifacts').version(id, v).content,
+              version: v
+            }
+          },
+          list: (query) => needService(artifactStore, 'Artifacts').list({ query }),
+          async export(id, format) {
+            const store = needService(artifactStore, 'Artifacts')
+            const { artifact, current } = store.get(id)
+            const file = await convert(artifact, current.content, format as ExportFormat)
+            return { name: file.name, data: file.data }
+          }
+        }
+      : denied<ArtifactAccess>('artifacts')
+
     return {
       taskId: ctx.taskId,
       agent: ctx.agent,
       files,
+      search,
+      pages,
+      artifacts,
       net: p.network ? net : denied<TaskNet>('the network'),
       shell,
       browser,
@@ -382,16 +470,25 @@ export function createPermissionLayer(deps: {
 
       try {
         const result = await tool.run(call.input, toolContext(tool, ctx, call.id))
-        activity(ctx, 'tool', tool.name, result.summary, approvedBy)
+        const costUsd = result.costUsd && result.costUsd > 0 ? result.costUsd : 0
+        activity(ctx, 'tool', tool.name, result.summary, approvedBy, costUsd)
         if (tool.privateOutput) state.privacy.saw(result.output, tool.name)
         if (tool.untrustedOutput) state.untrusted = true
         return {
           status: 'done',
-          output: tool.untrustedOutput ? wrapUntrusted(result.output, tool.name) : result.output
+          output: tool.untrustedOutput ? wrapUntrusted(result.output, tool.name) : result.output,
+          ...(costUsd ? { costUsd } : {})
         }
       } catch (error) {
         if (error instanceof PermissionError) return refuse(call, ctx, error.message)
-        if (error instanceof MemoryError || error instanceof SkillError) {
+        if (
+          error instanceof MemoryError ||
+          error instanceof SkillError ||
+          error instanceof SearchError ||
+          error instanceof ReadError ||
+          error instanceof ArtifactError ||
+          error instanceof ConvertError
+        ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }
         }
@@ -441,6 +538,10 @@ export function createPermissionLayer(deps: {
     async release(taskId) {
       states.delete(taskId)
       await services.browser?.release(taskId)
+    },
+
+    useServices(more) {
+      Object.assign(services, more)
     }
   }
 }

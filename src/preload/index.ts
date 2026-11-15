@@ -26,6 +26,13 @@ contextBridge.exposeInMainWorld('titan117', {
       ipcRenderer.invoke('connectors:setSecrets', id, secrets),
     removeSecrets: (id: string) => ipcRenderer.invoke('connectors:removeSecrets', id)
   },
+  artifacts: {
+    stage: (html: string) => ipcRenderer.invoke('artifacts:stage', html),
+    pdf: (html: string, name: string, pageSize: 'A4' | 'Letter') =>
+      ipcRenderer.invoke('artifacts:pdf', html, name, pageSize),
+    png: (html: string, name: string) => ipcRenderer.invoke('artifacts:png', html, name),
+    save: (name: string, base64: string) => ipcRenderer.invoke('artifacts:save', name, base64)
+  },
   account: {
     status: () => ipcRenderer.invoke('account:status'),
     signIn: () => ipcRenderer.invoke('account:signIn'),

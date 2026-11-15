@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 3, Titan and memory, is done (15 Nov 2026). **Next step:** phase 4, Web search and artifacts, when you say so.
+**Now:** phase 4, Web search and artifacts, is built and waiting for the owner's checks (15 Nov 2026). **Next step:** the owner confirms decisions §44, signs in on the desktop app and runs one real research task to the share link; then phase 4 is closed.
 
 ## Phases
 
@@ -12,7 +12,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 1 | Engine core | Done | 14 Nov 2026 | 14 Nov 2026 |
 | 2 | Accounts and money | Done | 15 Nov 2026 | 15 Nov 2026 |
 | 3 | Titan and memory | Done | 15 Nov 2026 | 15 Nov 2026 |
-| 4 | Web search and artifacts | Not started | | |
+| 4 | Web search and artifacts | In progress | 15 Nov 2026 | |
 | 5 | Install and setup | Not started | | |
 | 6 | Folder agent | Not started | | |
 | 7 | Coding engine and code builder | Not started | | |
@@ -31,6 +31,24 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 15 Nov 2026 · Phase 4: web search and artifacts
+
+Built on `phase-4` (decisions §44, **to be confirmed by the owner**). The web side (share links, the shared page, Report) is in `titan117-web` on `phase-4`.
+
+- **Web search (16.1-16.3, 16.9-16.12):** `web_search` through one service: credits use OpenRouter's `openrouter:web_search` server tool on Exa (through the proxy, or the user's own OpenRouter key); the user's own **Exa, Tavily or Brave** key goes straight to the provider (keys in the keychain, checked before saving, in a new "Your own search keys" list). The query is checked for private passages before anything is sent; results from blocked sites are dropped whatever the provider returns; a 15-minute memory cache (never for Brave, its terms); the cost of a credits search counts towards the task's budget and shows in the activity log. A **Web search** view sets the source, country and language (from the laptop's own by default) and Titan's trusted and blocked sites.
+- **Reading (16.5, 16.6):** `web_fetch` now uses Readability on linkedom (title, author, date, headings and lists kept); `read_site` follows a site's own links, at most 25 pages, one a second. robots.txt is respected, after the network policy has allowed the site, so a refused site gets no request at all.
+- **Deep research (16.8):** a **Deep research** chip in the composer (also when a message starts with "Research"): its own instructions and a bigger budget (60 steps, 30 minutes, $2), ending with a document artifact with numbered sources.
+- **Artifacts (17.1-17.12):** documents, pages and small tools, spreadsheets, charts (our own SVG), diagrams (Mermaid, drawn strictly in the window) and slides, in the local database with a version per change. Tools `artifact_create`, `artifact_update`, `artifact_read`, `artifact_list` (no approval: the agent's answer) and `artifact_save` (asks, like any file write). The panel opens beside the chat with Edit, Versions (compare and restore), Download, Share and full screen; an **Artifacts** gallery with search and five templates (offer, invoice items, monthly report, meeting notes, project plan).
+- **Sandbox (17.18):** artifacts are shown from `titan117://sandbox/<random id>`, served with a `sandbox allow-scripts allow-popups` content policy and no network; their links open in the system browser. PDF and PNG are printed by a hidden window in its own session that cancels every request outside the sandbox.
+- **Downloads (17.8, 17.19, 17.20, 17.23):** PDF (A4 or Letter, light or dark), Word with real headings, lists, tables and links, Excel with real cells and formulas (a document's Excel file holds its tables and a Sources sheet), PowerPoint with editable text, plus Markdown, HTML, text, CSV, SVG, PNG and the Mermaid source; copy to clipboard.
+- **Sharing (17.13):** Share makes a light, self-contained snapshot; anything that looks like a key or token, or any secret the engine holds, stops it before it is sent.
+- **Licences:** Mermaid's optional ELK layout (elkjs, EPL or GPL) is replaced by a stub at build time and isn't in the bundle (checked); `Zlib` allowed; buffers and chainsaw (MIT/X11, inside ExcelJS) named exceptions.
+- **Tests:** denial tests for all 7 new tools; 20 new behaviour tests (search sources, cache, Brave not cached, site lists, robots.txt, Readability, versions, Word/Excel/PowerPoint files read back, CSV formula defusing, the sandbox policy, sharing refusals, an agent-made artifact exported and shared through the engine, deep research); the print window and the frame policy in the window tests. 246 in all.
+- **Seen in the real app on Windows** (the built app driven by Playwright, a throwaway data folder): the gallery and templates, a document in the sandboxed panel (it could reach neither the app's page nor the network), an edit as version 2 and the compare view, slides, PDF, Word, Excel and PowerPoint saved through the real save path, the Web search view and the Deep research chip; no console errors.
+- **Real search checked once** with the development key: OpenRouter returns the results as citations on Chat Completions, and `usage.cost` includes the search.
+- **Not checked:** a full research task with a real model through credits (the phase's check, for the owner); sharing against our real web app; macOS; Brave, Tavily and Exa with real keys; dark mode of the panel's own controls.
+- **Carried forward:** comments on shared pages (17.14), live data from sidebar apps and the documents index (17.15, phases 6 and 10), turning an artifact into an app (17.16, phase 8), scheduled artifacts (17.17, phase 13), Google Docs, Sheets and Slides (17.25, waits for the Google sign-in), the brand kit (17.11, with 15.1 in phase 14), several artifacts as one ZIP (17.21), sharing with chosen people (sign-in), browser downloads (from phase 3).
 
 ### 15 Nov 2026 · Phase 3 done
 

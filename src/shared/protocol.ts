@@ -26,6 +26,8 @@ export interface Task {
   note: string | null
   steps: number
   costUsd: number
+  /** Deep research (feature 16.8) runs with a bigger budget and its own instructions. */
+  mode: 'normal' | 'research'
   createdAt: number
   updatedAt: number
 }
@@ -168,7 +170,9 @@ export type EngineEvent =
     }
   | { type: 'settings'; defaultModel: string | null }
   /** Memory, skills, past-task records or connectors changed: the window reloads that list. */
-  | { type: 'changed'; what: 'memory' | 'skills' | 'records' | 'connectors' }
+  | { type: 'changed'; what: 'memory' | 'skills' | 'records' | 'connectors' | 'artifacts' }
+  /** An agent made or changed an artifact: the window opens it beside the chat. */
+  | { type: 'artifact'; artifact: Artifact }
 
 /** Error codes the local API answers with. Never stack traces. */
 export type ApiErrorCode =
@@ -184,8 +188,12 @@ export type ApiErrorCode =
 export const LOCAL_MODEL_PREFIX = 'local:'
 export const CLOUD_MODEL_PREFIX = 'openrouter:'
 
-/** Providers the user can add their own API key for (features 2.9, 11.5). */
-export const KEY_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'google'] as const
+/** Model providers the user can add their own API key for (features 2.9, 11.5). */
+export const MODEL_KEY_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'google'] as const
+/** Search providers the user can add their own key for (feature 16.3, decisions §44). */
+export const SEARCH_KEY_PROVIDERS = ['exa', 'tavily', 'brave'] as const
+export type SearchKeyProvider = (typeof SEARCH_KEY_PROVIDERS)[number]
+export const KEY_PROVIDERS = [...MODEL_KEY_PROVIDERS, ...SEARCH_KEY_PROVIDERS] as const
 export type KeyProvider = (typeof KEY_PROVIDERS)[number]
 
 /** Model ids for the user's own keys: `anthropic:claude-…`, `openai:…`, `google:gemini-…`. */
@@ -257,4 +265,72 @@ export interface Connector {
   error: string | null
   tools: { name: string; description: string; risk: Risk }[]
   createdAt: number
+}
+
+/** Where web searches come from (features 16.2, 16.3; decisions §44). */
+export type SearchSource = 'auto' | 'credits' | SearchKeyProvider
+
+export interface SiteLists {
+  /** Search and read only these sites (empty: any site). */
+  only: string[]
+  /** Never search or read these. */
+  blocked: string[]
+}
+
+export interface SearchSettings {
+  source: SearchSource
+  /** Two-letter country code, e.g. "RO"; empty for none. */
+  country: string
+  /** Two-letter language code, e.g. "ro"; empty for none. */
+  language: string
+  /** Trusted and blocked sites per agent (feature 16.9). */
+  sites: Record<string, SiteLists>
+}
+
+export interface SearchResult {
+  title: string
+  url: string
+  snippet: string
+  published?: string
+}
+
+/** Artifact types (features 17.2-17.7, decisions §44). */
+export const ARTIFACT_KINDS = [
+  'document',
+  'page',
+  'spreadsheet',
+  'chart',
+  'diagram',
+  'slides'
+] as const
+export type ArtifactKind = (typeof ARTIFACT_KINDS)[number]
+
+export interface Artifact {
+  id: string
+  taskId: string | null
+  kind: ArtifactKind
+  title: string
+  /** The current version's number (1, 2, ...). */
+  version: number
+  /** The public link when shared (feature 17.13), or null. */
+  shareUrl: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ArtifactVersion {
+  artifactId: string
+  version: number
+  /** Markdown, HTML, JSON (spreadsheet, chart) or Mermaid, by kind. */
+  content: string
+  /** Who made this version: "you", or an agent. */
+  author: string
+  note: string
+  createdAt: number
+}
+
+export interface ArtifactDetail {
+  artifact: Artifact
+  current: ArtifactVersion
+  versions: Omit<ArtifactVersion, 'content'>[]
 }

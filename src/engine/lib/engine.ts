@@ -37,6 +37,12 @@ import {
 } from './openrouter'
 import type { KeyProvider } from '../../shared/protocol'
 import { installToken, startServer } from './server'
+import { createArtifactStore, type ArtifactStore } from '../artifacts'
+import { createPageReader } from './read'
+import { createSearchService, DEFAULT_SEARCH_SETTINGS } from './search'
+import { createShareService } from './share'
+import type { SearchSettings } from '../../shared/protocol'
+import { KEY_PROVIDERS } from '../../shared/protocol'
 
 export interface AccountState {
   /** The device token, sent only to our credits proxy. */
@@ -101,6 +107,7 @@ export interface Engine {
     skills: SkillStore
     records: RecordStore
     connectors: ConnectorHub
+    artifacts: ArtifactStore
     /** The token a running task's scripts use (feature 4.10). */
     scriptToken(taskId: string): string | null
   }
@@ -202,6 +209,24 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   }
   let runtimeRef: Runtime | null = null
 
+  const artifacts = createArtifactStore(db, (artifact, byAgent) => {
+    emit({ type: 'changed', what: 'artifacts' })
+    // What an agent makes opens beside the chat (17.1).
+    if (artifact && byAgent) emit({ type: 'artifact', artifact })
+  })
+
+  // Search settings (§16): from the laptop's own language and country until the user changes them.
+  const searchSettings = (): SearchSettings => {
+    const saved = getMeta<SearchSettings | null>(db, 'search', null)
+    if (saved) return { ...DEFAULT_SEARCH_SETTINGS, ...saved }
+    const locale = new Intl.Locale(Intl.DateTimeFormat().resolvedOptions().locale)
+    return {
+      ...DEFAULT_SEARCH_SETTINGS,
+      country: locale.region && /^[A-Z]{2}$/.test(locale.region) ? locale.region : '',
+      language: /^[a-z]{2}$/.test(locale.language) ? locale.language : ''
+    }
+  }
+
   const tools = createRegistry(options.tools ?? builtInTools, () => connectors.tools())
   const permissions = createPermissionLayer({
     tools,
@@ -231,6 +256,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       }
     }
   })
+
+  const pages = createPageReader()
 
   const local = createLocalModels({
     db,
@@ -276,6 +303,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       }
     }
   }
+  const shares = createShareService({
+    fetch: fetchOut,
+    account: () =>
+      account.token && account.proxyUrl ? { token: account.token, apiBase: account.proxyUrl } : null
+  })
+
   const router = createRouter({
     local,
     openrouter,
@@ -286,6 +319,29 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     hasKey: (provider) => !!ownKeys[provider]
   })
+
+  // The small model that lists OpenRouter's search results: cheap, with tools.
+  const SEARCH_MODELS = [
+    'openai/gpt-4.1-nano',
+    'google/gemini-2.5-flash-lite',
+    'openai/gpt-4o-mini'
+  ]
+  const search = createSearchService({
+    fetch: fetchOut,
+    cloud,
+    keys: () => ({ exa: ownKeys.exa, tavily: ownKeys.tavily, brave: ownKeys.brave }),
+    settings: searchSettings,
+    async pickModel() {
+      const models = await router.cloudModels().catch(() => [])
+      const preferred = SEARCH_MODELS.find((id) => models.some((m) => m.id === id))
+      if (preferred || !models.length) return preferred ?? SEARCH_MODELS[0]
+      const paid = models.filter((m) => m.inputPerMillion > 0 && !m.id.endsWith(':free'))
+      return (
+        [...paid].sort((a, b) => a.inputPerMillion - b.inputPerMillion)[0]?.id ?? SEARCH_MODELS[0]
+      )
+    }
+  })
+  permissions.useServices({ search, pages, artifacts })
 
   const runtime = createRuntime({
     store,
@@ -320,12 +376,17 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       folders,
       cloudKey: () => cloud() !== null,
       cloudVia: () => cloud()?.via ?? null,
-      ownKeys: () => ({
-        openrouter: !!ownKeys.openrouter,
-        anthropic: !!ownKeys.anthropic,
-        openai: !!ownKeys.openai,
-        google: !!ownKeys.google
-      })
+      ownKeys: () =>
+        Object.fromEntries(KEY_PROVIDERS.map((p) => [p, !!ownKeys[p]])) as Record<
+          (typeof KEY_PROVIDERS)[number],
+          boolean
+        >
+    },
+    artifacts,
+    shares,
+    search: {
+      get: searchSettings,
+      set: (next) => setMeta(db, 'search', next)
     },
     memory,
     skills,
@@ -418,6 +479,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       skills,
       records,
       connectors,
+      artifacts,
       scriptToken
     }
   }

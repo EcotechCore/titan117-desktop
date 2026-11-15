@@ -164,6 +164,36 @@ const MIGRATIONS: string[] = [
     enabled integer not null default 1,
     created_at integer not null
   );
+  `,
+  // Phase 4: artifacts (§17, decisions §44). Every change is a version.
+  `
+  -- Deep research (feature 16.8) is a mode a task runs in.
+  alter table tasks add column mode text not null default 'normal';
+
+  create table artifacts (
+    id text primary key,
+    task_id text references tasks(id) on delete set null,
+    kind text not null,
+    title text not null,
+    version integer not null,
+    -- The share link's public id and address (feature 17.13), when shared.
+    share_id text,
+    share_url text,
+    created_at integer not null,
+    updated_at integer not null
+  );
+  create index artifacts_task on artifacts(task_id);
+  create index artifacts_updated on artifacts(updated_at);
+
+  create table artifact_versions (
+    artifact_id text not null references artifacts(id) on delete cascade,
+    version integer not null,
+    content text not null,
+    author text not null,
+    note text not null,
+    created_at integer not null,
+    primary key (artifact_id, version)
+  );
   `
 ]
 

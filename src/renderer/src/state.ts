@@ -19,6 +19,8 @@ export type View =
   | { kind: 'models' }
   | { kind: 'memory' }
   | { kind: 'connectors' }
+  | { kind: 'artifacts' }
+  | { kind: 'search' }
 
 export interface AppState {
   status: 'connecting' | 'ready' | 'lost'
@@ -37,6 +39,9 @@ export interface AppState {
   problem: string | null
   /** Bumped when memory, skills, past tasks or connectors change: their views reload. */
   changed: Record<string, number>
+  /** The artifact open beside the chat (17.1), and whether it fills the window. */
+  artifact: string | null
+  artifactFull: boolean
 }
 
 export const initialState: AppState = {
@@ -52,7 +57,9 @@ export const initialState: AppState = {
   showDetails: true,
   model: null,
   problem: null,
-  changed: {}
+  changed: {},
+  artifact: null,
+  artifactFull: false
 }
 
 export type Action =
@@ -65,6 +72,8 @@ export type Action =
   | { type: 'model'; model: string | null }
   | { type: 'lost' }
   | { type: 'problem'; message: string | null }
+  | { type: 'artifact'; id: string | null }
+  | { type: 'artifactFull' }
 
 function upsert<T extends { id: string }>(list: T[], item: T, front = false): T[] {
   const index = list.findIndex((x) => x.id === item.id)
@@ -156,6 +165,9 @@ function onEvent(state: AppState, event: EngineEvent): AppState {
             }
           }
         : state
+    case 'artifact':
+      // What an agent makes opens beside the chat (17.1).
+      return { ...state, artifact: event.artifact.id }
     case 'changed':
       return {
         ...state,
@@ -191,5 +203,9 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, status: 'lost' }
     case 'problem':
       return { ...state, problem: action.message }
+    case 'artifact':
+      return { ...state, artifact: action.id, artifactFull: action.id ? state.artifactFull : false }
+    case 'artifactFull':
+      return { ...state, artifactFull: !state.artifactFull }
   }
 }

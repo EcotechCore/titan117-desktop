@@ -24,10 +24,13 @@ import { MemoryView } from './Memory'
 import { ConnectorsView } from './Connectors'
 import { play, record, type Recording } from './voice'
 import { VoiceBar } from './VoiceBar'
+import { ArtifactPanel, ArtifactsView } from './Artifacts'
+import { SearchView } from './Search'
 
 const PROMPTS = [
   'Find every invoice in my folder and total them in a CSV.',
   'Read https://titan117.com and tell me what it offers.',
+  'Research the rules for e-invoicing in Romania and make a report with sources.',
   'Rename the photos in my folder by the date they were taken.',
   'Remember that our company is called … and what we sell.'
 ]
@@ -44,6 +47,8 @@ function App(): React.JSX.Element {
   const account = useAccount()
   const recording = useRef<Recording | null>(null)
   const [voice, setVoice] = useState<'off' | 'recording' | 'transcribing'>('off')
+  // Deep research (16.8): the next new task runs as research.
+  const [research, setResearch] = useState(false)
 
   const { engine, view, model } = state
   const taskId = view.kind === 'task' ? view.id : null
@@ -140,8 +145,10 @@ function App(): React.JSX.Element {
       } else {
         const { task: created } = await api.send<{ task: Task }>('POST', '/v1/tasks', {
           text: message,
-          model
+          model,
+          mode: research || /^research\b/i.test(message) ? 'research' : 'normal'
         })
+        setResearch(false)
         dispatch({
           type: 'detail',
           detail: { task: created, messages: [], approvals: [], activity: [] }
@@ -241,7 +248,17 @@ function App(): React.JSX.Element {
   const canSend = !!text.trim() && !busy
 
   return (
-    <div className={state.showDetails && detail ? 'win' : 'win no-details'}>
+    <div
+      className={
+        state.artifact && api
+          ? state.artifactFull
+            ? 'win artifact-full-win'
+            : 'win with-artifact'
+          : state.showDetails && detail
+            ? 'win'
+            : 'win no-details'
+      }
+    >
       <header className="bar">
         <div className="brand">
           <Eyes state="idle" />
@@ -296,6 +313,18 @@ function App(): React.JSX.Element {
           onClick={() => dispatch({ type: 'view', view: { kind: 'connectors' } })}
         >
           <Icon name="plug" /> Connectors
+        </button>
+        <button
+          className={view.kind === 'artifacts' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'artifacts' } })}
+        >
+          <Icon name="file" /> Artifacts
+        </button>
+        <button
+          className={view.kind === 'search' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'search' } })}
+        >
+          <Icon name="globe" /> Web search
         </button>
         <button
           className={view.kind === 'models' ? 'nav on' : 'nav'}
@@ -370,6 +399,22 @@ function App(): React.JSX.Element {
           )}
           {view.kind === 'memory' && (
             <MemoryView client={api} changed={state.changed} onProblem={fail} />
+          )}
+          {view.kind === 'artifacts' && (
+            <ArtifactsView
+              client={api}
+              changed={state.changed.artifacts ?? 0}
+              onOpen={(id) => dispatch({ type: 'artifact', id })}
+              onProblem={fail}
+            />
+          )}
+          {view.kind === 'search' && (
+            <SearchView
+              client={api}
+              engine={engine}
+              onKeysChanged={() => void reloadModels().catch(fail)}
+              onProblem={fail}
+            />
           )}
           {view.kind === 'connectors' && (
             <ConnectorsView client={api} changed={state.changed.connectors ?? 0} onProblem={fail} />
@@ -472,6 +517,16 @@ function App(): React.JSX.Element {
                     <option value="more">More models…</option>
                   </select>
                 </label>
+                {!task && (
+                  <button
+                    className={research ? 'chip chip-on' : 'chip'}
+                    aria-pressed={research}
+                    title="Many searches, reading and cross-checking, then a report with sources"
+                    onClick={() => setResearch(!research)}
+                  >
+                    <Icon name="globe" /> Deep research
+                  </button>
+                )}
                 <span className="cost mono">{model && estimate ? estimate.label : ''}</span>
                 {voice === 'off' && (
                   <button
@@ -509,7 +564,20 @@ function App(): React.JSX.Element {
         )}
       </main>
 
-      {state.showDetails && detail && (
+      {state.artifact && api && (
+        <ArtifactPanel
+          key={state.artifact}
+          client={api}
+          id={state.artifact}
+          changed={state.changed.artifacts ?? 0}
+          full={state.artifactFull}
+          onFull={() => dispatch({ type: 'artifactFull' })}
+          onClose={() => dispatch({ type: 'artifact', id: null })}
+          onProblem={fail}
+        />
+      )}
+
+      {!state.artifact && state.showDetails && detail && (
         <aside className="details" aria-label="Task details">
           <span className={`status status-${detail.task.status}`}>
             {

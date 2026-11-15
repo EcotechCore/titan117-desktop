@@ -20,6 +20,7 @@ const ALLOWED = new Set([
   "CC0-1.0",
   "Unlicense",
   "Python-2.0",
+  "Zlib",
 ]);
 
 // package name → reason. Only for licences that aren't in ALLOWED.
@@ -43,6 +44,12 @@ const EXCEPTIONS = {
   "@img/sharp-libvips-linuxmusl-x64": "LGPL-3.0 libvips, unmodified dynamic library",
   "@img/sharp-libvips-darwin-arm64": "LGPL-3.0 libvips, unmodified dynamic library",
   "@img/sharp-libvips-darwin-x64": "LGPL-3.0 libvips, unmodified dynamic library",
+  // Old MIT/X11 packages under exceljs's unzipper whose package.json has no SPDX id.
+  buffers: "MIT/X11 (README), no SPDX id; inside exceljs",
+  chainsaw: "MIT/X11, no SPDX id; inside exceljs",
+  // EPL-2.0 OR GPL: mermaid's optional ELK layout. Aliased to an empty stub in
+  // electron.vite.config.ts, so none of it ships (decisions §44).
+  elkjs: "EPL-2.0 OR GPL-3.0, never bundled: aliased to a stub",
 };
 
 /** "MIT OR Apache-2.0" passes if any side is allowed; "A AND B" needs both. */

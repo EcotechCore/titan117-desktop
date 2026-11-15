@@ -3,7 +3,7 @@
  * system access. test/window.test.ts reads these, so a change that weakens
  * them fails CI.
  */
-import type { WebPreferences } from 'electron'
+import type { Session, WebPreferences } from 'electron'
 
 export function windowWebPreferences(preloadPath: string): WebPreferences {
   return {
@@ -18,6 +18,26 @@ export function windowWebPreferences(preloadPath: string): WebPreferences {
     experimentalFeatures: false,
     webviewTag: false,
     spellcheck: true
+  }
+}
+
+/**
+ * The hidden window that prints an artifact to PDF or PNG (decisions §44):
+ * no preload, no Node, sandboxed, in its own session that cancels every
+ * request outside the artifact sandbox.
+ */
+export function printWebPreferences(session: Session): WebPreferences {
+  return {
+    session,
+    contextIsolation: true,
+    nodeIntegration: false,
+    nodeIntegrationInWorker: false,
+    nodeIntegrationInSubFrames: false,
+    sandbox: true,
+    webSecurity: true,
+    allowRunningInsecureContent: false,
+    javascript: true,
+    webviewTag: false
   }
 }
 

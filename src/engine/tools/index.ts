@@ -9,7 +9,8 @@ import { fileTools } from './files'
 import { memoryTools } from './memory'
 import { runCode, runCommand } from './shell'
 import { speechTools } from './speech'
-import { webFetch } from './web'
+import { webTools } from './web'
+import { artifactTools } from './artifacts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyTool = ToolDefinition<any>
@@ -18,8 +19,9 @@ export const builtInTools: AnyTool[] = [
   ...fileTools,
   runCommand,
   runCode,
-  webFetch,
+  ...webTools,
   ...browserTools,
+  ...artifactTools,
   ...memoryTools,
   ...speechTools
 ]
