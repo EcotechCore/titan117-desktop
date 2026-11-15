@@ -7,7 +7,8 @@
  *   text to speech   the operating system's own voices: Windows' speech
  *                    synthesizer, macOS's `say`. Nothing to download.
  *
- * Kokoro is not used yet: its phonemizer bundles eSpeak NG, which is GPL.
+ * Kokoro is not used (decisions §43.10): its pronunciation step needs eSpeak NG,
+ * which is GPL, and Titan117 ships no GPL software.
  */
 import { spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
