@@ -132,7 +132,9 @@ export function createRuntime(deps: {
           agent: AGENT,
           model: task.model,
           tool: null,
-          summary: `${result.usage.inputTokens} tokens in, ${result.usage.outputTokens} out`,
+          summary:
+            `${result.usage.inputTokens} tokens in, ${result.usage.outputTokens} out` +
+            (result.via ? ` · ${result.via}` : ''),
           costUsd: result.usage.costUsd,
           approvedBy: null
         })
@@ -145,7 +147,8 @@ export function createRuntime(deps: {
         store.addMessage(taskId, {
           role: 'assistant',
           text: result.text,
-          ...(result.toolCalls.length ? { toolCalls: result.toolCalls } : {})
+          ...(result.toolCalls.length ? { toolCalls: result.toolCalls } : {}),
+          ...(result.raw ? { raw: result.raw } : {})
         })
         if (result.toolCalls.length === 0) return finish('done', null)
 

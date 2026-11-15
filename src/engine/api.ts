@@ -13,7 +13,9 @@ import {
   type ApiErrorCode,
   type ApprovalAnswer,
   type EngineState,
-  type TaskDetail
+  type TaskDetail,
+  type KeyProvider,
+  OWN_KEY_PREFIXES
 } from '../shared/protocol'
 import type { LocalModels } from './lib/llama'
 import type { Logger } from './lib/log'
@@ -58,7 +60,8 @@ export interface Settings {
   setDefaultModel(model: string | null): void
   folders(): string[]
   cloudKey(): boolean
-  cloudVia(): 'credits' | 'dev' | null
+  cloudVia(): 'own' | 'credits' | 'dev' | null
+  ownKeys(): Record<KeyProvider, boolean>
 }
 
 export function createApi(deps: {
@@ -78,10 +81,8 @@ export function createApi(deps: {
   }
 
   function modelId(value: unknown): string {
-    if (
-      typeof value !== 'string' ||
-      !(value.startsWith(LOCAL_MODEL_PREFIX) || value.startsWith(CLOUD_MODEL_PREFIX))
-    )
+    const prefixes = [LOCAL_MODEL_PREFIX, CLOUD_MODEL_PREFIX, ...Object.values(OWN_KEY_PREFIXES)]
+    if (typeof value !== 'string' || !prefixes.some((p) => value.startsWith(p)))
       throw new ApiError(400, 'BAD_REQUEST', 'Choose a model first.')
     return value
   }
@@ -101,6 +102,7 @@ export function createApi(deps: {
           defaultModel: settings.defaultModel(),
           cloudKey: settings.cloudKey(),
           cloudVia: settings.cloudVia(),
+          ownKeys: settings.ownKeys(),
           hardware: local.hardware(),
           localProblem: local.problem(),
           localChecking: local.checking(),
@@ -154,6 +156,7 @@ export function createApi(deps: {
         return {
           local: await local.list(),
           cloud: await router.cloudModels().catch(() => []),
+          own: await router.ownKeyModels(),
           cloudKey: settings.cloudKey()
         }
 

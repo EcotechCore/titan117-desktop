@@ -38,7 +38,16 @@ export interface ToolCall {
 
 export type ChatMessage =
   | { role: 'user'; text: string }
-  | { role: 'assistant'; text: string; toolCalls?: ToolCall[] }
+  | {
+      role: 'assistant'
+      text: string
+      toolCalls?: ToolCall[]
+      /**
+       * The provider's own content blocks for this turn, sent back unchanged on
+       * the next turn (Anthropic's thinking blocks must be). Only that provider reads it.
+       */
+      raw?: { source: 'anthropic'; content: unknown[] }
+    }
   | { role: 'tool'; callId: string; name: string; output: string; isError?: boolean }
 
 export interface StoredMessage {
@@ -120,8 +129,10 @@ export interface EngineState {
   defaultModel: string | null
   /** Whether cloud models can be used now. Never a key or token itself. */
   cloudKey: boolean
-  /** Where cloud calls go: our credits proxy (signed in), a development key, or nowhere. */
-  cloudVia: 'credits' | 'dev' | null
+  /** Where OpenRouter calls go: the user's own key, our credits proxy, a development key, or nowhere. */
+  cloudVia: 'own' | 'credits' | 'dev' | null
+  /** Which of the user's own API keys are saved (features 2.9, 11.5). Never the keys themselves. */
+  ownKeys: Record<KeyProvider, boolean>
   hardware: { ramBytes: number; vramBytes: number; gpu: string | null }
   /** Why local models can't run on this laptop, or null when they can. */
   localProblem: string | null
@@ -168,3 +179,23 @@ export type ApiErrorCode =
 
 export const LOCAL_MODEL_PREFIX = 'local:'
 export const CLOUD_MODEL_PREFIX = 'openrouter:'
+
+/** Providers the user can add their own API key for (features 2.9, 11.5). */
+export const KEY_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'google'] as const
+export type KeyProvider = (typeof KEY_PROVIDERS)[number]
+
+/** Model ids for the user's own keys: `anthropic:claude-…`, `openai:…`, `google:gemini-…`. */
+export const OWN_KEY_PREFIXES = {
+  anthropic: 'anthropic:',
+  openai: 'openai:',
+  google: 'google:'
+} as const
+export type DirectProvider = keyof typeof OWN_KEY_PREFIXES
+
+/** A model reachable with one of the user's own keys. Billed by the provider, not in credits. */
+export interface OwnKeyModel {
+  /** Our id, with the provider prefix. */
+  id: string
+  name: string
+  provider: DirectProvider
+}

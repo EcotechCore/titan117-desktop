@@ -21,7 +21,15 @@ import { realFolder, type FolderPolicy } from './folders'
 import { createLocalModels, type LocalModels } from './llama'
 import { createLogger, type Logger } from './log'
 import { engineFetch, type Fetch } from './net'
-import { createOpenRouter, OPENROUTER_BASE, type CloudAccess } from './openrouter'
+import { createAnthropic } from './anthropic'
+import {
+  createOpenRouter,
+  DIRECT_BASES,
+  listDirectModels,
+  OPENROUTER_BASE,
+  type CloudAccess
+} from './openrouter'
+import type { KeyProvider } from '../../shared/protocol'
 import { installToken, startServer } from './server'
 
 export interface AccountState {
@@ -33,6 +41,9 @@ export interface AccountState {
   /** What the user sees when locked, e.g. "Sign in to keep using Titan117." */
   reason: string | null
 }
+
+/** The user's own API keys, from the shell's keychain (features 2.9, 11.5). */
+export type OwnKeys = Partial<Record<KeyProvider, string>>
 
 export interface EngineOptions {
   /** The app's data folder; null keeps everything in memory (tests). */
@@ -60,6 +71,8 @@ export interface Engine {
   addFolder(path: string): string[]
   removeFolder(path: string): string[]
   setAccount(account: AccountState): void
+  /** The user's own API keys; only providers present have one. */
+  setKeys(keys: OwnKeys): void
   close(): Promise<void>
   /** For tests. */
   parts: {
@@ -87,7 +100,10 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     locked: options.locked ?? true,
     reason: null
   }
+  let ownKeys: OwnKeys = {}
   const cloud = (): CloudAccess | null => {
+    // The user's own OpenRouter key goes straight to OpenRouter: no proxy, no credits.
+    if (ownKeys.openrouter) return { base: OPENROUTER_BASE, key: ownKeys.openrouter, via: 'own' }
     if (account.token && account.proxyUrl)
       return { base: account.proxyUrl, key: account.token, via: 'credits' }
     if (key) return { base: OPENROUTER_BASE, key, via: 'dev' }
@@ -137,13 +153,41 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   })
   // Finding out whether llama.cpp starts can take a minute; the window doesn't wait for it.
   local.warm()
-  const openrouter = createOpenRouter({
-    fetch: engineFetch(options.fetch, () =>
-      account.proxyUrl ? [new URL(account.proxyUrl).origin] : []
-    ),
-    access: cloud
+  const fetchOut = engineFetch(options.fetch, () =>
+    account.proxyUrl ? [new URL(account.proxyUrl).origin] : []
+  )
+  const openrouter = createOpenRouter({ fetch: fetchOut, access: cloud })
+  const direct = (
+    provider: 'openai' | 'google'
+  ): Pick<ReturnType<typeof createOpenRouter>, 'turn'> & {
+    listModels(): ReturnType<typeof listDirectModels>
+  } => {
+    const client = createOpenRouter({
+      fetch: fetchOut,
+      provider,
+      access: () => {
+        const key = ownKeys[provider]
+        return key ? { base: DIRECT_BASES[provider], key, via: 'own' } : null
+      }
+    })
+    return {
+      turn: (request) => client.turn(request),
+      listModels: () => {
+        const key = ownKeys[provider]
+        return key ? listDirectModels(fetchOut, provider, key) : Promise.resolve([])
+      }
+    }
+  }
+  const router = createRouter({
+    local,
+    openrouter,
+    direct: {
+      anthropic: createAnthropic({ fetch: fetchOut, key: () => ownKeys.anthropic ?? null }),
+      openai: direct('openai'),
+      google: direct('google')
+    },
+    hasKey: (provider) => !!ownKeys[provider]
   })
-  const router = createRouter({ local, openrouter })
 
   const runtime = createRuntime({
     store,
@@ -173,7 +217,13 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       },
       folders,
       cloudKey: () => cloud() !== null,
-      cloudVia: () => cloud()?.via ?? null
+      cloudVia: () => cloud()?.via ?? null,
+      ownKeys: () => ({
+        openrouter: !!ownKeys.openrouter,
+        anthropic: !!ownKeys.anthropic,
+        openai: !!ownKeys.openai,
+        google: !!ownKeys.google
+      })
     }
   })
 
@@ -202,6 +252,11 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     removeFolder(path) {
       return saveFolders(folders().filter((folder) => folder !== path))
+    },
+    setKeys(next) {
+      for (const key of Object.values(next)) registerSecret(key ?? null)
+      ownKeys = next
+      emit({ type: 'settings', defaultModel: getMeta<string | null>(db, 'defaultModel', null) })
     },
     setAccount(next) {
       registerSecret(next.token)

@@ -8,6 +8,7 @@ import type {
   EngineState,
   Estimate,
   LocalModel,
+  OwnKeyModel,
   Task,
   TaskDetail
 } from '../../shared/protocol'
@@ -59,8 +60,8 @@ function App(): React.JSX.Element {
         client.current = api
         dispatch({ type: 'loaded', engine: await api.get<EngineState>('/v1/state') })
         void api
-          .get<{ cloud: CloudModel[] }>('/v1/models')
-          .then((m) => dispatch({ type: 'cloud', models: m.cloud }))
+          .get<{ cloud: CloudModel[]; own: OwnKeyModel[] }>('/v1/models')
+          .then((m) => dispatch({ type: 'cloud', models: m.cloud, own: m.own }))
           .catch(() => undefined)
         await api.events((event) => dispatch({ type: 'event', event }), abort.signal)
       } catch {
@@ -143,6 +144,15 @@ function App(): React.JSX.Element {
       fail(error)
     }
   }
+
+  /** After a key is saved or removed: what cloud calls can reach has changed. */
+  const reloadModels = useCallback(async () => {
+    const api = client.current
+    if (!api) return
+    dispatch({ type: 'loaded', engine: await api.get<EngineState>('/v1/state') })
+    const m = await api.get<{ cloud: CloudModel[]; own: OwnKeyModel[] }>('/v1/models')
+    dispatch({ type: 'cloud', models: m.cloud, own: m.own })
+  }, [])
 
   const answer = useCallback(
     (id: string, reply: ApprovalAnswer) => {
@@ -289,6 +299,8 @@ function App(): React.JSX.Element {
             <ModelsView
               engine={engine}
               cloud={state.cloud}
+              own={state.own}
+              onKeysChanged={() => void reloadModels().catch(fail)}
               model={model}
               onUse={chooseModel}
               onDownload={(id) =>

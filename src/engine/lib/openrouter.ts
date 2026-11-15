@@ -6,7 +6,7 @@
  *
  * API checked on 14 Nov 2026 against openrouter.ai/docs/api-reference.
  */
-import type { ChatMessage, CloudModel, ToolCall } from '../../shared/protocol'
+import type { ChatMessage, CloudModel, OwnKeyModel, ToolCall } from '../../shared/protocol'
 import { ModelError, type ModelProvider, type TurnRequest, type TurnResult } from '../models/types'
 import type { Fetch } from './net'
 
@@ -19,8 +19,21 @@ export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 export interface CloudAccess {
   base: string
   key: string
-  via: 'credits' | 'dev'
+  via: 'own' | 'credits' | 'dev'
 }
+
+/**
+ * Providers that speak this same Chat Completions format with the user's own
+ * key: OpenAI's own API, and Google's OpenAI-compatible Gemini endpoint (beta,
+ * per Google's docs, checked 15 Nov 2026; external-services.md).
+ */
+export const DIRECT_BASES = {
+  openai: 'https://api.openai.com/v1',
+  google: 'https://generativelanguage.googleapis.com/v1beta/openai'
+} as const
+
+const LABEL = { openrouter: 'OpenRouter', openai: 'OpenAI', google: 'Google' } as const
+type Label = keyof typeof LABEL
 
 interface WireMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -64,7 +77,12 @@ function parseArguments(raw: string): Record<string, unknown> {
   }
 }
 
-async function problem(response: Response, via: CloudAccess['via'] = 'dev'): Promise<ModelError> {
+async function problem(
+  response: Response,
+  via: CloudAccess['via'] = 'dev',
+  provider: Label = 'openrouter'
+): Promise<ModelError> {
+  const name = LABEL[provider]
   let detail = ''
   try {
     const body = (await response.json()) as { error?: { message?: string } }
@@ -82,22 +100,28 @@ async function problem(response: Response, via: CloudAccess['via'] = 'dev'): Pro
     if (response.status === 429)
       return new ModelError('Too many cloud calls at once. Wait for one to finish, then try again.')
   }
-  if (response.status === 401) return new ModelError('OpenRouter refused the key.')
-  if (response.status === 402) return new ModelError('The OpenRouter account has no credit left.')
-  if (response.status === 429)
-    return new ModelError('OpenRouter is rate limiting. Try again shortly.')
-  return new ModelError(`OpenRouter answered ${response.status}${detail ? `: ${detail}` : ''}.`)
+  if (response.status === 401) return new ModelError(`${name} refused the key.`)
+  if (response.status === 402) return new ModelError(`The ${name} account has no credit left.`)
+  if (response.status === 429) return new ModelError(`${name} is rate limiting. Try again shortly.`)
+  return new ModelError(`${name} answered ${response.status}${detail ? `: ${detail}` : ''}.`)
 }
 
 export function createOpenRouter(deps: {
   fetch: Fetch
   access(): CloudAccess | null
+  /** Who answers (for messages); OpenRouter unless this is the user's own OpenAI or Google key. */
+  provider?: Label
 }): ModelProvider & { listModels(): Promise<CloudModel[]> } {
+  const provider = deps.provider ?? 'openrouter'
   return {
     async turn(request: TurnRequest): Promise<TurnResult> {
       const access = deps.access()
       if (!access)
-        throw new ModelError('Sign in to use cloud models with your credits, or use a local model.')
+        throw new ModelError(
+          provider === 'openrouter'
+            ? 'Sign in to use cloud models with your credits, or use a local model.'
+            : `Add your ${LABEL[provider]} API key in Models to use it directly.`
+        )
 
       const response = await deps.fetch(`${access.base}/chat/completions`, {
         method: 'POST',
@@ -111,6 +135,8 @@ export function createOpenRouter(deps: {
           model: request.model,
           stream: true,
           messages: toWire(request.system, request.messages),
+          // OpenAI and Google send token counts only when asked; OpenRouter always does.
+          ...(provider === 'openrouter' ? {} : { stream_options: { include_usage: true } }),
           ...(request.tools.length
             ? {
                 tools: request.tools.map((t) => ({
@@ -121,7 +147,7 @@ export function createOpenRouter(deps: {
             : {})
         })
       })
-      if (!response.ok || !response.body) throw await problem(response, access.via)
+      if (!response.ok || !response.body) throw await problem(response, access.via, provider)
 
       let text = ''
       const calls = new Map<number, { id: string; name: string; args: string }>()
@@ -160,7 +186,8 @@ export function createOpenRouter(deps: {
           } catch {
             continue
           }
-          if (chunk.error) throw new ModelError(`OpenRouter: ${chunk.error.message ?? 'error'}.`)
+          if (chunk.error)
+            throw new ModelError(`${LABEL[provider]}: ${chunk.error.message ?? 'error'}.`)
           const delta = chunk.choices?.[0]?.delta
           if (delta?.content) {
             text += delta.content
@@ -188,7 +215,13 @@ export function createOpenRouter(deps: {
           name: c.name,
           input: parseArguments(c.args)
         }))
-      return { text, toolCalls, usage }
+      const via =
+        access.via === 'credits'
+          ? 'via credits'
+          : access.via === 'dev'
+            ? 'via the development key'
+            : `via your ${LABEL[provider]} key`
+      return { text, toolCalls, usage, via }
     },
 
     /** OpenRouter's public model list with prices. Needs no key. */
@@ -216,4 +249,29 @@ export function createOpenRouter(deps: {
         .filter((m) => Number.isFinite(m.inputPerMillion) && m.inputPerMillion >= 0)
     }
   }
+}
+
+/** Chat models an OpenAI or Google key may use, from that provider's own model list. */
+export async function listDirectModels(
+  fetch: Fetch,
+  provider: keyof typeof DIRECT_BASES,
+  key: string
+): Promise<OwnKeyModel[]> {
+  const response = await fetch(`${DIRECT_BASES[provider]}/models`, {
+    headers: { Authorization: `Bearer ${key}` }
+  })
+  if (!response.ok) throw await problem(response, 'own', provider)
+  const body = (await response.json()) as { data?: { id: string }[] }
+  // Google lists "models/gemini-…"; OpenAI also lists embedding, audio and image models.
+  const chat =
+    provider === 'google'
+      ? (id: string): boolean => id.includes('gemini')
+      : (id: string): boolean =>
+          /^(gpt-|o\d|chatgpt-)/.test(id) &&
+          !/(audio|realtime|transcribe|tts|image|search)/.test(id)
+  return (body.data ?? [])
+    .map((m) => m.id.replace(/^models\//, ''))
+    .filter(chat)
+    .sort()
+    .map((id) => ({ id: `${provider}:${id}`, name: id, provider }))
 }

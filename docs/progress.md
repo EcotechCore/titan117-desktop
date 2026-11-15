@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 2, Accounts and money, started 15 Nov 2026 (plans, credits and Stripe in the web repo; sign-in, the licence lease and the lock screen here). **Next step:** your own API keys in the keychain.
+**Now:** phase 2, Accounts and money, started 15 Nov 2026 (plans, credits, Stripe and the proxy in the web repo; sign-in, the lease, the lock screen and your own API keys here). **Next step:** the website and legal pages and account deletion, in the web repo.
 
 ## Phases
 
@@ -31,6 +31,17 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 15 Nov 2026 · Phase 2: your own API keys; the lock comes sooner
+
+Built on `phase-2-own-keys` (decisions §40). **Seen working on Windows:** with the owner's own OpenRouter key saved, a task with `openai/gpt-6-luna` ran three model steps and listed two folders and read two files; the credits proxy recorded no calls, so the key was used. Before that, cancelling the sandbox subscription locked the app at its next lease check.
+
+- **`src/main/lib/keys.ts`:** OpenRouter, Anthropic, OpenAI and Google keys in the keychain (`safeStorage`), checked with the provider before saving, handed only to the engine; the window can ask only which providers have one.
+- **Engine:** Claude through Anthropic's official SDK (`src/engine/lib/anthropic.ts`; thinking blocks kept and sent back; a cut-off tool call is never run; refusals reported); OpenAI and Gemini through the OpenAI-format client (Google's endpoint is beta); an own OpenRouter key replaces credits. New model ids `anthropic:`, `openai:`, `google:`; the engine may also reach `api.anthropic.com`, `api.openai.com` and `generativelanguage.googleapis.com`.
+- **Activity log:** each model step says how it was paid (via credits, via your … key, via the development key).
+- **Window:** Models → Your own API keys (add, replace, remove) and the models each key unlocks, labelled "billed to your … key".
+- **Lease renewal** every 30 minutes and when the window regains focus (at most every 5 minutes).
+- 137 tests (a fake Anthropic stream with thinking and a tool call, key checks, routing per provider, the "via" label). New dependency `@anthropic-ai/sdk` 1.8.0 (Apache 2.0).
 
 ### 15 Nov 2026 · Phase 2: sign-in, the licence lease and the lock screen
 

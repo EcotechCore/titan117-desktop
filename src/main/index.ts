@@ -17,6 +17,7 @@ import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { Account, type AccountView } from './lib/account'
+import { Keys } from './lib/keys'
 import {
   APP_ORIGIN,
   APP_SCHEME,
@@ -85,7 +86,31 @@ function accountConfig(): { webUrl: string | null; apiUrl: string | null } {
 }
 
 let account: Account | null = null
-const RENEW_EVERY_MS = 6 * 60 * 60 * 1000
+let keys: Keys | null = null
+
+function keychain(): { encrypt(text: string): Buffer; decrypt(data: Buffer): string } | null {
+  return safeStorage.isEncryptionAvailable()
+    ? {
+        encrypt: (text) => safeStorage.encryptString(text),
+        decrypt: (data) => safeStorage.decryptString(data)
+      }
+    : null
+}
+
+/** The user's own API keys go to the engine only (features 2.9, 11.5). */
+function pushKeys(): void {
+  if (keys) engine?.postMessage({ type: 'keys', keys: keys.all() })
+}
+/** How often a running app asks for a fresh lease, so an ended plan locks soon after (decisions §17). */
+const RENEW_EVERY_MS = 30 * 60 * 1000
+/** Also when the window comes back into focus, at most this often. */
+const RENEW_ON_FOCUS_MS = 5 * 60 * 1000
+let lastRenew = 0
+
+function renewLease(): void {
+  lastRenew = Date.now()
+  void account?.refresh()
+}
 
 const LOCK_TEXT: Record<string, string> = {
   signedOut: 'Sign in to keep using Titan117.',
@@ -127,16 +152,12 @@ function startAccount(): void {
     webUrl: config.webUrl,
     apiUrl: config.apiUrl,
     openExternal: (url) => shell.openExternal(url),
-    keychain: safeStorage.isEncryptionAvailable()
-      ? {
-          encrypt: (text) => safeStorage.encryptString(text),
-          decrypt: (data) => safeStorage.decryptString(data)
-        }
-      : null,
+    keychain: keychain(),
     onChange: () => pushAccount()
   })
-  void account.refresh()
-  setInterval(() => void account?.refresh(), RENEW_EVERY_MS)
+  keys = new Keys(app.getPath('userData'), keychain())
+  renewLease()
+  setInterval(renewLease, RENEW_EVERY_MS)
   // The lease can run out while the app is open: look again every minute.
   let last = ''
   setInterval(() => {
@@ -165,6 +186,7 @@ function startEngine(): void {
         resolve({ url: `http://127.0.0.1:${message.port}`, token: message.token })
         // A new or restarted engine starts locked until it hears where the account stands.
         pushAccount()
+        pushKeys()
       }
     })
     child.once('exit', () => reject(new Error('The engine stopped before it was ready.')))
@@ -253,6 +275,26 @@ function registerBridge(): void {
     return true
   })
 
+  // Keys go in from the window and never come back out: only which ones are saved.
+  ipcMain.handle('keys:saved', async (event) => {
+    if (!fromOurPage(event) || !keys) throw new Error('Refused.')
+    return keys.saved()
+  })
+
+  ipcMain.handle('keys:save', async (event, provider: unknown, key: unknown) => {
+    if (!fromOurPage(event) || !keys) throw new Error('Refused.')
+    const result = await keys.save(provider, key)
+    if (result.ok) pushKeys()
+    return result
+  })
+
+  ipcMain.handle('keys:remove', async (event, provider: unknown) => {
+    if (!fromOurPage(event) || !keys) throw new Error('Refused.')
+    const removed = keys.remove(provider)
+    pushKeys()
+    return removed
+  })
+
   ipcMain.handle('folders:remove', async (event, path: unknown) => {
     if (!fromOurPage(event) || typeof path !== 'string') throw new Error('Refused.')
     engine?.postMessage({ type: 'removeFolder', path })
@@ -273,6 +315,10 @@ function createWindow(): void {
     title: 'Titan117',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: windowWebPreferences(join(__dirname, '../preload/index.js'))
+  })
+
+  mainWindow.on('focus', () => {
+    if (Date.now() - lastRenew > RENEW_ON_FOCUS_MS) renewLease()
   })
 
   mainWindow.on('ready-to-show', () => {
