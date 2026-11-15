@@ -21,6 +21,12 @@ declare global {
       addFolder(): Promise<boolean>
       removeFolder(path: string): Promise<boolean>
       onEngineRestart(listener: () => void): void
+      /** The user's own API keys. A key goes in once and never comes back to the page. */
+      keys: {
+        saved(): Promise<Record<'openrouter' | 'anthropic' | 'openai' | 'google', boolean>>
+        save(provider: string, key: string): Promise<{ ok: true } | { ok: false; problem: string }>
+        remove(provider: string): Promise<boolean>
+      }
       /** The Titan117 account on this laptop (decisions §17, §39). Never the device token. */
       account: {
         status(): Promise<AccountView>

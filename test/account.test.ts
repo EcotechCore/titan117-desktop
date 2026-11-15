@@ -271,6 +271,7 @@ describe('the engine when locked, and with credits', () => {
     expect(done.task.status).toBe('done')
     expect(or.requests[0].url).toBe('http://localhost:3100/api/v1/chat/completions')
     expect(or.requests[0].headers.Authorization).toBe('Bearer t117d_' + 'b'.repeat(43))
+    expect(done.activity.find((a) => a.kind === 'model')?.summary).toMatch(/· via credits$/)
     // The token never shows up in the activity log.
     expect(JSON.stringify(done)).not.toContain('t117d_')
   })

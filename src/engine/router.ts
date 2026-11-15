@@ -6,9 +6,12 @@
 import {
   CLOUD_MODEL_PREFIX,
   LOCAL_MODEL_PREFIX,
+  OWN_KEY_PREFIXES,
   type ChatMessage,
   type CloudModel,
-  type Estimate
+  type DirectProvider,
+  type Estimate,
+  type OwnKeyModel
 } from '../shared/protocol'
 import { ModelError, type ModelProvider } from './models/types'
 
@@ -16,12 +19,20 @@ export interface Route {
   provider: ModelProvider
   /** The model's id at its source. */
   model: string
-  source: 'local' | 'openrouter'
+  source: 'local' | 'openrouter' | DirectProvider
+}
+
+const PROVIDER_NAME: Record<DirectProvider, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  google: 'Google'
 }
 
 export interface Router {
   route(modelId: string): Route
   cloudModels(): Promise<CloudModel[]>
+  /** Models reachable with the user's own Anthropic, OpenAI and Google keys. */
+  ownKeyModels(): Promise<OwnKeyModel[]>
   estimate(modelId: string, messages: ChatMessage[], system: string): Promise<Estimate>
 }
 
@@ -49,6 +60,9 @@ export function formatUsd(usd: number): string {
 export function createRouter(deps: {
   local: ModelProvider
   openrouter: ModelProvider & { listModels(): Promise<CloudModel[]> }
+  /** The user's own keys; a provider without a key lists nothing. */
+  direct?: Partial<Record<DirectProvider, ModelProvider & { listModels(): Promise<OwnKeyModel[]> }>>
+  hasKey?: (provider: DirectProvider) => boolean
   now?: () => number
 }): Router {
   const now = deps.now ?? Date.now
@@ -68,6 +82,14 @@ export function createRouter(deps: {
           model: modelId.slice(CLOUD_MODEL_PREFIX.length),
           source: 'openrouter'
         }
+      for (const [source, prefix] of Object.entries(OWN_KEY_PREFIXES) as [
+        DirectProvider,
+        string
+      ][]) {
+        const provider = deps.direct?.[source]
+        if (modelId.startsWith(prefix) && provider)
+          return { provider, model: modelId.slice(prefix.length), source }
+      }
       throw new ModelError('Choose a model first.')
     },
 
@@ -78,9 +100,20 @@ export function createRouter(deps: {
       return models
     },
 
+    async ownKeyModels() {
+      const lists = await Promise.all(
+        (Object.keys(PROVIDER_NAME) as DirectProvider[])
+          .filter((p) => deps.hasKey?.(p) && deps.direct?.[p])
+          .map((p) => deps.direct![p]!.listModels().catch(() => []))
+      )
+      return lists.flat()
+    },
+
     async estimate(modelId, messages, system) {
       const { source, model } = router.route(modelId)
       if (source === 'local') return { free: true, usd: 0, label: 'Free · runs on this laptop' }
+      if (source !== 'openrouter')
+        return { free: false, usd: null, label: `Billed to your ${PROVIDER_NAME[source]} key` }
       let price: CloudModel | undefined
       try {
         price = (await router.cloudModels()).find((m) => m.id === model)

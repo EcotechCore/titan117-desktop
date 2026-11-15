@@ -962,3 +962,25 @@ progress::-webkit-progress-value {
   color: var(--ink);
   font-weight: 500;
 }
+
+/* ---------- your own API keys (features 2.9, 11.5) ---------- */
+.key-row {
+  align-items: flex-start;
+}
+.key-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.key-form .search {
+  flex: 1;
+  min-width: 260px;
+  margin: 0;
+}
+.key-problem {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--accent-deep);
+  font-size: 13px;
+}

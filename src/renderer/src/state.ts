@@ -3,6 +3,7 @@ import type {
   Activity,
   Approval,
   CloudModel,
+  OwnKeyModel,
   EngineEvent,
   EngineState,
   LocalModel,
@@ -18,6 +19,8 @@ export interface AppState {
   status: 'connecting' | 'ready' | 'lost'
   engine: EngineState | null
   cloud: CloudModel[]
+  /** Models reachable with the user's own API keys. */
+  own: OwnKeyModel[]
   tasks: Task[]
   approvals: Approval[]
   details: Record<string, TaskDetail>
@@ -33,6 +36,7 @@ export const initialState: AppState = {
   status: 'connecting',
   engine: null,
   cloud: [],
+  own: [],
   tasks: [],
   approvals: [],
   details: {},
@@ -45,7 +49,7 @@ export const initialState: AppState = {
 
 export type Action =
   | { type: 'loaded'; engine: EngineState }
-  | { type: 'cloud'; models: CloudModel[] }
+  | { type: 'cloud'; models: CloudModel[]; own: OwnKeyModel[] }
   | { type: 'detail'; detail: TaskDetail }
   | { type: 'event'; event: EngineEvent }
   | { type: 'view'; view: View }
@@ -159,7 +163,7 @@ export function reducer(state: AppState, action: Action): AppState {
         model: state.model ?? action.engine.defaultModel
       }
     case 'cloud':
-      return { ...state, cloud: action.models }
+      return { ...state, cloud: action.models, own: action.own }
     case 'detail':
       return { ...state, details: { ...state.details, [action.detail.task.id]: action.detail } }
     case 'event':

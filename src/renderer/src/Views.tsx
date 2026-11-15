@@ -1,6 +1,8 @@
 // The list views: approvals waiting for you, and models (design.md §6, Lists).
 import { useState } from 'react'
 
+import { OwnKeys } from './Keys'
+
 import {
   CLOUD_MODEL_PREFIX,
   LOCAL_MODEL_PREFIX,
@@ -8,6 +10,7 @@ import {
   type ApprovalAnswer,
   type CloudModel,
   type EngineState,
+  type OwnKeyModel,
   type Task
 } from '../../shared/protocol'
 import { bytes } from './format'
@@ -60,14 +63,18 @@ export function ApprovalsView({
 export function ModelsView({
   engine,
   cloud,
+  own,
   model,
   onUse,
   onDownload,
   onCancel,
-  onRemove
+  onRemove,
+  onKeysChanged
 }: {
   engine: EngineState
   cloud: CloudModel[]
+  own: OwnKeyModel[]
+  onKeysChanged(): void
   model: string | null
   onUse(model: string): void
   onDownload(id: string): void
@@ -158,7 +165,11 @@ export function ModelsView({
       })}
 
       <h2 className="section">Cloud, through OpenRouter</h2>
-      {engine.cloudVia === 'credits' ? (
+      {engine.cloudVia === 'own' ? (
+        <p className="muted">
+          Cloud models use your own OpenRouter key, billed by OpenRouter, not in credits.
+        </p>
+      ) : engine.cloudVia === 'credits' ? (
         <p className="muted">
           Cloud models use your credits: OpenRouter&apos;s price plus 25%, one credit per cent. The
           cost of each step is shown before you send, at OpenRouter&apos;s own prices.
@@ -203,6 +214,14 @@ export function ModelsView({
           </div>
         )
       })}
+
+      <OwnKeys
+        saved={engine.ownKeys}
+        models={own}
+        model={model}
+        onUse={onUse}
+        onChanged={onKeysChanged}
+      />
     </div>
   )
 }

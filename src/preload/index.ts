@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('titan117', {
   onEngineRestart: (listener: () => void) => {
     ipcRenderer.on('engine:restarted', () => listener())
   },
+  keys: {
+    saved: () => ipcRenderer.invoke('keys:saved'),
+    save: (provider: string, key: string) => ipcRenderer.invoke('keys:save', provider, key),
+    remove: (provider: string) => ipcRenderer.invoke('keys:remove', provider)
+  },
   account: {
     status: () => ipcRenderer.invoke('account:status'),
     signIn: () => ipcRenderer.invoke('account:signIn'),

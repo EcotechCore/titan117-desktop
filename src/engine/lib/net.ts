@@ -4,7 +4,14 @@
  * (decisions §39). Anything else is refused. Tools get no network yet; the per-task network policy
  * (security.md A3) arrives with the browser and search tools.
  */
-const ALLOWED_HOSTS = new Set(['openrouter.ai', 'huggingface.co'])
+const ALLOWED_HOSTS = new Set([
+  'openrouter.ai',
+  'huggingface.co',
+  // The user's own API keys (features 2.9, 11.5), straight to each provider.
+  'api.anthropic.com',
+  'api.openai.com',
+  'generativelanguage.googleapis.com'
+])
 
 export class NetworkError extends Error {
   constructor(message: string) {
