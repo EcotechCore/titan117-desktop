@@ -64,7 +64,7 @@ For comparison, Lovable top-ups are about $0.30 per credit (one edit); our 1,000
 - **Order of use:** this month's credits, then rolled-over credits, then top-ups (oldest first).
 - **Cancelling:** the plan runs to the end of the paid period; then the app locks, monthly credits expire and top-ups wait (up to 12 months) for a new subscription.
 - **Upgrading:** the new allowance starts at once, prorated. **Downgrading** takes effect at the next period.
-- **Refunds:** unused top-ups within 14 days (EU withdrawal right).
+- **No refunds** (decisions §33.8): plans and top-ups aren't refunded. Private buyers waive the 14-day withdrawal right with the checkbox at Checkout. The only exceptions are our own billing mistakes or long outages, handled by hand.
 
 ## Currencies (decided)
 
