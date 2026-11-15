@@ -24,7 +24,10 @@
   "dependencies": {
     "@anthropic-ai/sdk": "1.8.0",
     "@electron-toolkit/utils": "^4.0.0",
-    "node-llama-cpp": "3.22.3"
+    "@huggingface/transformers": "4.3.2",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "node-llama-cpp": "3.22.3",
+    "playwright-core": "1.65.1"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.1",

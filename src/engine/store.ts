@@ -50,6 +50,7 @@ function toApproval(r: Row): Approval {
     input: JSON.parse(r.input as string) as Record<string, unknown>,
     status: r.status as ApprovalStatus,
     canAlways: r.can_always === 1,
+    alwaysLabel: (r.always_label as string | null) ?? null,
     answeredBy: (r.answered_by as string | null) ?? null,
     createdAt: r.created_at as number,
     answeredAt: (r.answered_at as number | null) ?? null
@@ -89,12 +90,22 @@ export interface Store {
     summary: string
     input: Record<string, unknown>
     canAlways: boolean
+    alwaysLabel?: string | null
   }): Approval
   answerApproval(id: string, status: ApprovalStatus, by: string): Approval
   getApproval(id: string): Approval | null
   listApprovals(filter: { taskId?: string; status?: ApprovalStatus }): Approval[]
   allowAlways(taskId: string, tool: string): void
   isAlwaysAllowed(taskId: string, tool: string): boolean
+  /** Sites a task may reach (security.md A3). */
+  sites: {
+    has(taskId: string, host: string): boolean
+    add(taskId: string, host: string): void
+    list(taskId: string): string[]
+  }
+  /** Shell commands always allowed in a folder (feature 3.8). */
+  hasStanding(folder: string, command: string): boolean
+  addStanding(folder: string, command: string): void
   log(entry: Omit<Activity, 'id' | 'at'>): Activity
   listActivity(taskId: string): Activity[]
   /** After a restart: nothing is running any more (checkpoints come in phase 5). */
@@ -178,8 +189,8 @@ export function createStore(db: Db, emit: Emit): Store {
       const id = randomUUID()
       db.prepare(
         `insert into approvals
-           (id, task_id, call_id, tool, risk, summary, input, status, can_always, created_at)
-         values (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+           (id, task_id, call_id, tool, risk, summary, input, status, can_always, always_label, created_at)
+         values (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`
       ).run(
         id,
         input.taskId,
@@ -189,6 +200,7 @@ export function createStore(db: Db, emit: Emit): Store {
         redact(input.summary),
         JSON.stringify(redactDeep(input.input)),
         input.canAlways ? 1 : 0,
+        input.alwaysLabel ?? null,
         Date.now()
       )
       const approval = store.getApproval(id)!
@@ -238,6 +250,35 @@ export function createStore(db: Db, emit: Emit): Store {
       return !!db
         .prepare('select 1 from task_allows where task_id = ? and tool = ?')
         .get(taskId, tool)
+    },
+
+    sites: {
+      has: (taskId, host) =>
+        !!db.prepare('select 1 from task_sites where task_id = ? and host = ?').get(taskId, host),
+      add(taskId, host) {
+        db.prepare('insert or ignore into task_sites (task_id, host) values (?, ?)').run(
+          taskId,
+          host
+        )
+      },
+      list: (taskId) =>
+        (
+          db.prepare('select host from task_sites where task_id = ? order by host').all(taskId) as {
+            host: string
+          }[]
+        ).map((r) => r.host)
+    },
+
+    hasStanding(folder, command) {
+      return !!db
+        .prepare('select 1 from shell_allows where folder = ? and command = ?')
+        .get(folder, command)
+    },
+
+    addStanding(folder, command) {
+      db.prepare(
+        'insert or ignore into shell_allows (folder, command, created_at) values (?, ?, ?)'
+      ).run(folder, command, Date.now())
     },
 
     log(entry) {

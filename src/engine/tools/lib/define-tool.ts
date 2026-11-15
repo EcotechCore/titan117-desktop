@@ -6,21 +6,68 @@
  */
 import type { Risk } from '../../../shared/protocol'
 import type { FileAccess } from '../../lib/folders'
+import type { ShellAccess } from '../../lib/shell'
+import type { TaskNet } from '../../lib/web'
+import type { BrowserAccess } from '../../lib/browser'
+import type { MemoryAccess } from '../../memory'
+import type { SkillAccess } from '../../lib/skills'
+import type { RecordAccess } from '../../records'
+import type { SpeechAccess } from '../../lib/speech'
 
 /** A small JSON schema: what models are told and what input is checked against. */
 export interface ParamSchema {
   type: 'object'
-  properties: Record<string, { type: 'string' | 'number' | 'boolean'; description: string }>
+  properties: Record<
+    string,
+    {
+      type: 'string' | 'number' | 'boolean' | 'object' | 'array'
+      description: string
+      enum?: string[]
+      /** A connector's property with a type we don't check (a union): passed through. */
+      unchecked?: boolean
+    }
+  >
   required: string[]
 }
 
 export interface ToolPermissions {
   /** Access to the folders the user allowed. Without it, `ctx.files` refuses. */
   folders?: 'read' | 'write'
+  /** Web requests through the task's network policy (security.md A3). */
+  network?: boolean
+  /** Commands in the sandboxed shell (feature 3.8). */
+  shell?: boolean
+  /** The browser (feature 3.10). */
+  browser?: boolean
+  /** Memory: reading it, or also saving to it (features 3.2-3.4). */
+  memory?: 'read' | 'write'
+  /** Learned skills (feature 3.5). */
+  skills?: 'read' | 'write'
+  /** Records of past tasks (feature 3.13). */
+  records?: boolean
+  /** Speech to text and text to speech (feature 3.14). */
+  speech?: boolean
 }
 
 export interface ToolContext {
+  taskId: string
+  agent: string
   files: FileAccess
+  net: TaskNet
+  shell: ShellAccess
+  browser: BrowserAccess
+  memory: MemoryAccess
+  skills: SkillAccess
+  records: RecordAccess
+  speech: SpeechAccess
+  /**
+   * Ask the user mid-run (a final step on a page, a site that forbids
+   * automation). Resolves true when they approve. Laptop-only.
+   */
+  ask(summary: string): Promise<boolean>
+  /** A remembered answer for this tool (e.g. per site), or null. */
+  remembered(key: string): boolean | null
+  remember(key: string, answer: boolean): void
   signal: AbortSignal
 }
 
@@ -29,6 +76,22 @@ export interface ToolResult {
   output: string
   /** One line for the activity timeline. */
   summary: string
+}
+
+/**
+ * How risky one particular call is, for tools whose risk depends on the
+ * input (a shell command). Never lower than `read`, and `alwaysAsks` can't
+ * be overridden by an earlier "always".
+ */
+export interface Assessment {
+  risk: Risk
+  summary: string
+  /** A standing "always allow" this call may use or create, e.g. a command in a folder. */
+  standing?: { folder: string; command: string; label: string }
+  /** On the always-ask list (decisions §33.1): asks every time, never "always". */
+  alwaysAsks?: boolean
+  /** Refused outright, with the reason. */
+  refuse?: string
 }
 
 export interface ToolDefinition<Input = Record<string, unknown>> {
@@ -42,30 +105,52 @@ export interface ToolDefinition<Input = Record<string, unknown>> {
    * passed to the model marked as data, never as instructions (guardrails §5).
    */
   untrustedOutput: boolean
+  /**
+   * True when the output is the user's private data (files, memory, mail,
+   * command output): the task becomes private and its passages may not
+   * leave in a web request (security.md A3).
+   */
+  privateOutput: boolean
   /** Answerable only on the laptop, never remotely (guardrails §9). */
   laptopOnly: boolean
   /** One line for the approval card: what will happen. */
   describe(input: Input): string
+  /** The full JSON schema for the model, when richer than `params` (connector tools). */
+  rawSchema?: Record<string, unknown>
+  /** Optional: a risk for this call that depends on its input. */
+  assess?(input: Input, ctx: { folders: string[]; untrustedSeen: boolean }): Assessment
   run(input: Input, ctx: ToolContext): Promise<ToolResult>
 }
 
-const TOOL_NAME = /^[a-z][a-z0-9_]{1,40}$/
+const TOOL_NAME = /^[a-z][a-z0-9_]{1,63}$/
 
 export function defineTool<Input = Record<string, unknown>>(
-  definition: Omit<ToolDefinition<Input>, 'laptopOnly' | 'untrustedOutput'> &
-    Partial<Pick<ToolDefinition<Input>, 'laptopOnly' | 'untrustedOutput'>>
+  definition: Omit<ToolDefinition<Input>, 'laptopOnly' | 'untrustedOutput' | 'privateOutput'> &
+    Partial<Pick<ToolDefinition<Input>, 'laptopOnly' | 'untrustedOutput' | 'privateOutput'>>
 ): ToolDefinition<Input> {
   if (!TOOL_NAME.test(definition.name)) throw new Error(`Bad tool name: ${definition.name}`)
   if (!['read', 'write', 'external'].includes(definition.risk))
     throw new Error(`Tool ${definition.name} needs a risk level.`)
-  if (definition.risk === 'read' && definition.permissions.folders === 'write')
-    throw new Error(`Tool ${definition.name} writes to folders, so its risk can't be "read".`)
+  const p = definition.permissions
+  if (
+    definition.risk === 'read' &&
+    !definition.assess &&
+    (p.folders === 'write' || p.shell || p.memory === 'write' || p.skills === 'write')
+  )
+    throw new Error(`Tool ${definition.name} changes things, so its risk can't be "read".`)
   return Object.freeze({
     untrustedOutput: false,
+    privateOutput: false,
     // External actions are laptop-only unless a tool says otherwise.
     laptopOnly: definition.risk === 'external',
     ...definition
   })
+}
+
+function typeOf(value: unknown): string {
+  if (Array.isArray(value)) return 'array'
+  if (value === null) return 'null'
+  return typeof value
 }
 
 /** Check a model's arguments against the tool's schema. Returns what's wrong, or null. */
@@ -78,7 +163,10 @@ export function checkInput(schema: ParamSchema, input: unknown): string | null {
   for (const [name, value] of Object.entries(record)) {
     const property = schema.properties[name]
     if (!property) return `"${name}" is not a parameter of this tool.`
-    if (typeof value !== property.type) return `"${name}" must be a ${property.type}.`
+    if (value === undefined || value === null || property.unchecked) continue
+    if (typeOf(value) !== property.type) return `"${name}" must be a ${property.type}.`
+    if (property.enum && !property.enum.includes(value as string))
+      return `"${name}" must be one of: ${property.enum.join(', ')}.`
   }
   return null
 }

@@ -10,13 +10,37 @@ import type { EngineState } from '../../shared/protocol'
 const TOOL_LABEL: Record<string, string> = {
   list_folder: 'List folder',
   read_file: 'Read file',
-  write_file: 'Write file'
+  write_file: 'Write file',
+  search_files: 'Search files',
+  move_file: 'Move',
+  make_folder: 'New folder',
+  delete_file: 'Delete',
+  run_command: 'Command',
+  run_code: 'Script',
+  web_fetch: 'Read page',
+  browser_open: 'Browser',
+  browser_view: 'Browser · read page',
+  browser_click: 'Browser · click',
+  browser_type: 'Browser · fill',
+  browser_select: 'Browser · choose',
+  browser_back: 'Browser · back',
+  memory_search: 'Memory',
+  memory_save: 'Remember',
+  memory_forget: 'Forget',
+  skill_read: 'Skill',
+  skill_save: 'Save skill',
+  past_tasks: 'Past tasks',
+  speak: 'Read aloud',
+  transcribe: 'Transcribe'
 }
 
 function stepLabel(call: ToolCall): string {
-  const what = TOOL_LABEL[call.name] ?? call.name
-  const path = typeof call.input.path === 'string' ? call.input.path : ''
-  return path ? `${what} · ${path}` : what
+  const what = TOOL_LABEL[call.name] ?? call.name.replace(/_/g, ' ')
+  const detail = ['path', 'command', 'url', 'query', 'name', 'text', 'from'].map(
+    (k) => call.input[k]
+  )
+  const first = detail.find((d) => typeof d === 'string' && d) as string | undefined
+  return first ? `${what} · ${first.length > 90 ? `${first.slice(0, 90)}…` : first}` : what
 }
 
 export function ApprovalCard({
@@ -27,14 +51,25 @@ export function ApprovalCard({
   onAnswer(id: string, answer: ApprovalAnswer): void
 }): React.JSX.Element {
   const content = typeof approval.input.content === 'string' ? approval.input.content : null
+  const code = typeof approval.input.code === 'string' ? approval.input.code : null
+  const steps = typeof approval.input.steps === 'string' ? approval.input.steps : null
+  const review = content ?? code ?? steps
   return (
     <div className="approval" role="group" aria-label="Approval needed">
-      <p className="approval-q">Allow Titan to do this?</p>
+      <p className="approval-q">
+        {approval.risk === 'external' ? 'This always needs your OK:' : 'Allow Titan to do this?'}
+      </p>
       <p className="approval-what">{approval.summary}</p>
-      {content !== null && (
-        <details className="approval-review">
-          <summary>Review what will be written</summary>
-          <pre>{content.length > 4000 ? `${content.slice(0, 4000)}\n…` : content}</pre>
+      {review !== null && (
+        <details className="approval-review" open={code !== null}>
+          <summary>
+            {code !== null
+              ? 'Review the script'
+              : steps !== null
+                ? 'Review the skill'
+                : 'Review what will be written'}
+          </summary>
+          <pre className="cmd">{review.length > 4000 ? `${review.slice(0, 4000)}\n…` : review}</pre>
         </details>
       )}
       <div className="approval-actions">
@@ -43,7 +78,7 @@ export function ApprovalCard({
         </button>
         {approval.canAlways && (
           <button className="btn" onClick={() => onAnswer(approval.id, 'always')}>
-            Always in this task
+            {approval.alwaysLabel ?? 'Always in this task'}
           </button>
         )}
         <button className="btn" onClick={() => onAnswer(approval.id, 'deny')}>
@@ -81,12 +116,14 @@ export function TaskView({
   detail,
   streaming,
   engine,
-  onAnswer
+  onAnswer,
+  onReadAloud
 }: {
   detail: TaskDetail
   streaming: string
   engine: EngineState | null
   onAnswer(id: string, answer: ApprovalAnswer): void
+  onReadAloud?(text: string): void
 }): React.JSX.Element {
   const { task, messages, approvals } = detail
   const end = useRef<HTMLDivElement>(null)
@@ -143,6 +180,11 @@ export function TaskView({
               ) : null
             })}
             {message.text && <div className="reply-text">{message.text}</div>}
+            {message.text && onReadAloud && (
+              <button className="read-aloud" onClick={() => onReadAloud(message.text)}>
+                <Icon name="speaker" /> Read aloud
+              </button>
+            )}
           </div>
         )
       })}

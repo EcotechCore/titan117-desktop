@@ -65,3 +65,27 @@ describe('links and navigation', () => {
     expect(isAllowedNavigation('http://localhost:9999/', 'http://localhost:5173')).toBe(false)
   })
 })
+
+describe('browser permissions (feature 3.14)', () => {
+  it('allow only the microphone, only for our own page', async () => {
+    const { allowPermission } = await import('../src/main/window')
+    const page = 'titan117://app/index.html'
+    expect(allowPermission('media', { mediaTypes: ['audio'], requestingUrl: page })).toBe(true)
+    expect(allowPermission('media', { mediaTypes: ['video'], requestingUrl: page })).toBe(false)
+    expect(allowPermission('media', { mediaTypes: ['audio', 'video'], requestingUrl: page })).toBe(
+      false
+    )
+    expect(allowPermission('media', { mediaTypes: [], requestingUrl: page })).toBe(false)
+    expect(
+      allowPermission('media', { mediaTypes: ['audio'], requestingUrl: 'https://evil.example/' })
+    ).toBe(false)
+    for (const other of ['geolocation', 'notifications', 'display-capture', 'clipboard-read'])
+      expect(allowPermission(other, { requestingUrl: page })).toBe(false)
+  })
+
+  it('the main process installs the handlers', () => {
+    const main = readFileSync(join(__dirname, '../src/main/index.ts'), 'utf8')
+    expect(main).toMatch(/setPermissionRequestHandler\([\s\S]*allowPermission/)
+    expect(main).toMatch(/setPermissionCheckHandler\([\s\S]*allowPermission/)
+  })
+})

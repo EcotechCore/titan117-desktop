@@ -20,22 +20,29 @@ import { Eyes, Icon, type EyesState } from './ui'
 import { AccountBox, LeaseWarning, LockScreen } from './Account'
 import { useAccount } from './useAccount'
 import { ApprovalsView, ModelsView } from './Views'
+import { MemoryView } from './Memory'
+import { ConnectorsView } from './Connectors'
+import { play, record, type Recording } from './voice'
 
 const PROMPTS = [
-  'List what is in my folder and tell me what it is for.',
-  'Read the newest text file in my folder and summarise it.',
-  'Write a file called notes.txt with three ideas for this week.',
-  'What can you do on this laptop today?'
+  'Find every invoice in my folder and total them in a CSV.',
+  'Read https://titan117.com and tell me what it offers.',
+  'Rename the photos in my folder by the date they were taken.',
+  'Remember that our company is called … and what we sell.'
 ]
 
 function App(): React.JSX.Element {
   const [state, dispatch] = useReducer(reducer, initialState)
   const client = useRef<EngineClient | null>(null)
+  // The same client, as state, for the views that load their own lists.
+  const [api, setApi] = useState<EngineClient | null>(null)
   const [text, setText] = useState('')
   const [estimate, setEstimate] = useState<Estimate | null>(null)
   const [attempt, setAttempt] = useState(0)
   const input = useRef<HTMLTextAreaElement>(null)
   const account = useAccount()
+  const recording = useRef<Recording | null>(null)
+  const [voice, setVoice] = useState<'off' | 'recording' | 'transcribing'>('off')
 
   const { engine, view, model } = state
   const taskId = view.kind === 'task' ? view.id : null
@@ -58,6 +65,7 @@ function App(): React.JSX.Element {
       try {
         const api = await connect()
         client.current = api
+        setApi(api)
         dispatch({ type: 'loaded', engine: await api.get<EngineState>('/v1/state') })
         void api
           .get<{ cloud: CloudModel[]; own: OwnKeyModel[] }>('/v1/models')
@@ -154,6 +162,46 @@ function App(): React.JSX.Element {
     dispatch({ type: 'cloud', models: m.cloud, own: m.own })
   }, [])
 
+  /** Voice input: press to record, press again to turn it into text (on this laptop). */
+  async function toggleVoice(): Promise<void> {
+    if (voice === 'transcribing') return
+    if (voice === 'off') {
+      try {
+        recording.current = await record()
+        setVoice('recording')
+      } catch {
+        fail(new Error('The microphone could not be used. Check that Titan117 may use it.'))
+      }
+      return
+    }
+    setVoice('transcribing')
+    try {
+      const pcm16 = await recording.current!.stop()
+      const { text: heard } = await client.current!.send<{ text: string }>(
+        'POST',
+        '/v1/speech/transcribe',
+        { pcm16 }
+      )
+      if (heard) setText((current) => (current ? `${current} ${heard}` : heard))
+      input.current?.focus()
+    } catch (error) {
+      fail(error)
+    } finally {
+      recording.current = null
+      setVoice('off')
+    }
+  }
+
+  const readAloud = useCallback(
+    (spoken: string) => {
+      client.current
+        ?.send<{ wav: string }>('POST', '/v1/speech/speak', { text: spoken })
+        .then((r) => play(r.wav))
+        .catch(fail)
+    },
+    [fail]
+  )
+
   const answer = useCallback(
     (id: string, reply: ApprovalAnswer) => {
       client.current?.send('POST', `/v1/approvals/${id}`, { answer: reply }).catch(fail)
@@ -223,6 +271,18 @@ function App(): React.JSX.Element {
           onClick={() => dispatch({ type: 'view', view: { kind: 'approvals' } })}
         >
           <Icon name="shield" /> Approvals {waiting > 0 && <span className="count">{waiting}</span>}
+        </button>
+        <button
+          className={view.kind === 'memory' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'memory' } })}
+        >
+          <Icon name="brain" /> Memory
+        </button>
+        <button
+          className={view.kind === 'connectors' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'connectors' } })}
+        >
+          <Icon name="plug" /> Connectors
         </button>
         <button
           className={view.kind === 'models' ? 'nav on' : 'nav'}
@@ -295,6 +355,12 @@ function App(): React.JSX.Element {
               onOpen={(id) => dispatch({ type: 'view', view: { kind: 'task', id } })}
             />
           )}
+          {view.kind === 'memory' && (
+            <MemoryView client={api} changed={state.changed} onProblem={fail} />
+          )}
+          {view.kind === 'connectors' && (
+            <ConnectorsView client={api} changed={state.changed.connectors ?? 0} onProblem={fail} />
+          )}
           {view.kind === 'models' && (
             <ModelsView
               engine={engine}
@@ -315,8 +381,8 @@ function App(): React.JSX.Element {
               <Eyes state="working" size="large" />
               <h1>What should Titan do?</h1>
               <p className="muted">
-                Titan works on this laptop. It reads only the folders you allow, and asks before it
-                changes anything.
+                Titan works on this laptop with files, the shell, the browser and your connectors.
+                It reads only the folders you allow, and asks before it changes anything.
               </p>
               <div className="prompts">
                 {PROMPTS.map((prompt) => (
@@ -333,6 +399,7 @@ function App(): React.JSX.Element {
               streaming={state.streaming[detail.task.id] ?? ''}
               engine={engine}
               onAnswer={answer}
+              onReadAloud={readAloud}
             />
           )}
         </div>
@@ -384,6 +451,21 @@ function App(): React.JSX.Element {
                   </select>
                 </label>
                 <span className="cost mono">{model && estimate ? estimate.label : ''}</span>
+                <button
+                  className="voice"
+                  aria-label={
+                    voice === 'recording'
+                      ? 'Stop recording and write it out'
+                      : voice === 'transcribing'
+                        ? 'Writing out what you said'
+                        : 'Speak instead of typing'
+                  }
+                  aria-pressed={voice === 'recording'}
+                  disabled={voice === 'transcribing'}
+                  onClick={() => void toggleVoice()}
+                >
+                  <Icon name="mic" />
+                </button>
                 {busy ? (
                   <button
                     className="send"

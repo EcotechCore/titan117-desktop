@@ -12,7 +12,8 @@ import type { AddressInfo } from 'node:net'
 import type { ApiErrorCode, EngineEvent } from '../../shared/protocol'
 import type { ApiRequest, ApiResponse } from '../api'
 
-const MAX_BODY_BYTES = 1_000_000
+// Large enough for a few minutes of recorded speech to transcribe.
+const MAX_BODY_BYTES = 8_000_000
 
 /** The per-install token: made once, kept in the app's data folder. */
 export function installToken(dataDir: string): string {
@@ -44,6 +45,12 @@ export async function startServer(options: {
   /** The window's own origins. A request with any other Origin is refused. */
   allowedOrigins: string[]
   handle(request: ApiRequest): Promise<ApiResponse>
+  /**
+   * Scripts a task runs call Titan's tools here (feature 4.10) with a token
+   * that belongs to that task, valid only while it runs, and only for
+   * `POST /v1/tool-calls`. Returns the task's id, or null.
+   */
+  scriptTask?(token: string): string | null
   port?: number
 }): Promise<LocalServer> {
   const { token, handle } = options
@@ -116,10 +123,15 @@ export async function startServer(options: {
       }
 
       const auth = req.headers.authorization ?? ''
-      if (!auth.startsWith('Bearer ') || !sameToken(auth.slice(7), token))
+      const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+      const path = url.pathname
+      const given = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+      const scriptTask =
+        origin === undefined && req.method === 'POST' && path === '/v1/tool-calls' && given
+          ? (options.scriptTask?.(given) ?? null)
+          : null
+      if (!scriptTask && (!given || !sameToken(given, token)))
         return refuse(res, 401, 'UNAUTHENTICATED', headers)
-
-      const path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
 
       if (req.method === 'GET' && path === '/v1/events') {
         res.writeHead(200, {
@@ -140,7 +152,13 @@ export async function startServer(options: {
       } catch {
         return refuse(res, 400, 'BAD_REQUEST', headers)
       }
-      const response = await handle({ method: req.method ?? 'GET', path, body })
+      const response = await handle({
+        method: req.method ?? 'GET',
+        path,
+        body,
+        query: Object.fromEntries(url.searchParams),
+        ...(scriptTask ? { scriptTask } : {})
+      })
       send(res, response.status, response.body, headers)
     })().catch(() => {
       if (!res.headersSent) refuse(res, 500, 'INTERNAL', {})

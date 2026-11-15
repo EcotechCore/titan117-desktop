@@ -27,6 +27,14 @@ declare global {
         save(provider: string, key: string): Promise<{ ok: true } | { ok: false; problem: string }>
         remove(provider: string): Promise<boolean>
       }
+      /** Connector secrets (feature 3.6): they go into the keychain and never come back. */
+      connectors: {
+        setSecrets(
+          id: string,
+          secrets: Record<string, string>
+        ): Promise<{ ok: true } | { ok: false; problem: string }>
+        removeSecrets(id: string): Promise<boolean>
+      }
       /** The Titan117 account on this laptop (decisions §17, §39). Never the device token. */
       account: {
         status(): Promise<AccountView>

@@ -71,8 +71,10 @@ export interface Approval {
   summary: string
   input: Record<string, unknown>
   status: ApprovalStatus
-  /** Whether "always allow in this task" is offered (never for external actions). */
+  /** Whether "always" is offered (never for external actions or the always-ask list). */
   canAlways: boolean
+  /** What "always" means here when it isn't "always in this task", e.g. a command in a folder. */
+  alwaysLabel: string | null
   answeredBy: string | null
   createdAt: number
   answeredAt: number | null
@@ -165,6 +167,8 @@ export type EngineEvent =
       localModels: LocalModel[]
     }
   | { type: 'settings'; defaultModel: string | null }
+  /** Memory, skills, past-task records or connectors changed: the window reloads that list. */
+  | { type: 'changed'; what: 'memory' | 'skills' | 'records' | 'connectors' }
 
 /** Error codes the local API answers with. Never stack traces. */
 export type ApiErrorCode =
@@ -198,4 +202,59 @@ export interface OwnKeyModel {
   id: string
   name: string
   provider: DirectProvider
+}
+
+/** A memory (features 3.2-3.4). Scope `shared` or `agent:<name>`. */
+export type MemoryKind = 'fact' | 'preference' | 'profile' | 'note'
+
+export interface Memory {
+  id: string
+  scope: string
+  kind: MemoryKind
+  text: string
+  /** Who wrote it: "you", or an agent and the task it came from. */
+  source: string
+  taskId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+/** A learned skill (feature 3.5): a Markdown file the user can read and edit. */
+export interface Skill {
+  name: string
+  description: string
+  source: string
+  body: string
+  updatedAt: number
+}
+
+/** How a past task was solved (feature 3.13). */
+export interface TaskRecord {
+  id: string
+  taskId: string
+  agent: string
+  goal: string
+  outcome: string
+  steps: string
+  failed: string
+  worked: string
+  places: string
+  createdAt: number
+}
+
+/** An MCP connector the user added (feature 3.6). Its secrets stay in the keychain. */
+export interface Connector {
+  id: string
+  name: string
+  kind: 'stdio' | 'http'
+  command: string | null
+  args: string[]
+  url: string | null
+  enabled: boolean
+  /** The names of the secrets it uses (never the values). */
+  secretNames: string[]
+  status: 'off' | 'connecting' | 'ready' | 'error'
+  error: string | null
+  tools: { name: string; description: string; risk: Risk }[]
+  createdAt: number
 }

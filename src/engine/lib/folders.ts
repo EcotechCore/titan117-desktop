@@ -76,10 +76,28 @@ export interface FolderEntry {
   sizeBytes: number
 }
 
+export interface SearchHit {
+  path: string
+  /** Matching lines (for a content search), each with its line number. */
+  lines: string[]
+}
+
 export interface FileAccess {
   list(path: string): Promise<FolderEntry[]>
   read(path: string, maxBytes?: number): Promise<{ text: string; truncated: boolean }>
+  /** Raw bytes (audio for speech, binary checks). */
+  readBytes(path: string, maxBytes?: number): Promise<Buffer>
   write(path: string, text: string): Promise<{ bytes: number; created: boolean }>
+  writeBytes(path: string, data: Buffer): Promise<{ bytes: number; created: boolean }>
+  /** Move or rename inside the allowed folders. Never replaces an existing file. */
+  move(from: string, to: string): Promise<void>
+  makeFolder(path: string): Promise<void>
+  /** Delete a file or an empty folder (to the user's recycle bin is the window's job; this is final). */
+  remove(path: string): Promise<'file' | 'folder'>
+  /** Find files by name (a glob-like pattern) and, optionally, containing some text. */
+  search(path: string, name: string, text?: string): Promise<SearchHit[]>
+  /** The real path a tool's path stands for, checked. */
+  resolve(path: string): Promise<string>
 }
 
 export interface FolderPolicy {
@@ -122,6 +140,19 @@ export async function resolveAllowed(policy: FolderPolicy, path: string): Promis
 
 const DEFAULT_READ_BYTES = 200_000
 const MAX_WRITE_BYTES = 5_000_000
+const MAX_BINARY_BYTES = 50_000_000
+const SEARCH_FILES = 5_000
+const SEARCH_HITS = 200
+
+/** `*.txt`, `invoice*`, `report` → a case-insensitive file-name test. */
+export function namePattern(pattern: string): RegExp {
+  const p = pattern.trim() || '*'
+  const body = p
+    .split('*')
+    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*')
+  return p.includes('*') ? new RegExp(`^${body}$`, 'i') : new RegExp(body, 'i')
+}
 
 export function createFileAccess(
   policy: FolderPolicy,
@@ -167,6 +198,121 @@ export function createFileAccess(
       } finally {
         await handle.close()
       }
+    },
+
+    async readBytes(path, maxBytes = MAX_BINARY_BYTES) {
+      need('read')
+      const real = await resolveAllowed(policy, path)
+      const { size } = await fs.stat(real)
+      if (size > maxBytes) throw new Error('That file is too large.')
+      return fs.readFile(real)
+    },
+
+    async writeBytes(path, data) {
+      need('write')
+      if (data.length > MAX_BINARY_BYTES) throw new Error('That file is too large.')
+      const real = await resolveAllowed(policy, path)
+      const existed = await fs.stat(real).then(
+        () => true,
+        () => false
+      )
+      await fs.mkdir(dirname(real), { recursive: true })
+      const again = await resolveAllowed(policy, real)
+      await fs.writeFile(again, data)
+      return { bytes: data.length, created: !existed }
+    },
+
+    async move(from, to) {
+      need('write')
+      const source = await resolveAllowed(policy, from)
+      const target = await resolveAllowed(policy, to)
+      await fs.stat(source)
+      const taken = await fs.stat(target).then(
+        () => true,
+        () => false
+      )
+      if (taken) throw new Error(`"${to}" already exists. Choose another name.`)
+      await fs.mkdir(dirname(target), { recursive: true })
+      const again = await resolveAllowed(policy, target)
+      await fs.rename(source, again)
+    },
+
+    async makeFolder(path) {
+      need('write')
+      const real = await resolveAllowed(policy, path)
+      await fs.mkdir(real, { recursive: true })
+    },
+
+    async remove(path) {
+      need('write')
+      const real = await resolveAllowed(policy, path)
+      if (policy.allowed.some((folder) => comparable(folder) === comparable(real)))
+        throw new PermissionError('An allowed folder itself is never deleted.')
+      const info = await fs.lstat(real)
+      if (info.isDirectory()) {
+        await fs.rmdir(real)
+        return 'folder'
+      }
+      await fs.unlink(real)
+      return 'file'
+    },
+
+    async search(path, name, text) {
+      need('read')
+      const root = await resolveAllowed(policy, path)
+      const test = namePattern(name)
+      const needle = text?.toLowerCase()
+      const hits: SearchHit[] = []
+      const queue = [root]
+      let seen = 0
+      while (queue.length && hits.length < SEARCH_HITS && seen < SEARCH_FILES) {
+        const dir = queue.shift()!
+        let entries
+        try {
+          entries = await fs.readdir(dir, { withFileTypes: true })
+        } catch {
+          continue
+        }
+        for (const entry of entries) {
+          const full = join(dir, entry.name)
+          if (isCredentialPath(full) || entry.name === 'node_modules' || entry.name === '.git')
+            continue
+          if (entry.isDirectory()) {
+            queue.push(full)
+            continue
+          }
+          if (!entry.isFile()) continue
+          seen++
+          if (!test.test(entry.name)) continue
+          const shown = relative(root, full) || entry.name
+          if (!needle) {
+            hits.push({ path: shown, lines: [] })
+            continue
+          }
+          try {
+            const { size } = await fs.stat(full)
+            if (size > 2_000_000) continue
+            const buffer = await fs.readFile(full)
+            if (buffer.includes(0)) continue
+            const lines = buffer
+              .toString('utf8')
+              .split(/\r?\n/)
+              .map((line, i) => ({ line, i }))
+              .filter(({ line }) => line.toLowerCase().includes(needle))
+              .slice(0, 5)
+              .map(({ line, i }) => `${i + 1}: ${line.trim().slice(0, 200)}`)
+            if (lines.length) hits.push({ path: shown, lines })
+          } catch {
+            // Unreadable: skipped.
+          }
+        }
+      }
+      return hits
+    },
+
+    async resolve(path) {
+      need('read')
+      return resolveAllowed(policy, path)
     },
 
     async write(path, text) {

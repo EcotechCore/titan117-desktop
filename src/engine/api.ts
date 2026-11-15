@@ -20,15 +20,27 @@ import {
 import type { LocalModels } from './lib/llama'
 import type { Logger } from './lib/log'
 import { ModelError } from './models/types'
+import { ConnectorError } from './lib/mcp'
+import { SkillError } from './lib/skills'
+import { MemoryError } from './memory'
 import { ApprovalError, type PermissionLayer } from './permissions'
 import type { Router } from './router'
 import { RuntimeError, systemPrompt, type Runtime } from './runtime'
 import type { Store } from './store'
+import type { ConnectorHub } from './lib/mcp'
+import type { SkillStore } from './lib/skills'
+import type { SpeechEngine } from './lib/speech'
+import type { MemoryStore } from './memory'
+import type { RecordStore } from './records'
+import type { CallOutcome } from './permissions'
 
 export interface ApiRequest {
   method: string
   path: string
   body: unknown
+  query?: Record<string, string>
+  /** Set when a script of this task is calling a tool (feature 4.10). */
+  scriptTask?: string
 }
 
 export interface ApiResponse {
@@ -73,11 +85,117 @@ export function createApi(deps: {
   local: LocalModels
   settings: Settings
   log: Logger
+  memory?: MemoryStore
+  skills?: SkillStore
+  records?: RecordStore
+  connectors?: ConnectorHub
+  speech?: SpeechEngine
+  /** A tool call from a task's script (feature 4.10). */
+  scriptCall?(taskId: string, name: string, input: unknown): Promise<CallOutcome>
 }): (request: ApiRequest) => Promise<ApiResponse> {
   const { store, runtime, permissions, router, local, settings, log } = deps
 
   function field(body: unknown, name: string): unknown {
     return body && typeof body === 'object' ? (body as Record<string, unknown>)[name] : undefined
+  }
+
+  function need<T>(value: T | undefined): T {
+    if (value === undefined) throw new ApiError(404, 'NOT_FOUND', 'Not available.')
+    return value
+  }
+
+  /** Memory, skills, past tasks, connectors and speech for the window. Null when the route isn't one of these. */
+  async function phase3(
+    key: string,
+    id: string | undefined,
+    body: unknown,
+    query: Record<string, string>
+  ): Promise<unknown | null> {
+    if (key === 'POST speech/:id') key = `POST speech/${id}`
+    switch (key) {
+      case 'GET memory':
+        return { memories: need(deps.memory).list({ query: query.q || undefined }) }
+      case 'POST memory':
+        return {
+          memory: need(deps.memory).add({
+            scope: (field(body, 'scope') as string) ?? 'shared',
+            kind: (field(body, 'kind') as string) ?? 'fact',
+            text: field(body, 'text') as string,
+            source: 'you'
+          })
+        }
+      case 'PUT memory/:id':
+        return {
+          memory: need(deps.memory).update(id!, {
+            text: field(body, 'text') as string | undefined,
+            kind: field(body, 'kind') as string | undefined,
+            scope: field(body, 'scope') as string | undefined
+          })
+        }
+      case 'DELETE memory/:id':
+        need(deps.memory).remove(id!)
+        return { ok: true }
+      case 'GET skills':
+        return { skills: need(deps.skills).list() }
+      case 'PUT skills/:id': {
+        const existing = need(deps.skills).get(id!)
+        return {
+          skill: need(deps.skills).save({
+            name: id!,
+            description: (field(body, 'description') as string) ?? existing?.description ?? '',
+            body: field(body, 'body') as string,
+            source: existing ? `${existing.source}; edited by you` : 'you'
+          })
+        }
+      }
+      case 'DELETE skills/:id':
+        need(deps.skills).remove(id!)
+        return { ok: true }
+      case 'GET records':
+        return { records: need(deps.records).list({ query: query.q || undefined }) }
+      case 'DELETE records/:id':
+        need(deps.records).remove(id!)
+        return { ok: true }
+      case 'GET connectors':
+        return { connectors: need(deps.connectors).list() }
+      case 'POST connectors': {
+        const args = field(body, 'args')
+        return {
+          connector: need(deps.connectors).add({
+            name: field(body, 'name') as string,
+            kind: field(body, 'kind') as 'stdio' | 'http',
+            command: field(body, 'command') as string | undefined,
+            args: Array.isArray(args) ? (args as string[]) : [],
+            url: field(body, 'url') as string | undefined
+          })
+        }
+      }
+      case 'POST connectors/:id/enable':
+        return {
+          connector: await need(deps.connectors).setEnabled(id!, field(body, 'enabled') === true)
+        }
+      case 'DELETE connectors/:id':
+        await need(deps.connectors).remove(id!)
+        return { ok: true }
+      case 'POST speech/transcribe': {
+        // 16 kHz mono 16-bit samples, base64, recorded by the window's microphone button.
+        const pcm = field(body, 'pcm16')
+        if (typeof pcm !== 'string') throw new ApiError(400, 'BAD_REQUEST', 'No recording.')
+        const bytes = Buffer.from(pcm, 'base64')
+        const ints = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.length / 2))
+        const samples = Float32Array.from(ints, (v) => v / 32768)
+        return { text: await need(deps.speech).transcribe(samples) }
+      }
+      case 'POST speech/speak': {
+        const text = field(body, 'text')
+        if (typeof text !== 'string' || !text.trim())
+          throw new ApiError(400, 'BAD_REQUEST', 'Nothing to read aloud.')
+        const wav = await need(deps.speech).synthesize(text)
+        return { wav: wav.toString('base64') }
+      }
+      default:
+        return null
+    }
   }
 
   function modelId(value: unknown): string {
@@ -87,11 +205,35 @@ export function createApi(deps: {
     return value
   }
 
-  async function route({ method, path, body }: ApiRequest): Promise<unknown> {
-    const parts = path.split('/').filter(Boolean)
+  async function route({
+    method,
+    path,
+    body,
+    query = {},
+    scriptTask
+  }: ApiRequest): Promise<unknown> {
+    const parts = path
+      .split('/')
+      .filter(Boolean)
+      .map((p) => decodeURIComponent(p))
     if (parts[0] !== 'v1') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
     const [, area, id, action] = parts
     const key = `${method} ${area}${id ? '/:id' : ''}${action ? `/${action}` : ''}`
+
+    // A script's token reaches only its own task's tools, through the permission layer.
+    if (scriptTask || key === 'POST tool-calls') {
+      if (!scriptTask || key !== 'POST tool-calls' || !deps.scriptCall)
+        throw new ApiError(403, 'FORBIDDEN', 'Not allowed.')
+      const outcome = await deps.scriptCall(
+        scriptTask,
+        field(body, 'name') as string,
+        field(body, 'input') ?? {}
+      )
+      return { ok: outcome.status === 'done', status: outcome.status, output: outcome.output }
+    }
+
+    const extra = await phase3(key, id, body, query)
+    if (extra !== null) return extra
 
     switch (key) {
       case 'GET state': {
@@ -208,7 +350,12 @@ export function createApi(deps: {
         return { status: error.status, body: { error: error.code, message: error.message } }
       if (error instanceof RuntimeError || error instanceof ApprovalError)
         return { status: STATUS[error.code], body: { error: error.code, message: error.message } }
-      if (error instanceof ModelError)
+      if (
+        error instanceof ModelError ||
+        error instanceof MemoryError ||
+        error instanceof SkillError ||
+        error instanceof ConnectorError
+      )
         return { status: 400, body: { error: 'BAD_REQUEST', message: error.message } }
       const ref = log.capture('api', error, { method: request.method, path: request.path })
       return {
