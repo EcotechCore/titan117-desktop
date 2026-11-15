@@ -44,11 +44,19 @@ The projects most like Titan117: local-first desktop apps (Electron) that run pe
 
 ## Phase 2 · Accounts and money
 
+Cloned 15 Nov 2026 (shallow) into `money/`; licences read from each repo's own LICENSE file.
+
 | Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
 |---|---|---|---|---|---|---|
-| Ninjathons (our own repo) | Convex guardrail wrappers, Stripe webhook, entitlements, denial tests, data-deletion table | ours | Code | — | — | — |
-| [stripe-samples](https://github.com/stripe-samples) | Subscriptions, one-time payments, webhooks, customer portal | MIT | Code | `money/stripe-samples` | | |
-| [get-convex](https://github.com/get-convex) templates and components | Convex with Clerk, rate limiting, crons | Apache 2.0 *to check* | Code | `money/convex` | | |
+| Ninjathons (our own repo) | Convex guardrail wrappers, Stripe webhook (`convex/http.ts`, `convex/lib/stripe.ts`), entitlements and billing (`convex/billing.ts`, `convex/schemas/billing.ts`), denial tests, data-deletion table | ours | Code | `Officials
+injathons` (next to the repos, not in the references folder) | ours | `f9d719e` |
+| [stripe-samples/subscription-use-cases](https://github.com/stripe-samples/subscription-use-cases) | Subscriptions, plan changes, customer portal | MIT | Code | `money/subscription-use-cases` | MIT | `fb6e9d4a01bc` |
+| [stripe-samples/checkout-single-subscription](https://github.com/stripe-samples/checkout-single-subscription) | Subscription through Checkout, webhook | MIT (`package.json` says ISC) | Code | `money/checkout-single-subscription` | MIT | `19f81b6717c1` |
+| [stripe-samples/checkout-one-time-payments](https://github.com/stripe-samples/checkout-one-time-payments) | One-time credit top-ups through Checkout | MIT | Code | `money/checkout-one-time-payments` | MIT | `c834ba3ae155` |
+| [get-convex/stripe](https://github.com/get-convex/stripe) | Convex component for Stripe: checkout, webhooks, syncing subscriptions | Apache 2.0 | Code | `money/stripe-component` | Apache 2.0 | `e77f9b4fc8c7` |
+| [get-convex/rate-limiter](https://github.com/get-convex/rate-limiter) | Rate limits for checkout and the proxy | Apache 2.0 | Code | `money/rate-limiter` | Apache 2.0 | `8954959fce43` |
+| [get-convex/convex-helpers](https://github.com/get-convex/convex-helpers) | Custom functions, row-level checks, crons helpers | Apache 2.0 | Code | `money/convex-helpers` | Apache 2.0 | `a7b3e01ce453` |
+| [get-convex/template-nextjs-clerk](https://github.com/get-convex/template-nextjs-clerk) | Convex with Clerk in Next.js | none found | **Ideas only** (no licence file) | `money/template-nextjs-clerk` | No licence | `597c1c3b2c8a` |
 
 ## Phase 3 · Titan and memory
 
