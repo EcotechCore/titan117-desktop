@@ -334,6 +334,14 @@ export function createPermissionLayer(deps: {
         assessment = { risk: tool.risk, summary: `Run ${tool.name}` }
       }
       if (assessment.refuse) return refuse(call, ctx, assessment.refuse)
+      // Private content on its way out is blocked before the user is even asked (security.md A3).
+      const leak = assessment.outgoing ? state.privacy.leak(assessment.outgoing) : null
+      if (leak)
+        return refuse(
+          call,
+          ctx,
+          `this would send private content (from ${leak.source}) over the internet. Nothing ran.`
+        )
 
       let approvedBy: string | null = null
       const standing = assessment.standing

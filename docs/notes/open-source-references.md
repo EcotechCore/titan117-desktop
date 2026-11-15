@@ -66,9 +66,12 @@ injathons` (next to the repos, not in the references folder) | ours | `f9d719e` 
 | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) | Persistent memory, self-written skills | MIT *to check* | Code | `titan/hermes-agent` | MIT | `7e9eb8d9a30f` |
 | [mem0ai/mem0](https://github.com/mem0ai/mem0) | Memory layer: extraction, update, scopes | Apache 2.0 | Code | `titan/mem0` | Apache 2.0 | `0724291bd864` |
 | [letta-ai/letta](https://github.com/letta-ai/letta) | Long-term memory design for agents | Apache 2.0 | Ideas | `titan/letta` | Apache 2.0 | `5bcdd177d70f` |
-| [modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk) | MCP client | MIT | Lib | `titan/mcp-sdk` | | |
+| [modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk) | MCP client | MIT | Lib | — (npm `@modelcontextprotocol/sdk` 1.32.2) | MIT | npm 1.32.2 |
+| [microsoft/playwright](https://github.com/microsoft/playwright) | The browser tool, on the installed Edge or Chrome | Apache 2.0 | Lib | — (npm `playwright-core` 1.65.1) | Apache 2.0 | npm 1.65.1 |
+| [huggingface/transformers.js](https://github.com/huggingface/transformers.js) | Whisper speech to text on the laptop | Apache 2.0 | Lib | — (npm `@huggingface/transformers` 4.3.2, with ONNX Runtime, MIT) | Apache 2.0 | npm 4.3.2 |
+| [hexgrad/kokoro](https://github.com/hexgrad/kokoro) (`kokoro-js`) | Text to speech | Apache 2.0, but its phonemizer bundles eSpeak NG (GPL-3.0) | **Not used yet** (decisions §43) | — | Apache 2.0 + GPL-3.0 inside | |
 | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) | Reference MCP servers (files, git, fetch) | MIT | Code | `titan/mcp-servers` | MIT moving to Apache 2.0 (mixed per contribution) | `bbb701e7ac1e` |
-| [openai/codex](https://github.com/openai/codex) | Command sandboxing per OS, approval modes | Apache 2.0 | Code | `titan/codex` | Apache 2.0 | `ce0323f2f2d3` |
+| [openai/codex](https://github.com/openai/codex) | Command sandboxing per OS, approval modes. **Taken:** the Seatbelt base rules (`codex-rs/sandboxing/src/seatbelt_base_policy.sbpl`), adapted in `src/engine/lib/shell.ts`; in the desktop repo's `SOURCES.md` | Apache 2.0 | Code | `titan/codex` | Apache 2.0 | `ce0323f2f2d3` |
 | [Mintplex-Labs/anything-llm](https://github.com/Mintplex-Labs/anything-llm) | Desktop chat with local models, agents, workspaces | MIT | Code | `titan/anything-llm` | MIT | `d7d68e75c422` |
 | [janhq/jan](https://github.com/janhq/jan) | Local-model desktop app UX | Apache 2.0 | Code | `titan/jan` | Apache 2.0 | `a86d87ebcfb7` |
 | [danny-avila/LibreChat](https://github.com/danny-avila/LibreChat) | Multi-model chat UI, artifacts, MCP | MIT | Code | `titan/librechat` | MIT | `e081b566a42d` |

@@ -8,6 +8,9 @@
 import { defineTool, type Assessment } from './lib/define-tool'
 import { classifyCommand } from './shell-rules'
 
+/** Code that may talk to the internet. */
+const NETWORKY = /https?:|fetch\(|urllib|requests\.|https?\.request|socket|net\.connect/i
+
 function report(
   result: { exitCode: number | null; stdout: string; stderr: string; timedOut: boolean },
   seconds: number
@@ -59,12 +62,20 @@ export const runCommand = defineTool<{
     const verdict = classifyCommand(input.command)
     const folder = ctx.folders[0] ?? ''
     const summary = `Run: ${input.command}${input.folder ? `  (in ${input.folder})` : ''}`
-    if (verdict.risk === 'read-only') return { risk: 'read', summary }
+    // A networked command is checked for private content before anyone is asked.
+    const outgoing = verdict.network ? input.command : undefined
+    if (verdict.risk === 'read-only') return { risk: 'read', summary, outgoing }
     if (verdict.risk === 'always-asks')
-      return { risk: 'write', summary: `${summary} · ${verdict.reason}`, alwaysAsks: true }
+      return {
+        risk: 'write',
+        summary: `${summary} · ${verdict.reason}`,
+        alwaysAsks: true,
+        outgoing
+      }
     return {
       risk: 'write',
       summary: `${summary} · ${verdict.reason}`,
+      outgoing,
       ...(verdict.standing
         ? {
             standing: {
@@ -126,6 +137,11 @@ export const runCode = defineTool<{
   privateOutput: true,
   describe: (input) =>
     `Run a ${input.language} script (${String(input.code ?? '').split('\n').length} lines)`,
+  assess: (input) => ({
+    risk: 'write',
+    summary: `Run a ${input.language} script (${String(input.code ?? '').split('\n').length} lines)`,
+    outgoing: NETWORKY.test(input.code) ? input.code : undefined
+  }),
   async run(input, ctx) {
     const seconds = Math.min(Math.max(Math.round(input.timeout_seconds ?? 120), 1), 600)
     const script = await ctx.shell.script(input.language, input.code)

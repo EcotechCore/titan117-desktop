@@ -92,6 +92,11 @@ export interface Assessment {
   alwaysAsks?: boolean
   /** Refused outright, with the reason. */
   refuse?: string
+  /**
+   * What this call would send over the internet (a networked command, a
+   * script's code). Checked for private content before the user is asked.
+   */
+  outgoing?: string
 }
 
 export interface ToolDefinition<Input = Record<string, unknown>> {

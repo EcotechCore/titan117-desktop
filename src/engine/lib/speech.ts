@@ -1,7 +1,7 @@
 /**
  * Speech as a tool (feature 3.14, decisions §34.3, §43), on the laptop:
  *
- *   speech to text   Whisper (OpenAI's model, MIT) through transformers.js
+ *   speech to text   Whisper (OpenAI's model, Apache 2.0) through transformers.js
  *                    (Apache 2.0) and ONNX Runtime (MIT). The model (about
  *                    80 MB) downloads from Hugging Face the first time.
  *   text to speech   the operating system's own voices: Windows' speech

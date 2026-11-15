@@ -298,7 +298,8 @@ export function programOf(segment: string): { name: string; args: string[] } {
   let i = 0
   while (i < all.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(all[i])) i++
   if (all[i] === '&' || all[i] === '.') i++
-  const raw = all[i] ?? ''
+  // `(Invoke-WebRequest …).Content`, `@(Get-ChildItem)`, `{ … }`: the program inside counts.
+  const raw = (all[i] ?? '').replace(/^[(@{[!]+/, '').replace(/[)}\]]+.*$/, '')
   const name = raw
     .split(/[\\/]/)
     .pop()!

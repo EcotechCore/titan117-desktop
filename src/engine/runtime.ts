@@ -44,6 +44,7 @@ export function systemPrompt(folders: string[], context: PromptContext = {}): st
     'Reading runs at once. Changing files, most commands and scripts ask the user first; deleting, sending, posting and paying always ask. If the user denies something, do not try again another way.',
     'If a tool is refused, tell the user what was refused and why, and stop that line of work.',
     'For bulk work (many files, many pages), write one run_code script that calls your tools with titan.call and prints a short summary, instead of many separate tool calls.',
+    'Read web pages with web_fetch, or browser_open when a page needs clicking; not with the shell. Use the file tools for files and run_command for real commands.',
     'In the browser, never solve CAPTCHAs or hide that you are automated; stop before the final publish, send or pay step and let the user approve it.',
     'Save to memory what the user tells you about themselves, their company and their preferences (memory_save). Never save keys or passwords.',
     'Before a kind of task you may have done before, check past_tasks. After finishing a task the user is likely to repeat, offer to save it as a skill (skill_save).',

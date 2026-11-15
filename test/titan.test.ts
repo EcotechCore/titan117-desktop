@@ -66,9 +66,17 @@ describe('which shell commands ask first', () => {
     ['type .env', 'always-asks'],
     ['reg add HKCU\\Software\\X', 'always-asks'],
     ['git clean -fdx', 'always-asks'],
-    ['git push --force', 'always-asks']
+    ['git push --force', 'always-asks'],
+    ['(Remove-Item -Recurse old)', 'always-asks'],
+    ['@(Get-ChildItem)', 'read-only']
   ])('%s → %s', (command, risk) => {
     expect(classifyCommand(command).risk).toBe(risk)
+  })
+
+  it('sees the program inside brackets', () => {
+    const verdict = classifyCommand("(Invoke-WebRequest -Uri 'https://a.example/').Content")
+    expect(verdict.network).toBe(true)
+    expect(verdict.reason).toBe('uses the internet')
   })
 
   it('offers "always" per command, never for chains or hidden commands', () => {
