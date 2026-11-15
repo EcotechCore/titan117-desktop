@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Shared docs synced: deleting an account
+
+Synced from `titan117-web`: decisions §42 (account deletion after 30 days), the `users` row in the data table, and Clerk's and Stripe's deletion facts in `external-services.md`. Nothing else changed here.
+
 ### 15 Nov 2026 · Shared docs synced: the website in the web app
 
 Synced from `titan117-web`: decisions §41 (the website in the web app, legal pages, the waiver confirmed on invoices) and Stripe's invoice-footer facts in `external-services.md`. Nothing else changed here.
