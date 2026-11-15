@@ -418,4 +418,6 @@ export interface SetupState {
   components: SetupComponent[]
   /** When the health check last ran, or null. */
   checkedAt: number | null
+  /** Desktop notifications on (1.9). */
+  notifications?: boolean
 }

@@ -21,6 +21,8 @@ declare global {
       addFolder(): Promise<boolean>
       removeFolder(path: string): Promise<boolean>
       onEngineRestart(listener: () => void): void
+      /** A notification was clicked: open that task (1.9). */
+      onOpenTask(listener: (taskId: string) => void): void
       /** The user's own API keys. A key goes in once and never comes back to the page. */
       keys: {
         saved(): Promise<

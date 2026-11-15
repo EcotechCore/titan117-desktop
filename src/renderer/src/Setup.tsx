@@ -166,6 +166,27 @@ export function SetupView({
       <h2 className="section">Checklist</h2>
       <Checks checks={state.checks} onFix={onFix} />
 
+      <label className="row choice">
+        <input
+          type="checkbox"
+          checked={state.notifications !== false}
+          onChange={async (e) => {
+            try {
+              await client!.send('PUT', '/v1/notifications', { on: e.target.checked })
+              setState({ ...state, notifications: e.target.checked })
+            } catch (error) {
+              onProblem(error)
+            }
+          }}
+        />
+        <span className="row-main">
+          <span className="row-title">Notifications</span>
+          <span className="muted">
+            When a task finishes, fails, pauses or needs your OK while Titan117 isn’t in front.
+          </span>
+        </span>
+      </label>
+
       <h2 className="section">What you use Titan117 for</h2>
       <div className="interests">
         {INTERESTS.map((i) => (

@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld('titan117', {
   onEngineRestart: (listener: () => void) => {
     ipcRenderer.on('engine:restarted', () => listener())
   },
+  /** A notification was clicked (1.9): open that task. */
+  onOpenTask: (listener: (taskId: string) => void) => {
+    ipcRenderer.on('task:open', (_event, taskId: string) => listener(String(taskId)))
+  },
   keys: {
     saved: () => ipcRenderer.invoke('keys:saved'),
     save: (provider: string, key: string) => ipcRenderer.invoke('keys:save', provider, key),

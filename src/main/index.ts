@@ -6,6 +6,8 @@ import {
   dialog,
   ipcMain,
   net,
+  Notification,
+  powerSaveBlocker,
   protocol,
   safeStorage,
   session,
@@ -210,9 +212,18 @@ function startEngine(): void {
   })
   connection.catch(() => undefined)
   // The engine is back online (1.24): renew the lease now rather than in up to 30 minutes.
-  child.on('message', (message: { type?: string }) => {
-    if (message?.type === 'online') renewLease()
-  })
+  child.on(
+    'message',
+    (message: {
+      type?: string
+      running?: number
+      note?: { title: string; body: string; taskId: string }
+    }) => {
+      if (message?.type === 'online') renewLease()
+      else if (message?.type === 'busy') keepAwake((message.running ?? 0) > 0)
+      else if (message?.type === 'notify' && message.note) notify(message.note)
+    }
+  )
 
   child.once('exit', (code) => {
     if (engine === child) engine = null
@@ -225,6 +236,38 @@ function startEngine(): void {
         window.webContents.send('engine:restarted')
     }
   })
+}
+
+// ---------------------------------------------------------------- awake and notifications
+
+let awakeBlocker: number | null = null
+
+/** While a task runs the laptop doesn't go to sleep on its own (1.5); the screen still may. */
+function keepAwake(busy: boolean): void {
+  if (busy && awakeBlocker === null) awakeBlocker = powerSaveBlocker.start('prevent-app-suspension')
+  if (!busy && awakeBlocker !== null) {
+    powerSaveBlocker.stop(awakeBlocker)
+    awakeBlocker = null
+  }
+}
+
+/** Done, failed, paused or needs approval (1.9): only when the window isn't in front. */
+function notify(note: { title: string; body: string; taskId: string }): void {
+  const [window] = BrowserWindow.getAllWindows()
+  if (window?.isFocused() || !Notification.isSupported()) return
+  const shown = new Notification({
+    title: note.title.slice(0, 80),
+    body: note.body.slice(0, 200),
+    silent: false
+  })
+  shown.on('click', () => {
+    if (!window) return
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
+    window.webContents.send('task:open', note.taskId)
+  })
+  shown.show()
 }
 
 function dirnameOfInstall(): string {

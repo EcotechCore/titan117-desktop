@@ -107,6 +107,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     window.titan117.onEngineRestart(() => setAttempt((n) => n + 1))
+    window.titan117.onOpenTask((id) => dispatch({ type: 'view', view: { kind: 'task', id } }))
   }, [])
 
   // Open a task: load its messages, approvals and activity once.
@@ -538,6 +539,21 @@ function App(): React.JSX.Element {
 
         {(view.kind === 'start' || view.kind === 'task') && (
           <div className="composer">
+            {task?.status === 'stopped' &&
+              !task.note?.startsWith('No internet') &&
+              task.note !== 'You stopped this task.' && (
+                <div className="note offline-switch">
+                  <span>{task.note ?? 'This task stopped.'}</span>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() =>
+                      client.current?.send('POST', `/v1/tasks/${task.id}/resume`).catch(fail)
+                    }
+                  >
+                    Resume
+                  </button>
+                </div>
+              )}
             {task?.status === 'stopped' && task.note?.startsWith('No internet') && (
               <div className="note offline-switch">
                 <span>This task stopped because the internet is gone.</span>

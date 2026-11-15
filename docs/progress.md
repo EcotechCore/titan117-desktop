@@ -32,6 +32,17 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Phase 5: keep awake, checkpoints and notifications
+
+Built on `phase-5-awake`, on top of `phase-5-offline`. Decisions §48, **to be confirmed**.
+
+- **Keep awake (1.5):** the engine tells the shell how many tasks run; the shell holds Electron's `prevent-app-suspension` blocker while any does.
+- **Checkpoints and resume (1.6):** tasks running when the app stopped, and tasks paused by a lost connection, resume by themselves (twice at most, within an hour); a tool call that never finished is answered "not run to the end" first; a **Resume** button on any other stopped task; `POST /v1/tasks/<id>/resume`.
+- **Notifications (1.9):** finished, failed, paused (no internet), needs your OK; only when the window isn't in front; a click opens the task; on or off in Setup.
+- **Tests:** 5 new (resume after the app closed with a write waiting, the twice-only limit, resume refusals, resume after the internet returns, busy counts and notifications with the switch); 270 in all; build passes.
+- **Seen in the real app** (built, Playwright, throwaway data, one tiny task on the development key): the blocker started with the task and stopped after it; "Titan finished" was shown with the window in the background.
+- **Not checked:** a real crash or sleep in the real app (covered by tests that close and restart the engine); the notification's look on Windows, since the test recorded it instead of showing it; macOS.
+
 ### 15 Nov 2026 · Phase 5: offline mode and the offline queue
 
 Built on `phase-5-offline`, on top of `phase-5-setup`. Decisions §47, **to be confirmed**.

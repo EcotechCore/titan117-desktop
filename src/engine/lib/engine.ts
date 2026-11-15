@@ -43,7 +43,7 @@ import { createSearchService, DEFAULT_SEARCH_SETTINGS } from './search'
 import { createShareService } from './share'
 import { createReportService, type ReportService } from './reports'
 import { createSetupService } from './setup'
-import { createConnectivity, type Connectivity } from './online'
+import { createConnectivity, OFFLINE_NOTE, type Connectivity } from './online'
 import { findBrowserChannel } from './browser'
 import type { SetupInterest } from '../../shared/protocol'
 import type { SearchSettings } from '../../shared/protocol'
@@ -88,7 +88,15 @@ export interface EngineOptions {
   speech?: SpeechEngine
   /** The internet came back (1.24): the shell renews the licence lease. */
   onOnline?: () => void
+  /** How many tasks are running (1.5): the shell keeps the laptop awake while any is. */
+  onBusy?: (running: number) => void
+  /** Something the user should hear about when the window isn't in front (1.9). */
+  onNotify?: (note: { title: string; body: string; taskId: string }) => void
 }
+
+/** A task is resumed by itself at most this many times, and only this soon after it stopped (1.6). */
+export const AUTO_RESUME_LIMIT = 2
+export const AUTO_RESUME_WITHIN_MS = 60 * 60 * 1000
 
 export interface Engine {
   port: number
@@ -149,8 +157,30 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
 
   const events: EngineEvent[] = []
   let publish: (event: EngineEvent) => void = () => undefined
+  // Notifications (1.9): done, failed, paused, and approvals waiting.
+  const lastStatus = new Map<string, string>()
+  const notify = (event: EngineEvent): void => {
+    if (!options.onNotify || !getMeta<boolean>(db, 'notifications', true)) return
+    if (event.type === 'task') {
+      const { id, status, title, note } = event.task
+      const before = lastStatus.get(id)
+      lastStatus.set(id, status)
+      if (before === status || before === undefined) return
+      if (status === 'done') options.onNotify({ title: 'Titan finished', body: title, taskId: id })
+      else if (status === 'error')
+        options.onNotify({ title: 'A task failed', body: `${title}: ${note ?? ''}`, taskId: id })
+      else if (status === 'stopped' && note === OFFLINE_NOTE)
+        options.onNotify({ title: 'Paused: no internet', body: title, taskId: id })
+    } else if (event.type === 'approval' && event.approval.status === 'pending')
+      options.onNotify({
+        title: 'Titan needs your OK',
+        body: event.approval.summary,
+        taskId: event.approval.taskId
+      })
+  }
   const emit = (event: EngineEvent): void => {
     if (!options.dataDir && event.type !== 'delta') events.push(event)
+    notify(event)
     publish(event)
   }
 
@@ -163,12 +193,21 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       // Back online: what waited goes.
       void reportsRef?.flush().then(() => reportsRef?.checkFixed())
       options.onOnline?.()
+      // Tasks paused by the lost connection carry on (1.6).
+      autoResume(
+        store
+          .listTasks()
+          .filter((t) => t.status === 'stopped' && t.note === OFFLINE_NOTE)
+          .map((t) => t.id),
+        'the internet is back'
+      )
     }
   })
   let reportsRef: ReportService | null = null
 
   const store = createStore(db, emit)
-  store.closeInterrupted()
+  // Tasks the app was running when it stopped resume once it's unlocked (1.6).
+  let toResume = store.closeInterrupted()
 
   const core = options.coreDirs.map((dir) => {
     try {
@@ -428,12 +467,38 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     folders,
     locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
     online: () => connectivity.online(),
+    onBusy: options.onBusy,
     budget: options.budget,
     memory,
     skills,
     records
   })
   runtimeRef = runtime
+
+  /** Resume recent stopped tasks by themselves, a limited number of times each (1.6). */
+  function autoResume(ids: string[], why: string): void {
+    const counts = getMeta<Record<string, number>>(db, 'autoResumed', {})
+    for (const id of ids) {
+      const task = store.getTask(id)
+      if (!task || Date.now() - task.updatedAt > AUTO_RESUME_WITHIN_MS) continue
+      if ((counts[id] ?? 0) >= AUTO_RESUME_LIMIT) continue
+      try {
+        runtime.resume(id, why)
+        counts[id] = (counts[id] ?? 0) + 1
+      } catch (error) {
+        log.capture('runtime', error, { taskId: id, part: 'auto resume' })
+      }
+    }
+    setMeta(db, 'autoResumed', counts)
+  }
+
+  // Started unlocked (tests, or a lease already known): carry on at once.
+  if (!account.locked && toResume.length) {
+    const ids = toResume
+    toResume = []
+    queueMicrotask(() => autoResume(ids, 'Titan117 started again'))
+  }
+
 
   const handle = createApi({
     appVersion: options.appVersion,
@@ -462,6 +527,10 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     artifacts,
     shares,
     reports,
+    notifications: {
+      get: () => getMeta<boolean>(db, 'notifications', true),
+      set: (on) => setMeta(db, 'notifications', on)
+    },
     setup: {
       state: () => setup.state(),
       runHealth: () => setup.runHealth(),
@@ -543,6 +612,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     setAccount(next) {
       registerSecret(next.token)
       account = next
+      // Unlocked: tasks interrupted by the app stopping carry on, once.
+      if (!next.locked && toResume.length) {
+        const ids = toResume
+        toResume = []
+        autoResume(ids, 'Titan117 started again')
+      }
       // Signed in again: reports waiting in the queue go, and fixes are checked (19.5, 19.8).
       void reports.flush().then(() => reports.checkFixed())
       // The window re-reads the state (cloud models on or off) on a settings event.

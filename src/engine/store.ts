@@ -110,8 +110,11 @@ export interface Store {
   log(entry: Omit<Activity, 'id' | 'at'>): Activity
   listActivity(taskId: string): Activity[]
   /** After a restart: nothing is running any more (checkpoints come in phase 5). */
-  closeInterrupted(): void
+  /** Tasks left running when the app stopped: marked stopped; their ids are returned (1.6). */
+  closeInterrupted(): string[]
 }
+
+export const INTERRUPTED_NOTE = 'The app closed while this task was running.'
 
 export function createStore(db: Db, emit: Emit): Store {
   const store: Store = {
@@ -316,13 +319,18 @@ export function createStore(db: Db, emit: Emit): Store {
     },
 
     closeInterrupted() {
+      const ids = (
+        db.prepare(`select id from tasks where status in ('running', 'waiting')`).all() as {
+          id: string
+        }[]
+      ).map((r) => r.id)
       db.prepare(
         `update approvals set status = 'expired', answered_at = ? where status = 'pending'`
       ).run(Date.now())
       db.prepare(
-        `update tasks set status = 'stopped', note = 'The app closed while this task was running.'
-         where status in ('running', 'waiting')`
-      ).run()
+        `update tasks set status = 'stopped', note = ? where status in ('running', 'waiting')`
+      ).run(INTERRUPTED_NOTE)
+      return ids
     }
   }
   return store

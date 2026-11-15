@@ -105,6 +105,7 @@ export function createApi(deps: {
   shares?: ShareService
   search?: { get(): SearchSettings; set(next: SearchSettings): void }
   reports?: ReportService
+  notifications?: { get(): boolean; set(on: boolean): void }
   setup?: {
     state(): Promise<SetupState>
     runHealth(): Promise<SetupState>
@@ -263,7 +264,19 @@ export function createApi(deps: {
   ): Promise<unknown | null> {
     switch (key) {
       case 'GET setup':
-        return need(deps.setup).state()
+        return {
+          ...(await need(deps.setup).state()),
+          notifications: deps.notifications?.get() ?? true
+        }
+      case 'PUT notifications': {
+        const on = field(body, 'on')
+        if (typeof on !== 'boolean')
+          throw new ApiError(400, 'BAD_REQUEST', '"on" is true or false.')
+        need(deps.notifications).set(on)
+        return { on }
+      }
+      case 'POST tasks/:id/resume':
+        return { task: runtime.resume(id!, 'you asked') }
       // `/v1/setup/health` reads as an id here.
       case 'POST setup/:id':
         if (id !== 'health') throw new ApiError(404, 'NOT_FOUND', 'Not found.')

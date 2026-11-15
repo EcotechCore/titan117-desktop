@@ -31,7 +31,10 @@ async function main(): Promise<void> {
     allowedOrigins: JSON.parse(env('TITAN117_ORIGINS')) as string[],
     openRouterKey: process.env['OPENROUTER_API_KEY'] ?? null,
     // Back online (1.24): the shell renews the licence lease.
-    onOnline: () => process.parentPort.postMessage({ type: 'online' })
+    onOnline: () => process.parentPort.postMessage({ type: 'online' }),
+    // Keep the laptop awake while tasks run (1.5); tell the user what happened (1.9).
+    onBusy: (running) => process.parentPort.postMessage({ type: 'busy', running }),
+    onNotify: (note) => process.parentPort.postMessage({ type: 'notify', note })
   })
 
   // Error capture (feature 19.1): nothing fails silently.

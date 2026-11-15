@@ -118,7 +118,16 @@ export interface Runtime {
   signal(taskId: string): AbortSignal | null
   /** Resolves when a task's current run is over. For tests. */
   settled(taskId: string): Promise<void>
+  /**
+   * Carry on a stopped task from where it was (1.6): every step is stored, so
+   * the conversation is the checkpoint. A tool call that never finished is
+   * answered "not run" first, so nothing is done twice without the model knowing.
+   */
+  resume(taskId: string, why: string): Task
 }
+
+export const NOT_FINISHED =
+  'Not run to the end: Titan117 stopped before this finished. Check whether it already happened before doing it again.'
 
 export class RuntimeError extends Error {
   constructor(
@@ -145,6 +154,8 @@ export function createRuntime(deps: {
   locked?: () => string | null
   /** Whether the internet can be reached; a cloud model's step waits for it (1.22). */
   online?: () => boolean
+  /** How many tasks are running, whenever it changes (keep awake, 1.5). */
+  onBusy?: (running: number) => void
   budget?: Budget
   now?: () => number
 }): Runtime {
@@ -375,6 +386,8 @@ export function createRuntime(deps: {
         if (running.get(taskId)?.abort === abort) running.delete(taskId)
       })
     running.set(taskId, { abort, done })
+    deps.onBusy?.(running.size)
+    void done.finally(() => deps.onBusy?.(running.size))
   }
 
   function clean(text: unknown): string {
@@ -443,6 +456,47 @@ export function createRuntime(deps: {
 
     signal: (taskId) => running.get(taskId)?.abort.signal ?? null,
 
-    settled: (taskId) => running.get(taskId)?.done ?? Promise.resolve()
+    settled: (taskId) => running.get(taskId)?.done ?? Promise.resolve(),
+
+    resume(taskId, why) {
+      const lock = deps.locked?.()
+      if (lock) throw new RuntimeError('LOCKED', lock)
+      const task = store.getTask(taskId)
+      if (!task) throw new RuntimeError('NOT_FOUND', 'No such task.')
+      if (running.has(taskId)) throw new RuntimeError('CONFLICT', 'This task is already working.')
+      if (task.status !== 'stopped' && task.status !== 'error')
+        throw new RuntimeError('CONFLICT', 'Only a stopped task can be resumed.')
+      // Tool calls that never got an answer get one now.
+      const messages = store.listMessages(taskId).map((m) => m.message)
+      const answered = new Set(messages.flatMap((m) => (m.role === 'tool' ? [m.callId] : [])))
+      const last = [...messages].reverse().find((m) => m.role === 'assistant')
+      if (last?.role === 'assistant')
+        for (const call of last.toolCalls ?? [])
+          if (!answered.has(call.id))
+            store.addMessage(taskId, {
+              role: 'tool',
+              callId: call.id,
+              name: call.name,
+              output: NOT_FINISHED,
+              isError: true
+            })
+      // A conversation that ends with the model's own answer needs a nudge to go on.
+      const end = store.listMessages(taskId).at(-1)?.message
+      if (end?.role === 'assistant' && !end.toolCalls?.length)
+        store.addMessage(taskId, { role: 'user', text: 'Please continue where you left off.' })
+      store.log({
+        taskId,
+        kind: 'task',
+        agent: AGENT,
+        model: task.model,
+        tool: null,
+        summary: `Resumed: ${why}`,
+        costUsd: 0,
+        approvedBy: null
+      })
+      store.updateTask(taskId, { status: 'running', note: null })
+      launch(taskId)
+      return store.getTask(taskId)!
+    }
   }
 }
