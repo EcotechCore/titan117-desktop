@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Shared docs synced: the system voices
+
+Synced from `titan117-web`: decisions §43.10, read aloud keeps the system voices and Kokoro is not used (GPL inside). Nothing else changed here.
+
 ### 15 Nov 2026 · Shared docs synced: commands on Windows
 
 Synced from `titan117-web`: decisions §43.1, Windows commands run without an OS sandbox (the owner chose option A). Nothing else changed here.
