@@ -460,7 +460,11 @@ To write in phase 2, as in Ninjathons: account deletion with a grace period, the
 | Data | Tables | On account deletion |
 |---|---|---|
 | Account (§32: account): the Clerk user id and, for staff, the admin role. Phase 0 has only what the guardrail wrappers read; phase 2 adds the rest | `users` | Deleted after the grace period, with the Clerk user |
-| Plan (§32: plan and credits): which plan a user has and until when; written only by the payment webhook | `entitlements` | Deleted with the account; invoices stay with Stripe as the law requires |
+| Plan (§32: plan and credits): which plan a user has, its Stripe subscription and status, until when it's paid and usable, and when its next monthly credits are due; written only by the payment webhook (`lib/billing.ts`) | `entitlements` | Deleted with the account; invoices stay with Stripe as the law requires |
+| Stripe link (§32: billing records Stripe needs): which Stripe customer is which user; the customer holds only our user id, and Checkout collects the email | `stripeCustomers` | Deleted with the account; the Stripe customer is deleted too, which cancels its subscriptions |
+| Stripe events handled (§32: billing records Stripe needs): event id, type and time, so a repeated delivery is handled once; no user link | `stripeEvents` | Holds no user data; may be pruned after 30 days (Stripe stops retrying after 3) |
+| Credits (§32: plan and credits): each grant of credits (monthly, rolled over, top-up) with what's left and when it expires; written only by `lib/credits.ts` | `creditBuckets` | Deleted with the account |
+| Credit history (§32: plan and credits): every change to a user's credits with its reason and time, and the proxy's request id for usage; never prompt content | `creditLedger` | Deleted with the account |
 | Devices (§32: devices): a user's paired desktop engines, their names and when one was revoked | `devices` | Deleted with the account |
 | Remote control keys (planned, phase 15; decisions §23): each paired device's public key, its name and pairing time; never private keys or message content | `deviceKeys` | Deleted with the device and on account deletion |
 | Product owner portal audit (planned, phase 5; decisions §23): which admin viewed or changed what, and when | `adminAudit` | Kept 2 years for accountability; user references removed on account deletion |
