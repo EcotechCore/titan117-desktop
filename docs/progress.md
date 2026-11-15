@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Shared docs synced: commands on Windows
+
+Synced from `titan117-web`: decisions §43.1, Windows commands run without an OS sandbox (the owner chose option A). Nothing else changed here.
+
 ### 15 Nov 2026 · Phase 3: a live sound meter while you speak
 
 At the owner's request after trying voice input: while recording, the message box shows a pulsing dot, a timer, sound bars that move with your voice ("Speak now" until it hears you, then "Listening"), Cancel (Escape) and Done (Enter); then "Writing out what you said…" until the text arrives. If nothing was heard, it says so. Checked in the built app with Chromium's test microphone; the owner's own microphone is still to try.
