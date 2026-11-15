@@ -2,3 +2,7 @@ allowBuilds:
   electron-winstaller: true
   # Prebuilt binaries come as optional packages; its build-from-source script is not run.
   node-llama-cpp: false
+  # Speech to text (phase 3): the CPU binaries are bundled; its script only downloads optional CUDA extras.
+  onnxruntime-node: false
+  # Its script only prints a version notice.
+  protobufjs: false
