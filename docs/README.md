@@ -9,6 +9,7 @@
 | [guardrails.md](guardrails.md) | Rules for every repo, each with what enforces it |
 | [security.md](security.md) | Threat model in two parts (protecting users, protecting us), accepted risks, vulnerability reporting, incident checklist |
 | [progress.md](progress.md) | Phase status and a dated log of the work done |
+| [owner-checklist.md](owner-checklist.md) | Everything waiting on the owner: decisions to confirm, checks, accounts, legal |
 | [notes/decisions.md](notes/decisions.md) | Every decision so far and the open ones; wins over other docs |
 | [notes/external-services.md](notes/external-services.md) | Every third-party service: whose account, identity, credentials, approvals, terms, cost; checked against vendor docs |
 | [notes/brainstorming-feature-map.md](notes/brainstorming-feature-map.md) | Every feature, by area; all of it is V1 |
