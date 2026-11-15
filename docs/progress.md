@@ -32,6 +32,17 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Phase 5: the Windows installer
+
+Built on `phase-5-installer`, on top of `phase-5-awake`. Decisions §49, **to be confirmed**.
+
+- **Smaller:** llama.cpp ships CPU and Vulkan only (CUDA and ARM left out); ONNX Runtime only for Windows x64, its unused web build and dependency source maps left out. Installed size 1.1 GB to 693 MB; the installer 290 MB to 211 MB.
+- **The Visual C++ runtime:** `build/installer.nsh` runs Microsoft's redistributable from `resources\vendor` only when the registry shows none or one older than 14.40; `scripts/fetch-vc-redist.mjs` fetches it from Microsoft and keeps it only with a valid Microsoft signature (not committed, `build/vendor/*.exe` ignored). Setup's checklist links to Microsoft's download when local models can't start for that reason.
+- **Checked for real:** `pnpm build:win` makes `titan117-0.1.0-setup.exe`; the trimmed llama.cpp and ONNX Runtime load from the packaged app (llama.cpp on Vulkan, the RTX 4070 found); a silent install into a throwaway folder, the installed app started (engine running, local models able to run with 8 GB of graphics memory, the sign-in screen as a production build should), then a silent uninstall left no files, entry or shortcuts.
+- **Tests:** 1 new (the runtime link); 271 in all.
+- **Not checked:** the runtime step itself (the redistributable isn't fetched yet, and this laptop already has 14.52); a clean Windows virtual machine (none here); NVIDIA speed on Vulkan against CUDA; macOS.
+- **Earlier oddity explained:** "Graphics: not used for models" in the setup wizard came from the development run before its check finished; the installed app reports the RTX 4070.
+
 ### 15 Nov 2026 · Phase 5: keep awake, checkpoints and notifications
 
 Built on `phase-5-awake`, on top of `phase-5-offline`. Decisions §48, **to be confirmed**.

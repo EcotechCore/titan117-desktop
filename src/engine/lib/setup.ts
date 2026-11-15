@@ -183,7 +183,14 @@ export function checklist(
       title: 'Local models can’t run on this laptop',
       status: 'suggested',
       detail: `${f.localProblem} Cloud models work instead, through credits or your own key (1.18).`,
-      fix: { kind: 'view', target: 'models', label: 'See cloud models' }
+      // Microsoft's own permanent link to its Visual C++ runtime (decisions §49).
+      fix: /Visual C\+\+/.test(f.localProblem)
+        ? {
+            kind: 'link',
+            target: 'https://aka.ms/vs/17/release/vc_redist.x64.exe',
+            label: 'Get the runtime'
+          }
+        : { kind: 'view', target: 'models', label: 'See cloud models' }
     })
   else if (!ready.length) {
     const best = [...f.localModels]

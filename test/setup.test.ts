@@ -101,6 +101,14 @@ describe('the setup checklist (1.20)', () => {
       status: 'suggested',
       fix: { label: 'See cloud models' }
     })
+    // An old or missing Visual C++ runtime: Microsoft's own link (decisions §49).
+    const runtime = checklist(
+      facts({ localProblem: 'Install the latest Microsoft Visual C++ runtime (x64).' })
+    )
+    expect(byId(runtime, 'local')!.fix).toMatchObject({
+      kind: 'link',
+      target: 'https://aka.ms/vs/17/release/vc_redist.x64.exe'
+    })
   })
 })
 

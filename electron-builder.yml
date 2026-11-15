@@ -17,6 +17,21 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,CLAUDE.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml,pnpm-workspace.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # llama.cpp back ends left out of the Windows x64 build (decisions §49): CUDA
+  # (575 MB, NVIDIA only; Vulkan runs on NVIDIA, AMD and Intel graphics) and
+  # Windows on ARM. The CPU and Vulkan back ends ship.
+  - '!node_modules/@node-llama-cpp/win-x64-cuda/**'
+  - '!node_modules/@node-llama-cpp/win-x64-cuda-ext/**'
+  - '!node_modules/@node-llama-cpp/win-arm64/**'
+  # ONNX Runtime (speech): only the Windows x64 binaries are loaded here. The
+  # web build (138 MB) is never loaded: transformers.js's Node build uses
+  # onnxruntime-node and carries what it needs inline.
+  - '!**/node_modules/onnxruntime-node/bin/napi-v6/linux/**'
+  - '!**/node_modules/onnxruntime-node/bin/napi-v6/darwin/**'
+  - '!**/node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**'
+  - '!**/node_modules/onnxruntime-web/**'
+  # Source maps of dependencies.
+  - '!**/node_modules/**/*.map'
 asarUnpack:
   - resources/**
   # llama.cpp's binaries are loaded from disk, so they can't sit inside the archive.
@@ -30,7 +45,17 @@ asarUnpack:
   - node_modules/playwright-core/**
 win:
   executableName: Titan117
+  target:
+    - target: nsis
+      arch: [x64]
+# Microsoft's Visual C++ runtime installer, when fetched (scripts/fetch-vc-redist.mjs).
+extraResources:
+  - from: build/vendor
+    to: vendor
+    filter:
+      - vc_redist.x64.exe
 nsis:
+  include: build/installer.nsh
   artifactName: titan117-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
