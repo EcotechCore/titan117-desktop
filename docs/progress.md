@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 2, Accounts and money, started 15 Nov 2026 (plans, credits, Stripe and the proxy in the web repo; sign-in, the lease, the lock screen and your own API keys here). **Next step:** the website and legal pages and account deletion, in the web repo.
+**Now:** phase 2, Accounts and money, is done (15 Nov 2026). **Next step:** phase 3, Titan and memory, when you say so.
 
 ## Phases
 
@@ -10,7 +10,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 |---|---|---|---|---|
 | 0 | Setup | Done | 9 Nov 2026 | 14 Nov 2026 |
 | 1 | Engine core | Done | 14 Nov 2026 | 14 Nov 2026 |
-| 2 | Accounts and money | Started | 15 Nov 2026 | |
+| 2 | Accounts and money | Done | 15 Nov 2026 | 15 Nov 2026 |
 | 3 | Titan and memory | Not started | | |
 | 4 | Web search and artifacts | Not started | | |
 | 5 | Install and setup | Not started | | |
@@ -31,6 +31,13 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 15 Nov 2026 · Phase 2 done
+
+Phase 2's check is met (details in the web repo's log): a test purchase added credits, a task deducted them, the owner's own OpenRouter key worked from the keychain, and cancelling the subscription locked this app. The desktop side (sign-in, the licence lease, the lock screen, credits through the proxy, your own API keys) is merged. Closed by the owner the same day.
+
+- **Not checked:** macOS.
+- **Carried forward:** the production web and Convex addresses and the production lease public key go into the build before external testers (phase 18).
 
 ### 15 Nov 2026 · Shared docs synced: deleting an account
 
