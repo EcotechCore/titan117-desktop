@@ -49,7 +49,8 @@ const STATUS: Record<string, number> = {
   NOT_FOUND: 404,
   CONFLICT: 409,
   BAD_REQUEST: 400,
-  FORBIDDEN: 403
+  FORBIDDEN: 403,
+  LOCKED: 423
 }
 
 export interface Settings {
@@ -57,6 +58,7 @@ export interface Settings {
   setDefaultModel(model: string | null): void
   folders(): string[]
   cloudKey(): boolean
+  cloudVia(): 'credits' | 'dev' | null
 }
 
 export function createApi(deps: {
@@ -98,6 +100,7 @@ export function createApi(deps: {
           folders: settings.folders(),
           defaultModel: settings.defaultModel(),
           cloudKey: settings.cloudKey(),
+          cloudVia: settings.cloudVia(),
           hardware: local.hardware(),
           localProblem: local.problem(),
           localChecking: local.checking(),

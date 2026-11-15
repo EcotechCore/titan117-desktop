@@ -245,7 +245,7 @@ describe('errors', () => {
     engine = await testEngine({ openRouterKey: null, fetch: scripted([{ text: 'x' }]).fetch })
     const { body } = await call(engine, 'POST', '/v1/tasks', { text: 'hi', model: MODEL })
     const done = await finished(body.task.id)
-    expect(done.task.note).toMatch(/No OpenRouter key/)
+    expect(done.task.note).toMatch(/Sign in to use cloud models/)
   })
 
   it('says so when local models cannot start on this laptop, instead of crashing', async () => {

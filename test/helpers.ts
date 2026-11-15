@@ -105,6 +105,7 @@ export async function testEngine(
     coreDirs: [],
     allowedOrigins: [ORIGIN],
     openRouterKey: FAKE_KEY,
+    locked: false,
     loadLlama: async () => {
       throw new Error('No local model in tests.')
     },

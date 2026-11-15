@@ -35,6 +35,12 @@ describe('engine guardrail lint', () => {
     expect(await restricted("import fs from 'fs'\n", 'src/engine/lib/files.ts')).toBe(false)
     expect(await restricted("import fs from 'fs'\n", 'src/engine/tools/lib/shell.ts')).toBe(false)
   })
+
+  it("allows it only in the shell's own account folder, not the rest of the shell", async () => {
+    const http = "import { createServer } from 'node:http'\n"
+    expect(await restricted(http, 'src/main/lib/account.ts')).toBe(false)
+    expect(await restricted(http, 'src/main/index.ts')).toBe(true)
+  })
 })
 
 describe('no imports from the web repo', () => {

@@ -10,7 +10,17 @@ import type { ChatMessage, CloudModel, ToolCall } from '../../shared/protocol'
 import { ModelError, type ModelProvider, type TurnRequest, type TurnResult } from '../models/types'
 import type { Fetch } from './net'
 
-const BASE = 'https://openrouter.ai/api/v1'
+export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
+
+/**
+ * Where a cloud call goes: our credits proxy with the device token (it speaks
+ * OpenRouter's API and charges credits), or OpenRouter itself with a key.
+ */
+export interface CloudAccess {
+  base: string
+  key: string
+  via: 'credits' | 'dev'
+}
 
 interface WireMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -54,13 +64,23 @@ function parseArguments(raw: string): Record<string, unknown> {
   }
 }
 
-async function problem(response: Response): Promise<ModelError> {
+async function problem(response: Response, via: CloudAccess['via'] = 'dev'): Promise<ModelError> {
   let detail = ''
   try {
     const body = (await response.json()) as { error?: { message?: string } }
     detail = body.error?.message ?? ''
   } catch {
     // No readable body.
+  }
+  if (via === 'credits') {
+    if (response.status === 401)
+      return new ModelError('Your sign-in has ended. Sign in again to use cloud models.')
+    if (response.status === 402)
+      return new ModelError(
+        'No credits left, or no active plan. Top up on your account page, or use a local model.'
+      )
+    if (response.status === 429)
+      return new ModelError('Too many cloud calls at once. Wait for one to finish, then try again.')
   }
   if (response.status === 401) return new ModelError('OpenRouter refused the key.')
   if (response.status === 402) return new ModelError('The OpenRouter account has no credit left.')
@@ -71,21 +91,19 @@ async function problem(response: Response): Promise<ModelError> {
 
 export function createOpenRouter(deps: {
   fetch: Fetch
-  apiKey(): string | null
+  access(): CloudAccess | null
 }): ModelProvider & { listModels(): Promise<CloudModel[]> } {
   return {
     async turn(request: TurnRequest): Promise<TurnResult> {
-      const key = deps.apiKey()
-      if (!key)
-        throw new ModelError(
-          'No OpenRouter key. Add OPENROUTER_API_KEY to the local .env file, or use a local model.'
-        )
+      const access = deps.access()
+      if (!access)
+        throw new ModelError('Sign in to use cloud models with your credits, or use a local model.')
 
-      const response = await deps.fetch(`${BASE}/chat/completions`, {
+      const response = await deps.fetch(`${access.base}/chat/completions`, {
         method: 'POST',
         signal: request.signal,
         headers: {
-          Authorization: `Bearer ${key}`,
+          Authorization: `Bearer ${access.key}`,
           'Content-Type': 'application/json',
           'X-Title': 'Titan117'
         },
@@ -103,7 +121,7 @@ export function createOpenRouter(deps: {
             : {})
         })
       })
-      if (!response.ok || !response.body) throw await problem(response)
+      if (!response.ok || !response.body) throw await problem(response, access.via)
 
       let text = ''
       const calls = new Map<number, { id: string; name: string; args: string }>()
@@ -175,7 +193,7 @@ export function createOpenRouter(deps: {
 
     /** OpenRouter's public model list with prices. Needs no key. */
     async listModels(): Promise<CloudModel[]> {
-      const response = await deps.fetch(`${BASE}/models`)
+      const response = await deps.fetch(`${OPENROUTER_BASE}/models`)
       if (!response.ok) throw await problem(response)
       const body = (await response.json()) as {
         data?: {

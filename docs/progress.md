@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 1, Engine core, is done (14 Nov 2026). **Next step:** phase 2, Accounts and money (desktop sign-in through the browser, licence lease and lock screen). Phase 1 is merged.
+**Now:** phase 2, Accounts and money, started 15 Nov 2026 (plans, credits and Stripe in the web repo; sign-in, the licence lease and the lock screen here). **Next step:** your own API keys in the keychain.
 
 ## Phases
 
@@ -10,7 +10,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 |---|---|---|---|---|
 | 0 | Setup | Done | 9 Nov 2026 | 14 Nov 2026 |
 | 1 | Engine core | Done | 14 Nov 2026 | 14 Nov 2026 |
-| 2 | Accounts and money | Not started | | |
+| 2 | Accounts and money | Started | 15 Nov 2026 | |
 | 3 | Titan and memory | Not started | | |
 | 4 | Web search and artifacts | Not started | | |
 | 5 | Install and setup | Not started | | |
@@ -31,6 +31,17 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 15 Nov 2026 · Phase 2: sign-in, the licence lease and the lock screen
+
+Built on `phase-2-desktop-sign-in` (decisions §17, §39), with the web side in `titan117-web`. **Seen working on Windows:** the app opened on the lock screen; Sign in opened the browser, the owner confirmed, and the app unlocked on the Starter plan; a task with a cloud model ran three model steps and three file tools, each charged 1 credit through the credits proxy.
+
+- **`src/main/lib/account.ts`** (main process): sign-in with a loopback redirect at `127.0.0.1` and PKCE; the device token kept with Electron's `safeStorage` (the OS keychain) and never sent to the window; the lease renewed at start and every 6 hours, kept offline; a 401 signs the laptop out. `src/main/lib` is the one shell folder allowed file and network access (lint rule and test).
+- **`src/main/lease.ts`:** checks the lease's ECDSA P-256 signature with the public key built in, that it's for this device, and the expiry against the latest time the app has seen, so a clock set back doesn't extend it; a reminder in the last 3 days.
+- **Lock:** the lock screen replaces the workspace (signed out, no plan, or 14 days offline); the engine refuses new tasks (423 `LOCKED`) and stops a running one between steps with a note to continue later. From source with no `TITAN117_API_URL` in `.env`, nothing locks (development only).
+- **Credits:** signed in, cloud calls go to the credits proxy with the device token; the engine may reach that exact origin besides OpenRouter and Hugging Face. Clear messages for no credits, signed out and too many calls. Settings say where cloud calls go.
+- 124 tests (lease, sign-in with a faked browser and server, lock, proxy routing, network rule).
+- **Before external testers (phase 18):** the production web and Convex addresses and the production lease public key go into the build.
 
 ### 15 Nov 2026 · Shared docs synced: the credits proxy
 

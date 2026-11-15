@@ -42,7 +42,7 @@ export interface Runtime {
 
 export class RuntimeError extends Error {
   constructor(
-    readonly code: 'NOT_FOUND' | 'CONFLICT' | 'BAD_REQUEST',
+    readonly code: 'NOT_FOUND' | 'CONFLICT' | 'BAD_REQUEST' | 'LOCKED',
     message: string
   ) {
     super(message)
@@ -58,6 +58,8 @@ export function createRuntime(deps: {
   permissions: PermissionLayer
   tools: ToolRegistry
   folders(): string[]
+  /** Why Titan117 is locked (decisions §17), or null when it may work. */
+  locked?: () => string | null
   budget?: Budget
   now?: () => number
 }): Runtime {
@@ -87,6 +89,9 @@ export function createRuntime(deps: {
     try {
       for (;;) {
         if (signal.aborted) return finish('stopped', 'You stopped this task.')
+        // Locked mid-task: stop at this checkpoint, between steps, never halfway through one.
+        const lock = deps.locked?.()
+        if (lock) return finish('stopped', `${lock} Then send a message to continue this task.`)
 
         const over = meter.beforeStep()
         if (over) {
@@ -230,6 +235,8 @@ export function createRuntime(deps: {
 
   return {
     start(text, model) {
+      const lock = deps.locked?.()
+      if (lock) throw new RuntimeError('LOCKED', lock)
       const message = clean(text)
       router.route(model) // refuses an unknown source before anything is stored
       const task = store.createTask({
@@ -253,6 +260,8 @@ export function createRuntime(deps: {
     },
 
     send(taskId, text, model) {
+      const lock = deps.locked?.()
+      if (lock) throw new RuntimeError('LOCKED', lock)
       const message = clean(text)
       const task = store.getTask(taskId)
       if (!task) throw new RuntimeError('NOT_FOUND', 'No such task.')

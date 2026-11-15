@@ -6,7 +6,7 @@ import type { ChatMessage } from '../src/shared/protocol'
 import { createBudgetMeter } from '../src/engine/budgets'
 import { fitFor, LOCAL_CATALOGUE, toHistory } from '../src/engine/lib/llama'
 import { engineFetch, NetworkError } from '../src/engine/lib/net'
-import { createOpenRouter, toWire } from '../src/engine/lib/openrouter'
+import { createOpenRouter, OPENROUTER_BASE, toWire } from '../src/engine/lib/openrouter'
 import { ModelError } from '../src/engine/models/types'
 import { createRouter } from '../src/engine/router'
 import { UNTRUSTED_RULE, wrapUntrusted } from '../src/engine/untrusted'
@@ -35,7 +35,10 @@ describe('OpenRouter', () => {
         cost: 0.01
       }
     ])
-    const provider = createOpenRouter({ fetch: or.fetch, apiKey: () => FAKE_KEY })
+    const provider = createOpenRouter({
+      fetch: or.fetch,
+      access: () => ({ base: OPENROUTER_BASE, key: FAKE_KEY, via: 'dev' as const })
+    })
     const deltas: string[] = []
     const result = await provider.turn({
       model: 'test/model',
@@ -75,7 +78,7 @@ describe('OpenRouter', () => {
   ])('explains a %i without leaking the key', async (status, message) => {
     const provider = createOpenRouter({
       fetch: scripted([{ status }]).fetch,
-      apiKey: () => FAKE_KEY
+      access: () => ({ base: OPENROUTER_BASE, key: FAKE_KEY, via: 'dev' as const })
     })
     const failure = await provider
       .turn({
@@ -115,7 +118,10 @@ describe("the engine's own network", () => {
 })
 
 describe('the router', () => {
-  const or = createOpenRouter({ fetch: scripted([{ text: 'x' }]).fetch, apiKey: () => FAKE_KEY })
+  const or = createOpenRouter({
+    fetch: scripted([{ text: 'x' }]).fetch,
+    access: () => ({ base: OPENROUTER_BASE, key: FAKE_KEY, via: 'dev' as const })
+  })
   const local = {
     turn: async () => ({
       text: '',
