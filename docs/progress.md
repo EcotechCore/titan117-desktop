@@ -32,6 +32,13 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Phase 5: Microsoft's runtime inside the installer
+
+With the owner's OK, `scripts/fetch-vc-redist.mjs` fetched Microsoft's Visual C++ redistributable (14.44.35211, Authenticode signature valid, Microsoft Corporation); `pnpm build:win` now ships it in `resources\vendor` (installer 235 MB).
+
+- **Not run:** the install test of the new installer. Windows' **Smart App Control** (on, on this laptop) blocked it: "An Application Control policy has blocked this file", Code Integrity event 3033, the installer doesn't meet the signing level. The earlier build without the runtime had been allowed. Turning Smart App Control off is a security setting left to the owner; the real fix is code signing (on the owner checklist), then a clean Windows virtual machine to see the runtime step run.
+- **Checked:** the file is in the build's `resources\vendor`; the installer's check reads this laptop's runtime as 14.52, so it would skip Microsoft's installer here.
+
 ### 15 Nov 2026 · Phase 5: the Windows installer
 
 Built on `phase-5-installer`, on top of `phase-5-awake`. Decisions §49, **to be confirmed**.
