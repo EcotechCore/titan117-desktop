@@ -27,6 +27,7 @@ import { VoiceBar } from './VoiceBar'
 import { ArtifactPanel, ArtifactsView } from './Artifacts'
 import { SearchView } from './Search'
 import { ReportDialog } from './Reports'
+import { SetupView, SetupWizard, type FixHandler } from './Setup'
 import type { ReportMode } from '../../shared/protocol'
 
 const PROMPTS = [
@@ -53,6 +54,8 @@ function App(): React.JSX.Element {
   const [research, setResearch] = useState(false)
   // Error reports (19.7): "never" means no card after an error; Report a problem still works.
   const [reportMode, setReportMode] = useState<ReportMode>('ask')
+  // The first-launch wizard (1.12), until it's finished or skipped.
+  const [wizard, setWizard] = useState(false)
 
   const { engine, view, model } = state
   const taskId = view.kind === 'task' ? view.id : null
@@ -80,6 +83,10 @@ function App(): React.JSX.Element {
         void api
           .get<{ mode: ReportMode }>('/v1/reports')
           .then((r) => setReportMode(r.mode))
+          .catch(() => undefined)
+        void api
+          .get<{ done: boolean }>('/v1/setup')
+          .then((s) => setWizard(!s.done))
           .catch(() => undefined)
         void api
           .get<{ cloud: CloudModel[]; own: OwnKeyModel[] }>('/v1/models')
@@ -168,6 +175,16 @@ function App(): React.JSX.Element {
       fail(error)
     }
   }
+
+  /** A checklist item's fix button (1.17, 1.20). */
+  const fix: FixHandler = useCallback((f) => {
+    if (f.kind === 'view' && f.target) dispatch({ type: 'view', view: { kind: f.target } as never })
+    else if (f.kind === 'folder') void window.titan117.addFolder()
+    else if (f.kind === 'account') void window.titan117.account.signIn().catch(() => undefined)
+    else if (f.kind === 'link' && f.target) window.open(f.target)
+    else if (f.kind === 'report')
+      dispatch({ type: 'report', report: { feature: 'report a problem' } })
+  }, [])
 
   /** After a key is saved or removed: what cloud calls can reach has changed. */
   const reloadModels = useCallback(async () => {
@@ -340,6 +357,12 @@ function App(): React.JSX.Element {
         >
           <Icon name="chip" /> Models
         </button>
+        <button
+          className={view.kind === 'setup' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'setup' } })}
+        >
+          <Icon name="check" /> Setup
+        </button>
 
         <p className="label">Agents</p>
         <button
@@ -442,6 +465,14 @@ function App(): React.JSX.Element {
               client={api}
               changed={state.changed.artifacts ?? 0}
               onOpen={(id) => dispatch({ type: 'artifact', id })}
+              onProblem={fail}
+            />
+          )}
+          {view.kind === 'setup' && (
+            <SetupView
+              client={api}
+              changed={(state.changed.connectors ?? 0) + (state.changed.reports ?? 0)}
+              onFix={fix}
               onProblem={fail}
             />
           )}
@@ -600,6 +631,16 @@ function App(): React.JSX.Element {
           </div>
         )}
       </main>
+
+      {wizard && api && (
+        <SetupWizard
+          client={api}
+          signedIn={!!account?.signedIn}
+          onFix={fix}
+          onDone={() => setWizard(false)}
+          onProblem={fail}
+        />
+      )}
 
       {state.report && api && (
         <ReportDialog

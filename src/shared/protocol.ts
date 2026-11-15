@@ -372,3 +372,46 @@ export interface CaughtError {
   source: string
   message: string
 }
+
+/** Setup and health (features 1.4, 1.12, 1.13, 1.20, 1.21). */
+export type SetupInterest = 'everyday' | 'documents' | 'research' | 'apps' | 'marketing'
+
+export interface SetupCheck {
+  id: string
+  area: string
+  title: string
+  status: 'ready' | 'missing' | 'problem' | 'suggested'
+  detail: string
+  /** How to fix it: open a view, the folder dialog, the account, a web page, or a report. */
+  fix: {
+    kind: 'view' | 'folder' | 'account' | 'link' | 'report'
+    target?: string
+    label: string
+  } | null
+}
+
+export interface SetupComponent {
+  id: string
+  name: string
+  bytes: number
+}
+
+export interface SetupState {
+  /** The first-launch wizard has been finished or skipped. */
+  done: boolean
+  interests: SetupInterest[]
+  hardware: {
+    os: string
+    cpu: string
+    cores: number
+    ramBytes: number
+    vramBytes: number
+    gpu: string | null
+    diskFreeBytes: number | null
+    diskTotalBytes: number | null
+  }
+  checks: SetupCheck[]
+  components: SetupComponent[]
+  /** When the health check last ran, or null. */
+  checkedAt: number | null
+}

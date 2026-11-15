@@ -32,6 +32,18 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Phase 5: setup, checklist and health check
+
+Built on `phase-5-setup`, on top of `phase-5-error-reports`. Decisions §46, **to be confirmed**.
+
+- **First-launch wizard (1.12):** welcome and sign-in, this laptop (system, processor, memory, graphics, disk, the local model that runs well), what you want to do; skippable, and gone for good once finished.
+- **Setup page (1.20):** the checklist (account, a chosen model, local and cloud models, folders, web search, the browser, connectors, disk space, waiting reports, recent errors), problems first, each with a fix button; what you use Titan117 for; the hardware; disk used by local models, the speech model, the browser profile and the log (1.13).
+- **Health check (1.21):** tries saved OpenRouter, Anthropic, OpenAI and Google keys with their free checks; a refused key shows as a problem with Replace.
+- **Fixed while checking:** the health check's route was read as an id and answered 404; now covered by a test.
+- **Tests:** 8 new; 260 in all. **Seen in the real app** (built, Playwright, throwaway data): all three wizard steps, Setup with the checklist after a health check, the wizard not shown again after a restart; no console errors.
+- **Not checked:** macOS; a refused key with a real provider (tested with a fake); "Graphics: not used for models" showed on this laptop with a throwaway data folder, worth a look once the local model probe has finished on the owner's own data.
+- **Not built yet:** "you need this first" cards inside tasks (1.17, 1.19) and requirements per agent (1.16), which need the agent definitions of phase 11 to list what each needs; guided OS steps (1.14) come with the features that need them (Android SDK, virtualization).
+
 ### 15 Nov 2026 · Phase 5: error reports
 
 Started at the owner's request before phase 4's check is run. Built on `phase-5-error-reports`, branched from `phase-4` (the web side is in `titan117-web`). Decisions §45, **to be confirmed**.

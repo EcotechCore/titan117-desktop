@@ -42,6 +42,9 @@ import { createPageReader } from './read'
 import { createSearchService, DEFAULT_SEARCH_SETTINGS } from './search'
 import { createShareService } from './share'
 import { createReportService, type ReportService } from './reports'
+import { createSetupService } from './setup'
+import { findBrowserChannel } from './browser'
+import type { SetupInterest } from '../../shared/protocol'
 import type { SearchSettings } from '../../shared/protocol'
 import { KEY_PROVIDERS } from '../../shared/protocol'
 
@@ -362,6 +365,41 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   })
   permissions.useServices({ search, pages, artifacts })
 
+  // Setup and health (1.12, 1.20, 1.21): facts from every part of the engine.
+  const setup = createSetupService({
+    fetch: fetchOut,
+    done: () => getMeta<boolean>(db, 'setupDone', false),
+    async facts() {
+      const errorsToday = (
+        db
+          .prepare('select count(*) as n from errors where at > ?')
+          .get(Date.now() - 86_400_000) as {
+          n: number
+        }
+      ).n
+      return {
+        dataDir: options.dataDir,
+        signedIn: !!account.token,
+        locked: account.locked,
+        lockReason: account.reason,
+        cloud: cloud() !== null,
+        defaultModel: getMeta<string | null>(db, 'defaultModel', null),
+        hardware: local.hardware(),
+        localProblem: local.problem(),
+        localModels: await local.list(),
+        folders: folders(),
+        ownKeys: { ...ownKeys },
+        browser: findBrowserChannel(),
+        connectors: connectors
+          .list()
+          .map((c) => ({ name: c.name, status: c.status, error: c.error })),
+        queuedReports: reports.list().filter((r) => r.status === 'queued').length,
+        errorsToday,
+        interests: getMeta<SetupInterest[]>(db, 'interests', [])
+      }
+    }
+  })
+
   const runtime = createRuntime({
     store,
     emit,
@@ -404,6 +442,14 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     artifacts,
     shares,
     reports,
+    setup: {
+      state: () => setup.state(),
+      runHealth: () => setup.runHealth(),
+      save(next) {
+        if (next.interests) setMeta(db, 'interests', next.interests)
+        if (next.done !== undefined) setMeta(db, 'setupDone', next.done)
+      }
+    },
     search: {
       get: searchSettings,
       set: (next) => setMeta(db, 'search', next)

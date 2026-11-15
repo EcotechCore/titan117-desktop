@@ -38,6 +38,7 @@ import { convert, ConvertError, FORMATS, type ExportFormat } from './lib/convert
 import { SearchError, DEFAULT_SEARCH_SETTINGS, siteOf } from './lib/search'
 import { ShareError, type ShareService } from './lib/share'
 import { ReportError, type ReportService } from './lib/reports'
+import type { SetupInterest, SetupState } from '../shared/protocol'
 import { SEARCH_KEY_PROVIDERS, type SearchSettings } from '../shared/protocol'
 
 export interface ApiRequest {
@@ -102,6 +103,11 @@ export function createApi(deps: {
   shares?: ShareService
   search?: { get(): SearchSettings; set(next: SearchSettings): void }
   reports?: ReportService
+  setup?: {
+    state(): Promise<SetupState>
+    runHealth(): Promise<SetupState>
+    save(next: { interests?: SetupInterest[]; done?: boolean }): void
+  }
 }): (request: ApiRequest) => Promise<ApiResponse> {
   const { store, runtime, permissions, router, local, settings, log } = deps
 
@@ -254,6 +260,29 @@ export function createApi(deps: {
     query: Record<string, string>
   ): Promise<unknown | null> {
     switch (key) {
+      case 'GET setup':
+        return need(deps.setup).state()
+      // `/v1/setup/health` reads as an id here.
+      case 'POST setup/:id':
+        if (id !== 'health') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        return need(deps.setup).runHealth()
+      case 'PUT setup': {
+        const interests = field(body, 'interests')
+        const done = field(body, 'done')
+        const allowed = ['everyday', 'documents', 'research', 'apps', 'marketing']
+        if (
+          interests !== undefined &&
+          (!Array.isArray(interests) || !interests.every((i) => allowed.includes(i as string)))
+        )
+          throw new ApiError(400, 'BAD_REQUEST', `Interests are some of: ${allowed.join(', ')}.`)
+        if (done !== undefined && typeof done !== 'boolean')
+          throw new ApiError(400, 'BAD_REQUEST', '"done" is true or false.')
+        need(deps.setup).save({
+          interests: interests as SetupInterest[] | undefined,
+          done: done as boolean | undefined
+        })
+        return need(deps.setup).state()
+      }
       case 'GET reports': {
         const reports = need(deps.reports)
         return { mode: reports.mode(), reports: reports.list(), errors: reports.recentErrors() }
