@@ -170,7 +170,12 @@ export type EngineEvent =
     }
   | { type: 'settings'; defaultModel: string | null }
   /** Memory, skills, past-task records or connectors changed: the window reloads that list. */
-  | { type: 'changed'; what: 'memory' | 'skills' | 'records' | 'connectors' | 'artifacts' }
+  | {
+      type: 'changed'
+      what: 'memory' | 'skills' | 'records' | 'connectors' | 'artifacts' | 'reports'
+    }
+  /** An error was caught (19.2): the window may offer to send a report. */
+  | { type: 'error'; errorId: string; source: string }
   /** An agent made or changed an artifact: the window opens it beside the chat. */
   | { type: 'artifact'; artifact: Artifact }
 
@@ -333,4 +338,37 @@ export interface ArtifactDetail {
   artifact: Artifact
   current: ArtifactVersion
   versions: Omit<ArtifactVersion, 'content'>[]
+}
+
+/** Error reports (features 19.1-19.11, decisions §22, §45). */
+export type ReportMode = 'ask' | 'auto' | 'never'
+
+export interface ErrorReport {
+  id: string
+  appVersion: string
+  os: string
+  feature: string
+  message: string
+  stack: string
+  logLines: string[]
+  note: string
+}
+
+export interface QueuedReport {
+  id: string
+  status: 'draft' | 'queued' | 'sent'
+  report: ErrorReport
+  ref: string | null
+  /** Set when a release fixed it (19.5): "Fixed in 1.4". */
+  fixedIn: string | null
+  problem: string | null
+  createdAt: number
+  sentAt: number | null
+}
+
+export interface CaughtError {
+  id: string
+  at: number
+  source: string
+  message: string
 }

@@ -194,6 +194,21 @@ const MIGRATIONS: string[] = [
     created_at integer not null,
     primary key (artifact_id, version)
   );
+  `,
+  // Phase 5: error reports the user chose to send, and the offline queue (19.8, decisions §45).
+  `
+  create table report_queue (
+    id text primary key,
+    -- draft: built and shown, not yet sent; queued: waiting to go; sent: has a reference.
+    status text not null,
+    report text not null,
+    ref text,
+    fixed_in text,
+    problem text,
+    created_at integer not null,
+    sent_at integer
+  );
+  create index report_queue_status on report_queue(status, created_at);
   `
 ]
 

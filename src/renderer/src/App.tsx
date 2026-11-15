@@ -26,6 +26,8 @@ import { play, record, type Recording } from './voice'
 import { VoiceBar } from './VoiceBar'
 import { ArtifactPanel, ArtifactsView } from './Artifacts'
 import { SearchView } from './Search'
+import { ReportDialog } from './Reports'
+import type { ReportMode } from '../../shared/protocol'
 
 const PROMPTS = [
   'Find every invoice in my folder and total them in a CSV.',
@@ -49,6 +51,8 @@ function App(): React.JSX.Element {
   const [voice, setVoice] = useState<'off' | 'recording' | 'transcribing'>('off')
   // Deep research (16.8): the next new task runs as research.
   const [research, setResearch] = useState(false)
+  // Error reports (19.7): "never" means no card after an error; Report a problem still works.
+  const [reportMode, setReportMode] = useState<ReportMode>('ask')
 
   const { engine, view, model } = state
   const taskId = view.kind === 'task' ? view.id : null
@@ -73,6 +77,10 @@ function App(): React.JSX.Element {
         client.current = api
         setApi(api)
         dispatch({ type: 'loaded', engine: await api.get<EngineState>('/v1/state') })
+        void api
+          .get<{ mode: ReportMode }>('/v1/reports')
+          .then((r) => setReportMode(r.mode))
+          .catch(() => undefined)
         void api
           .get<{ cloud: CloudModel[]; own: OwnKeyModel[] }>('/v1/models')
           .then((m) => dispatch({ type: 'cloud', models: m.cloud, own: m.own }))
@@ -379,6 +387,12 @@ function App(): React.JSX.Element {
           <Icon name="plus" /> Allow a folder
         </button>
 
+        <button
+          className="nav"
+          onClick={() => dispatch({ type: 'report', report: { feature: 'report a problem' } })}
+        >
+          <Icon name="flag" /> Report a problem
+        </button>
         <p className="foot mono">
           <span className={state.status === 'ready' ? 'dot dot-done' : 'dot dot-error'} />
           {state.status === 'ready' ? 'Engine running' : 'Engine restarting'} · v{engine.appVersion}
@@ -388,6 +402,29 @@ function App(): React.JSX.Element {
 
       <main className="work">
         {account && <LeaseWarning view={account} />}
+        {state.lastError && reportMode === 'ask' && (
+          <div className="note note-error error-card" role="alert">
+            <span>
+              Something went wrong ({state.lastError.source}). It was saved to the local log. Send
+              us a report? You&apos;ll see all of it first.
+            </span>
+            <button
+              className="btn"
+              onClick={() =>
+                dispatch({ type: 'report', report: { errorRef: state.lastError!.errorId } })
+              }
+            >
+              Review the report
+            </button>
+            <button
+              className="icon-btn"
+              aria-label="Dismiss"
+              onClick={() => dispatch({ type: 'dismissError' })}
+            >
+              <Icon name="x" />
+            </button>
+          </div>
+        )}
         <div className="work-scroll">
           {view.kind === 'approvals' && (
             <ApprovalsView
@@ -564,6 +601,22 @@ function App(): React.JSX.Element {
         )}
       </main>
 
+      {state.report && api && (
+        <ReportDialog
+          client={api}
+          errorRef={state.report.errorRef}
+          feature={state.report.feature}
+          onClose={() => {
+            dispatch({ type: 'report', report: null })
+            void api
+              .get<{ mode: ReportMode }>('/v1/reports')
+              .then((r) => setReportMode(r.mode))
+              .catch(() => undefined)
+          }}
+          onProblem={fail}
+        />
+      )}
+
       {state.artifact && api && (
         <ArtifactPanel
           key={state.artifact}
@@ -600,6 +653,19 @@ function App(): React.JSX.Element {
             <dt>Cost</dt>
             <dd className="mono">{usd(detail.task.costUsd)}</dd>
           </dl>
+          {detail.task.status === 'error' && /ref ([0-9a-f]{8})/.exec(detail.task.note ?? '') && (
+            <button
+              className="btn"
+              onClick={() =>
+                dispatch({
+                  type: 'report',
+                  report: { errorRef: /ref ([0-9a-f]{8})/.exec(detail.task.note ?? '')![1] }
+                })
+              }
+            >
+              Send a report about this
+            </button>
+          )}
           <p className="label">Activity</p>
           <ol className="log">
             {detail.activity.map((a) => (

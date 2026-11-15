@@ -55,6 +55,8 @@ let engine: UtilityProcess | null = null
 let connection: Promise<Connection> | null = null
 let quitting = false
 let restarts = 0
+/** The exit code of an engine that stopped unexpectedly, until the next one has heard it. */
+let crashed: number | null = null
 
 /**
  * From source only: the repo's local .env (a development OpenRouter key and
@@ -197,15 +199,21 @@ function startEngine(): void {
         // A new or restarted engine starts locked until it hears where the account stands.
         pushAccount()
         pushKeys()
+        // The engine before this one crashed: the new one keeps it as an error to report (19.1).
+        if (crashed !== null) {
+          child.postMessage({ type: 'crashed', code: crashed })
+          crashed = null
+        }
       }
     })
     child.once('exit', () => reject(new Error('The engine stopped before it was ready.')))
   })
   connection.catch(() => undefined)
 
-  child.once('exit', () => {
+  child.once('exit', (code) => {
     if (engine === child) engine = null
     if (quitting) return
+    crashed = code
     // The engine crashed: start it again (a few times), and tell the window.
     if (restarts++ < 3) {
       startEngine()

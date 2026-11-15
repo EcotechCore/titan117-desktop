@@ -41,6 +41,7 @@ import { createArtifactStore, type ArtifactStore } from '../artifacts'
 import { createPageReader } from './read'
 import { createSearchService, DEFAULT_SEARCH_SETTINGS } from './search'
 import { createShareService } from './share'
+import { createReportService, type ReportService } from './reports'
 import type { SearchSettings } from '../../shared/protocol'
 import { KEY_PROVIDERS } from '../../shared/protocol'
 
@@ -108,6 +109,7 @@ export interface Engine {
     records: RecordStore
     connectors: ConnectorHub
     artifacts: ArtifactStore
+    reports: ReportService
     /** The token a running task's scripts use (feature 4.10). */
     scriptToken(taskId: string): string | null
   }
@@ -158,7 +160,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   const folders = (): string[] => getMeta<string[]>(db, 'folders', [])
   const policy = (): FolderPolicy => ({ allowed: folders(), core })
 
-  const changed = (what: 'memory' | 'skills' | 'records' | 'connectors') => (): void =>
+  const changed = (what: 'memory' | 'skills' | 'records' | 'connectors' | 'reports') => (): void =>
     emit({ type: 'changed', what })
   const memory = createMemoryStore(db, changed('memory'))
   const skills = createSkillStore(
@@ -303,6 +305,23 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       }
     }
   }
+  const reports = createReportService({
+    db,
+    appVersion: options.appVersion,
+    dataDir: options.dataDir,
+    fetch: fetchOut,
+    account: () =>
+      account.token && account.proxyUrl
+        ? { token: account.token, apiBase: account.proxyUrl }
+        : null,
+    onChange: changed('reports')
+  })
+  // Every caught error: the window may offer a report (19.2); "send automatically" sends it.
+  log.onCapture((errorId, source) => {
+    emit({ type: 'error', errorId, source })
+    reports.onCaptured(errorId)
+  })
+
   const shares = createShareService({
     fetch: fetchOut,
     account: () =>
@@ -384,6 +403,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     artifacts,
     shares,
+    reports,
     search: {
       get: searchSettings,
       set: (next) => setMeta(db, 'search', next)
@@ -457,10 +477,13 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     setAccount(next) {
       registerSecret(next.token)
       account = next
+      // Signed in again: reports waiting in the queue go, and fixes are checked (19.5, 19.8).
+      void reports.flush().then(() => reports.checkFixed())
       // The window re-reads the state (cloud models on or off) on a settings event.
       emit({ type: 'settings', defaultModel: getMeta<string | null>(db, 'defaultModel', null) })
     },
     async close() {
+      reports.close()
       await server.close()
       await browser.close()
       await connectors.close()
@@ -480,6 +503,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       records,
       connectors,
       artifacts,
+      reports,
       scriptToken
     }
   }

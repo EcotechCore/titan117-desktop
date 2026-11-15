@@ -13,6 +13,8 @@ type FromShell =
   | { type: 'keys'; keys: OwnKeys }
   | { type: 'connectorSecrets'; secrets: Record<string, Record<string, string>> }
   | { type: 'shutdown' }
+  /** The engine before this one stopped unexpectedly (19.1): kept as a caught error. */
+  | { type: 'crashed'; code: number }
 
 function env(name: string): string {
   const value = process.env[name]
@@ -45,6 +47,11 @@ async function main(): Promise<void> {
       else if (data.type === 'account') engine.setAccount(data.account)
       else if (data.type === 'keys') engine.setKeys(data.keys)
       else if (data.type === 'connectorSecrets') engine.setConnectorSecrets(data.secrets)
+      else if (data.type === 'crashed')
+        engine.parts.log.capture(
+          'engine crash',
+          new Error(`The engine stopped unexpectedly (exit code ${data.code}) and was restarted.`)
+        )
       else if (data.type === 'shutdown') void engine.close().finally(() => process.exit(0))
     } catch (error) {
       engine.parts.log.capture('engine', error, { message: data.type })

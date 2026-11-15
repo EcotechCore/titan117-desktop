@@ -42,6 +42,10 @@ export interface AppState {
   /** The artifact open beside the chat (17.1), and whether it fills the window. */
   artifact: string | null
   artifactFull: boolean
+  /** The last caught error, for "Something went wrong" (19.2). */
+  lastError: { errorId: string; source: string } | null
+  /** The report dialog, when open. */
+  report: { errorRef?: string; feature?: string } | null
 }
 
 export const initialState: AppState = {
@@ -59,7 +63,9 @@ export const initialState: AppState = {
   problem: null,
   changed: {},
   artifact: null,
-  artifactFull: false
+  artifactFull: false,
+  lastError: null,
+  report: null
 }
 
 export type Action =
@@ -74,6 +80,8 @@ export type Action =
   | { type: 'problem'; message: string | null }
   | { type: 'artifact'; id: string | null }
   | { type: 'artifactFull' }
+  | { type: 'report'; report: AppState['report'] }
+  | { type: 'dismissError' }
 
 function upsert<T extends { id: string }>(list: T[], item: T, front = false): T[] {
   const index = list.findIndex((x) => x.id === item.id)
@@ -165,6 +173,8 @@ function onEvent(state: AppState, event: EngineEvent): AppState {
             }
           }
         : state
+    case 'error':
+      return { ...state, lastError: { errorId: event.errorId, source: event.source } }
     case 'artifact':
       // What an agent makes opens beside the chat (17.1).
       return { ...state, artifact: event.artifact.id }
@@ -207,5 +217,9 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, artifact: action.id, artifactFull: action.id ? state.artifactFull : false }
     case 'artifactFull':
       return { ...state, artifactFull: !state.artifactFull }
+    case 'report':
+      return { ...state, report: action.report, lastError: action.report ? null : state.lastError }
+    case 'dismissError':
+      return { ...state, lastError: null }
   }
 }

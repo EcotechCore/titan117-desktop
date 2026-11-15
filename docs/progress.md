@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 4, Web search and artifacts, is built and waiting for the owner's checks (15 Nov 2026). **Next step:** the owner confirms decisions §44, signs in on the desktop app and runs one real research task to the share link; then phase 4 is closed.
+**Now:** phase 4 is built and waiting for the owner's checks; phase 5 has started early at the owner's request, with error reports (15 Nov 2026). **Next step:** more of phase 5 (installer, setup, offline); the owner works through `docs/owner-checklist.md` at the end.
 
 ## Phases
 
@@ -13,7 +13,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 2 | Accounts and money | Done | 15 Nov 2026 | 15 Nov 2026 |
 | 3 | Titan and memory | Done | 15 Nov 2026 | 15 Nov 2026 |
 | 4 | Web search and artifacts | In progress | 15 Nov 2026 | |
-| 5 | Install and setup | Not started | | |
+| 5 | Install and setup | In progress | 15 Nov 2026 | |
 | 6 | Folder agent | Not started | | |
 | 7 | Coding engine and code builder | Not started | | |
 | 8 | App builder: web | Not started | | |
@@ -31,6 +31,21 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 15 Nov 2026 · Phase 5: error reports
+
+Started at the owner's request before phase 4's check is run. Built on `phase-5-error-reports`, branched from `phase-4` (the web side is in `titan117-web`). Decisions §45, **to be confirmed**.
+
+- **"Something went wrong" (19.2):** every caught error tells the window, which shows a card offering to review a report (unless the setting is "never ask"); a failed task's details have "Send a report about this".
+- **Report a problem (19.3)** in the sidebar: the full report is shown before anything is sent (app, system, where, the error and stack trace, the last 40 log lines), with a note; Send or Don't send.
+- **What's in it (19.4):** redacted, and the home folder shown as `~`; never prompts, files, memory, keys or tokens (tested with a task whose prompt held private text and an error holding a key and a home path).
+- **The queue (19.8):** a report that can't go (signed out, offline, today's limit) waits and goes on sign-in or every 10 minutes; the sent one is exactly the one shown, plus the note.
+- **References and fixes (19.5):** each sent report gets a `T117-...` reference; the app asks which ones a release fixed and shows "Fixed in ..." in Your reports.
+- **The setting (19.7):** always ask (default), send automatically (at most one a minute), never ask.
+- **Crashes (19.1):** when the engine stops unexpectedly, the restarted engine keeps it as a caught error to offer.
+- **Tests:** 6 new; 252 in all. **Seen in the real app** (built, driven by Playwright, throwaway data): the dialog with the full report and the setting, sending while signed out ("Waiting: sign in..."), no console errors.
+- **Not checked:** sending to the real web app (the routes must be deployed; needs the owner signed in), an engine crash in the real app, macOS.
+- **Not built yet in phase 5:** the installer, setup wizard, hardware check, components manager, offline mode and the offline queue for everything else, auto-update, the Visual C++ runtime and slimmer llama.cpp binaries.
 
 ### 15 Nov 2026 · The owner checklist
 

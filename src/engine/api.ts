@@ -37,6 +37,7 @@ import { ArtifactError, type ArtifactStore } from './artifacts'
 import { convert, ConvertError, FORMATS, type ExportFormat } from './lib/convert'
 import { SearchError, DEFAULT_SEARCH_SETTINGS, siteOf } from './lib/search'
 import { ShareError, type ShareService } from './lib/share'
+import { ReportError, type ReportService } from './lib/reports'
 import { SEARCH_KEY_PROVIDERS, type SearchSettings } from '../shared/protocol'
 
 export interface ApiRequest {
@@ -100,6 +101,7 @@ export function createApi(deps: {
   artifacts?: ArtifactStore
   shares?: ShareService
   search?: { get(): SearchSettings; set(next: SearchSettings): void }
+  reports?: ReportService
 }): (request: ApiRequest) => Promise<ApiResponse> {
   const { store, runtime, permissions, router, local, settings, log } = deps
 
@@ -252,6 +254,29 @@ export function createApi(deps: {
     query: Record<string, string>
   ): Promise<unknown | null> {
     switch (key) {
+      case 'GET reports': {
+        const reports = need(deps.reports)
+        return { mode: reports.mode(), reports: reports.list(), errors: reports.recentErrors() }
+      }
+      case 'PUT reports': {
+        const reports = need(deps.reports)
+        return { mode: reports.setMode(field(body, 'mode')) }
+      }
+      case 'POST reports': {
+        const errorRef = field(body, 'errorRef')
+        const feature = field(body, 'feature')
+        return {
+          report: need(deps.reports).draft({
+            errorRef: typeof errorRef === 'string' ? errorRef : undefined,
+            feature: typeof feature === 'string' ? feature : undefined
+          })
+        }
+      }
+      case 'POST reports/:id/send':
+        return { report: await need(deps.reports).send(id!, String(field(body, 'note') ?? '')) }
+      case 'DELETE reports/:id':
+        need(deps.reports).discard(id!)
+        return { ok: true }
       case 'GET search':
         return { settings: deps.search?.get() ?? DEFAULT_SEARCH_SETTINGS }
       case 'PUT search': {
@@ -513,7 +538,8 @@ export function createApi(deps: {
         error instanceof ConnectorError ||
         error instanceof SearchError ||
         error instanceof ConvertError ||
-        error instanceof ShareError
+        error instanceof ShareError ||
+        error instanceof ReportError
       )
         return { status: 400, body: { error: 'BAD_REQUEST', message: error.message } }
       if (error instanceof ArtifactError)
