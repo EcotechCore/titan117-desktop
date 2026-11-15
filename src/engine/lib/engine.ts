@@ -21,8 +21,18 @@ import { realFolder, type FolderPolicy } from './folders'
 import { createLocalModels, type LocalModels } from './llama'
 import { createLogger, type Logger } from './log'
 import { engineFetch, type Fetch } from './net'
-import { createOpenRouter } from './openrouter'
+import { createOpenRouter, OPENROUTER_BASE, type CloudAccess } from './openrouter'
 import { installToken, startServer } from './server'
+
+export interface AccountState {
+  /** The device token, sent only to our credits proxy. */
+  token: string | null
+  /** The proxy's base URL, e.g. https://titan117.com/api/v1. */
+  proxyUrl: string | null
+  locked: boolean
+  /** What the user sees when locked, e.g. "Sign in to keep using Titan117." */
+  reason: string | null
+}
 
 export interface EngineOptions {
   /** The app's data folder; null keeps everything in memory (tests). */
@@ -32,8 +42,10 @@ export interface EngineOptions {
   coreDirs: string[]
   /** The window's own origins. */
   allowedOrigins: string[]
-  /** A development OpenRouter key from the local .env (phase 1 only). */
+  /** A development OpenRouter key from the local .env; never read by a packaged app. */
   openRouterKey?: string | null
+  /** Starts locked until the shell says otherwise (tests pass false). */
+  locked?: boolean
   fetch?: Fetch
   loadLlama?: Parameters<typeof createLocalModels>[0]['load']
   probeLlama?: Parameters<typeof createLocalModels>[0]['probe']
@@ -47,6 +59,7 @@ export interface Engine {
   token: string
   addFolder(path: string): string[]
   removeFolder(path: string): string[]
+  setAccount(account: AccountState): void
   close(): Promise<void>
   /** For tests. */
   parts: {
@@ -66,6 +79,20 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   const token = options.dataDir ? installToken(options.dataDir) : randomBytes(32).toString('hex')
   const key = options.openRouterKey?.trim() || null
   registerSecret(key)
+  // From the shell (src/main/account.ts): the device token for the credits
+  // proxy, and whether the licence lets the app work (decisions §17).
+  let account: AccountState = {
+    token: null,
+    proxyUrl: null,
+    locked: options.locked ?? true,
+    reason: null
+  }
+  const cloud = (): CloudAccess | null => {
+    if (account.token && account.proxyUrl)
+      return { base: account.proxyUrl, key: account.token, via: 'credits' }
+    if (key) return { base: OPENROUTER_BASE, key, via: 'dev' }
+    return null
+  }
   registerSecret(token)
 
   const events: EngineEvent[] = []
@@ -111,8 +138,10 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   // Finding out whether llama.cpp starts can take a minute; the window doesn't wait for it.
   local.warm()
   const openrouter = createOpenRouter({
-    fetch: engineFetch(options.fetch),
-    apiKey: () => key
+    fetch: engineFetch(options.fetch, () =>
+      account.proxyUrl ? [new URL(account.proxyUrl).origin] : []
+    ),
+    access: cloud
   })
   const router = createRouter({ local, openrouter })
 
@@ -124,6 +153,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     permissions,
     tools,
     folders,
+    locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
     budget: options.budget
   })
 
@@ -142,7 +172,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         emit({ type: 'settings', defaultModel: model })
       },
       folders,
-      cloudKey: () => key !== null
+      cloudKey: () => cloud() !== null,
+      cloudVia: () => cloud()?.via ?? null
     }
   })
 
@@ -171,6 +202,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     removeFolder(path) {
       return saveFolders(folders().filter((folder) => folder !== path))
+    },
+    setAccount(next) {
+      registerSecret(next.token)
+      account = next
+      // The window re-reads the state (cloud models on or off) on a settings event.
+      emit({ type: 'settings', defaultModel: getMeta<string | null>(db, 'defaultModel', null) })
     },
     async close() {
       await server.close()

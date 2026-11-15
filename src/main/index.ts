@@ -7,6 +7,7 @@ import {
   ipcMain,
   net,
   protocol,
+  safeStorage,
   utilityProcess,
   type IpcMainInvokeEvent,
   type UtilityProcess
@@ -15,6 +16,7 @@ import { join, normalize, sep } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { Account, type AccountView } from './lib/account'
 import {
   APP_ORIGIN,
   APP_SCHEME,
@@ -48,16 +50,100 @@ let connection: Promise<Connection> | null = null
 let quitting = false
 let restarts = 0
 
-function developmentKey(): string {
-  // Phase 1 only: a development OpenRouter key from the repo's local .env.
-  // Packaged apps never read it; keys move to the keychain in phase 2.
-  if (!is.dev) return ''
+/**
+ * From source only: the repo's local .env (a development OpenRouter key and
+ * the development web app and Convex addresses). A packaged app never reads it.
+ */
+function loadDevelopmentEnv(): void {
+  if (!is.dev) return
   try {
     process.loadEnvFile(join(app.getAppPath(), '.env'))
   } catch {
-    // No .env: cloud models stay off, local models work.
+    // No .env: cloud models need a sign-in, local models work.
   }
-  return process.env['OPENROUTER_API_KEY'] ?? ''
+}
+
+function developmentKey(): string {
+  return is.dev ? (process.env['OPENROUTER_API_KEY'] ?? '') : ''
+}
+
+// ---------------------------------------------------------------- the account
+
+/**
+ * Where the app signs in (decisions §39). From source, the local .env names
+ * the development web app and Convex deployment; a packaged build uses the
+ * production addresses, set before the first external testers (phase 18).
+ */
+const PRODUCTION = { webUrl: 'https://titan117.com', apiUrl: null as string | null }
+
+function accountConfig(): { webUrl: string | null; apiUrl: string | null } {
+  if (!is.dev) return PRODUCTION
+  return {
+    webUrl: process.env['TITAN117_WEB_URL'] || null,
+    apiUrl: process.env['TITAN117_API_URL'] || null
+  }
+}
+
+let account: Account | null = null
+const RENEW_EVERY_MS = 6 * 60 * 60 * 1000
+
+const LOCK_TEXT: Record<string, string> = {
+  signedOut: 'Sign in to keep using Titan117.',
+  noPlan: 'Choose a plan on your account page to keep using Titan117.',
+  expired: 'Connect to the internet to keep using Titan117.'
+}
+
+/** What the window sees. From source with no account set up, nothing locks (development only). */
+function accountView(): AccountView & { enforced: boolean } {
+  const view = account!.status()
+  const enforced = view.configured || !is.dev
+  return { ...view, locked: enforced && view.locked, enforced }
+}
+
+/** Tells the engine and the window where things stand. */
+function pushAccount(): void {
+  if (!account) return
+  const view = accountView()
+  const { webUrl } = accountConfig()
+  const token = account.deviceToken()
+  engine?.postMessage({
+    type: 'account',
+    account: {
+      token,
+      proxyUrl: token && webUrl ? new URL('/api/v1', webUrl).toString() : null,
+      locked: view.locked,
+      reason: view.locked && view.reason ? LOCK_TEXT[view.reason] : null
+    }
+  })
+  for (const window of BrowserWindow.getAllWindows())
+    window.webContents.send('account:changed', view)
+}
+
+function startAccount(): void {
+  const config = accountConfig()
+  account = new Account({
+    dataDir: app.getPath('userData'),
+    appVersion: app.getVersion(),
+    webUrl: config.webUrl,
+    apiUrl: config.apiUrl,
+    openExternal: (url) => shell.openExternal(url),
+    keychain: safeStorage.isEncryptionAvailable()
+      ? {
+          encrypt: (text) => safeStorage.encryptString(text),
+          decrypt: (data) => safeStorage.decryptString(data)
+        }
+      : null,
+    onChange: () => pushAccount()
+  })
+  void account.refresh()
+  setInterval(() => void account?.refresh(), RENEW_EVERY_MS)
+  // The lease can run out while the app is open: look again every minute.
+  let last = ''
+  setInterval(() => {
+    const now = JSON.stringify(accountView())
+    if (now !== last) pushAccount()
+    last = now
+  }, 60_000)
 }
 
 function startEngine(): void {
@@ -75,8 +161,11 @@ function startEngine(): void {
   engine = child
   connection = new Promise<Connection>((resolve, reject) => {
     child.once('message', (message: { type: string; port: number; token: string }) => {
-      if (message.type === 'ready')
+      if (message.type === 'ready') {
         resolve({ url: `http://127.0.0.1:${message.port}`, token: message.token })
+        // A new or restarted engine starts locked until it hears where the account stands.
+        pushAccount()
+      }
     })
     child.once('exit', () => reject(new Error('The engine stopped before it was ready.')))
   })
@@ -124,6 +213,43 @@ function registerBridge(): void {
     })
     if (result.canceled || !result.filePaths[0]) return false
     engine?.postMessage({ type: 'addFolder', path: result.filePaths[0] })
+    return true
+  })
+
+  ipcMain.handle('account:status', async (event) => {
+    if (!fromOurPage(event) || !account) throw new Error('Refused.')
+    return accountView()
+  })
+
+  ipcMain.handle('account:signIn', async (event) => {
+    if (!fromOurPage(event) || !account) throw new Error('Refused.')
+    await account.signIn()
+    return accountView()
+  })
+
+  ipcMain.handle('account:cancelSignIn', async (event) => {
+    if (!fromOurPage(event) || !account) throw new Error('Refused.')
+    account.cancelSignIn()
+    return true
+  })
+
+  ipcMain.handle('account:refresh', async (event) => {
+    if (!fromOurPage(event) || !account) throw new Error('Refused.')
+    await account.refresh()
+    return accountView()
+  })
+
+  ipcMain.handle('account:signOut', async (event) => {
+    if (!fromOurPage(event) || !account) throw new Error('Refused.')
+    account.signOut()
+    return accountView()
+  })
+
+  // Our own account page in the system browser; nothing else can be opened this way.
+  ipcMain.handle('account:openPage', async (event) => {
+    if (!fromOurPage(event)) throw new Error('Refused.')
+    const { webUrl } = accountConfig()
+    if (webUrl) await shell.openExternal(new URL('/account', webUrl).toString())
     return true
   })
 
@@ -202,7 +328,9 @@ function start(): void {
     optimizer.watchWindowShortcuts(window)
   })
 
+  loadDevelopmentEnv()
   registerBridge()
+  startAccount()
   startEngine()
   createWindow()
 

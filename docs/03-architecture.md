@@ -176,9 +176,9 @@ The router also handles: model per agent and per step (2.3), escalation from che
 
 ### Signing in on the desktop
 
-1. The user clicks Sign in; the system browser opens Clerk.
-2. After sign-in, a deep link returns to the app with a one-time code.
-3. The engine exchanges it for a session, stores it in the keychain, and registers the device in Convex.
+1. The user clicks Sign in; the app listens for a moment on `127.0.0.1` and the system browser opens our `/desktop/sign-in` page, where the user (signed in with Clerk) confirms.
+2. The page sends a one-time code back to `127.0.0.1` only (a loopback redirect, RFC 8252), bound to the app's PKCE challenge.
+3. The shell exchanges the code and its PKCE verifier for a device token, keeps it in the OS keychain, and Convex records the device (only the token's hash). The token fetches the signed licence lease and signs calls to the credits proxy (decisions §39).
 
 ### A chat message with a tool call
 

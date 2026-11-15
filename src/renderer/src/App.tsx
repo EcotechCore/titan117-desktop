@@ -16,6 +16,8 @@ import { initialState, reducer } from './state'
 import { TaskView } from './TaskView'
 import { clock, folderName, modelName, usd } from './format'
 import { Eyes, Icon, type EyesState } from './ui'
+import { AccountBox, LeaseWarning, LockScreen } from './Account'
+import { useAccount } from './useAccount'
 import { ApprovalsView, ModelsView } from './Views'
 
 const PROMPTS = [
@@ -32,6 +34,7 @@ function App(): React.JSX.Element {
   const [estimate, setEstimate] = useState<Estimate | null>(null)
   const [attempt, setAttempt] = useState(0)
   const input = useRef<HTMLTextAreaElement>(null)
+  const account = useAccount()
 
   const { engine, view, model } = state
   const taskId = view.kind === 'task' ? view.id : null
@@ -157,6 +160,9 @@ function App(): React.JSX.Element {
     )
   }
 
+  // Locked (decisions §17): the lock screen replaces the workspace; no agent runs.
+  if (account?.locked) return <LockScreen view={account} />
+
   const waiting = state.approvals.length
   const working = state.tasks.some((t) => t.status === 'running')
   const titan: EyesState = waiting ? 'needs-you' : working ? 'working' : 'idle'
@@ -265,9 +271,11 @@ function App(): React.JSX.Element {
           <span className={state.status === 'ready' ? 'dot dot-done' : 'dot dot-error'} />
           {state.status === 'ready' ? 'Engine running' : 'Engine restarting'} · v{engine.appVersion}
         </p>
+        {account && <AccountBox view={account} />}
       </nav>
 
       <main className="work">
+        {account && <LeaseWarning view={account} />}
         <div className="work-scroll">
           {view.kind === 'approvals' && (
             <ApprovalsView

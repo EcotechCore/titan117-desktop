@@ -85,7 +85,9 @@ export default defineConfig(
   },
   {
     files: ['src/**/*.{ts,tsx,js,mjs}'],
-    ignores: ['src/engine/lib/**', 'src/engine/tools/lib/**'],
+    // src/main/lib: the shell's own sign-in listener and account files
+    // (decisions §39). No agent code runs in the main process.
+    ignores: ['src/engine/lib/**', 'src/engine/tools/lib/**', 'src/main/lib/**'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -97,7 +99,7 @@ export default defineConfig(
     }
   },
   {
-    files: ['src/engine/lib/**', 'src/engine/tools/lib/**'],
+    files: ['src/engine/lib/**', 'src/engine/tools/lib/**', 'src/main/lib/**'],
     rules: {
       'no-restricted-imports': ['error', webImports]
     }

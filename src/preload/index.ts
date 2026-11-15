@@ -15,5 +15,16 @@ contextBridge.exposeInMainWorld('titan117', {
   removeFolder: (path: string) => ipcRenderer.invoke('folders:remove', path),
   onEngineRestart: (listener: () => void) => {
     ipcRenderer.on('engine:restarted', () => listener())
+  },
+  account: {
+    status: () => ipcRenderer.invoke('account:status'),
+    signIn: () => ipcRenderer.invoke('account:signIn'),
+    cancelSignIn: () => ipcRenderer.invoke('account:cancelSignIn'),
+    refresh: () => ipcRenderer.invoke('account:refresh'),
+    signOut: () => ipcRenderer.invoke('account:signOut'),
+    openPage: () => ipcRenderer.invoke('account:openPage'),
+    onChange: (listener: (view: unknown) => void) => {
+      ipcRenderer.on('account:changed', (_event, view) => listener(view))
+    }
   }
 })

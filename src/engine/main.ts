@@ -4,11 +4,12 @@
  * the interface down. It talks to the shell only to say where its local API
  * listens and to learn which folders the user picked in the folder dialog.
  */
-import { startEngine, type Engine } from './lib/engine'
+import { startEngine, type AccountState, type Engine } from './lib/engine'
 
 type FromShell =
   | { type: 'addFolder'; path: string }
   | { type: 'removeFolder'; path: string }
+  | { type: 'account'; account: AccountState }
   | { type: 'shutdown' }
 
 function env(name: string): string {
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
     try {
       if (data.type === 'addFolder') engine.addFolder(data.path)
       else if (data.type === 'removeFolder') engine.removeFolder(data.path)
+      else if (data.type === 'account') engine.setAccount(data.account)
       else if (data.type === 'shutdown') void engine.close().finally(() => process.exit(0))
     } catch (error) {
       engine.parts.log.capture('engine', error, { message: data.type })

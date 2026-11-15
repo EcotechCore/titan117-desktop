@@ -158,17 +158,18 @@ export function ModelsView({
       })}
 
       <h2 className="section">Cloud, through OpenRouter</h2>
-      {engine.cloudKey ? (
+      {engine.cloudVia === 'credits' ? (
         <p className="muted">
-          A development key is set on this laptop. Prices are OpenRouter&apos;s own, per million
-          tokens; the cost of each step is shown before you send.
+          Cloud models use your credits: OpenRouter&apos;s price plus 25%, one credit per cent. The
+          cost of each step is shown before you send, at OpenRouter&apos;s own prices.
+        </p>
+      ) : engine.cloudVia === 'dev' ? (
+        <p className="muted">
+          A development key from the local <span className="mono">.env</span> is in use (running
+          from source). Prices are OpenRouter&apos;s own, per million tokens.
         </p>
       ) : (
-        <p className="muted">
-          No OpenRouter key yet. Until accounts and credits arrive, add{' '}
-          <span className="mono">OPENROUTER_API_KEY</span> to the local{' '}
-          <span className="mono">.env</span> file and restart.
-        </p>
+        <p className="muted">Sign in to use cloud models with your credits.</p>
       )}
       <input
         className="search"

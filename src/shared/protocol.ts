@@ -118,8 +118,10 @@ export interface EngineState {
   appVersion: string
   folders: string[]
   defaultModel: string | null
-  /** Whether a development OpenRouter key was found. Never the key itself. */
+  /** Whether cloud models can be used now. Never a key or token itself. */
   cloudKey: boolean
+  /** Where cloud calls go: our credits proxy (signed in), a development key, or nowhere. */
+  cloudVia: 'credits' | 'dev' | null
   hardware: { ramBytes: number; vramBytes: number; gpu: string | null }
   /** Why local models can't run on this laptop, or null when they can. */
   localProblem: string | null
@@ -161,6 +163,7 @@ export type ApiErrorCode =
   | 'NOT_FOUND'
   | 'BAD_REQUEST'
   | 'CONFLICT'
+  | 'LOCKED'
   | 'INTERNAL'
 
 export const LOCAL_MODEL_PREFIX = 'local:'
