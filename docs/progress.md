@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 15 Nov 2026 · Shared docs synced: the website in the web app
+
+Synced from `titan117-web`: decisions §41 (the website in the web app, legal pages, the waiver confirmed on invoices) and Stripe's invoice-footer facts in `external-services.md`. Nothing else changed here.
+
 ### 15 Nov 2026 · Phase 2: your own API keys; the lock comes sooner
 
 Built on `phase-2-own-keys` (decisions §40). **Seen working on Windows:** with the owner's own OpenRouter key saved, a task with `openai/gpt-6-luna` ran three model steps and listed two folders and read two files; the credits proxy recorded no calls, so the key was used. Before that, cancelling the sandbox subscription locked the app at its next lease check.
