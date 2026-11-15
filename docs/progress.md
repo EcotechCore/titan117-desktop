@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 1, Engine core, is done (14 Nov 2026). **Next step:** phase 2, Accounts and money, when you say so. Before it: commit phase 1 through a pull request.
+**Now:** phase 1, Engine core, is done (14 Nov 2026). **Next step:** phase 2, Accounts and money (desktop sign-in through the browser, licence lease and lock screen). Phase 1 is merged.
 
 ## Phases
 
@@ -31,6 +31,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 15 Nov 2026 · Shared docs synced: phase 2 prep
+
+Synced from `titan117-web`: Stripe and the users' own model keys checked against the vendors' docs in `external-services.md`; phase 2 references cloned and licence-checked in `open-source-references.md`. Nothing else changed here.
 
 ### 14 Nov 2026 · Phase 1 done
 
