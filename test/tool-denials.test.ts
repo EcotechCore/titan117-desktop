@@ -16,6 +16,9 @@ import { createStore, type Store } from '../src/engine/store'
 import { builtInTools, createRegistry, type AnyTool } from '../src/engine/tools'
 import { defineTool } from '../src/engine/tools/lib/define-tool'
 import { fakeBrowser, fakeSpeech, fakeWeb, type FakeBrowser, type FakeWeb } from './fakes'
+import { createArtifactStore, type ArtifactStore } from '../src/engine/artifacts'
+import { createPageReader } from '../src/engine/lib/read'
+import { createSearchService } from '../src/engine/lib/search'
 import { tempFolder, until } from './helpers'
 
 interface Bench {
@@ -25,6 +28,9 @@ interface Bench {
   memory: MemoryStore
   web: FakeWeb
   browser: FakeBrowser
+  artifacts: ArtifactStore
+  /** Requests the search service made. */
+  searches: string[]
   taskId: string
   /** Run a call; `answer` is what the user says if asked. */
   run(
@@ -53,6 +59,23 @@ function bench(
   const web = fakeWeb()
   const browser = fakeBrowser()
   const answers = new Map<string, boolean>()
+  const artifacts = createArtifactStore(db)
+  const searches: string[] = []
+  const search = createSearchService({
+    fetch: (async (url: string | URL | Request, init?: RequestInit) => {
+      searches.push(`${String(url)} ${typeof init?.body === 'string' ? init.body : ''}`)
+      return Response.json({ results: [{ title: 'A result', url: 'https://a.example/x' }] })
+    }) as typeof fetch,
+    cloud: () => null,
+    keys: () => ({ exa: 'exa-test-key-0000000000' }),
+    settings: () => ({
+      source: 'auto',
+      country: '',
+      language: '',
+      sites: { Titan: { only: [], blocked: ['blocked.example'] } }
+    }),
+    pickModel: async () => 'test/model'
+  })
   const services: Services = options.noServices
     ? {}
     : {
@@ -63,6 +86,9 @@ function bench(
         speech: fakeSpeech,
         scratchRoot: tempFolder('titan117-scratch-'),
         fetch: web.fetch,
+        search,
+        pages: createPageReader(),
+        artifacts,
         enginePorts: () => [4999],
         answers: { get: (k) => answers.get(k) ?? null, set: (k, v) => void answers.set(k, v) }
       }
@@ -83,6 +109,8 @@ function bench(
     memory,
     web,
     browser,
+    artifacts,
+    searches,
     taskId: task.id,
     asked: () => store.listApprovals({ taskId: task.id }).length,
     pending: () => store.listApprovals({ taskId: task.id, status: 'pending' }),
@@ -343,6 +371,167 @@ const DENIALS: Record<string, () => Promise<void>> = {
     expect(b.web.requests).toEqual([])
   },
 
+  async web_search() {
+    // No search service: refused.
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'web_search', input: { query: 'invoices' } })).status).toBe(
+      'refused'
+    )
+    // A query carrying private content never leaves (security.md A3).
+    const b = bench()
+    await makePrivate(b, SECRET_TEXT)
+    const leak = await b.run({
+      name: 'web_search',
+      input: { query: `who is ${SECRET_TEXT.slice(0, 60)}` }
+    })
+    expect(leak.status).toBe('refused')
+    expect(b.searches).toEqual([])
+    // A plain query goes, and a blocked site never comes back in the results.
+    const ok = await b.run({ name: 'web_search', input: { query: 'e-invoicing rules' } })
+    expect(ok.status).toBe('done')
+    expect(b.searches).toHaveLength(1)
+    expect(b.searches[0]).toContain('"excludeDomains":["blocked.example"]')
+  },
+
+  async read_site() {
+    const b = bench()
+    expect((await b.run({ name: 'read_site', input: { url: 'file:///etc/passwd' } })).status).toBe(
+      'refused'
+    )
+    // A site on the agent's blocked list (16.9).
+    expect(
+      (await b.run({ name: 'read_site', input: { url: 'https://blocked.example/' } })).status
+    ).toBe('refused')
+    // Private task, new site: asks; denied, nothing is fetched, not even robots.txt.
+    await makePrivate(b, SECRET_TEXT)
+    const denied = await b.run(
+      { name: 'read_site', input: { url: 'https://new.example/' } },
+      'deny'
+    )
+    expect(denied.status).toBe('refused')
+    expect(b.web.requests).toEqual([])
+  },
+
+  async artifact_create() {
+    const none = bench({ noServices: true })
+    expect(
+      (
+        await none.run({
+          name: 'artifact_create',
+          input: { kind: 'document', title: 'T', content: '# Hi' }
+        })
+      ).status
+    ).toBe('refused')
+    const b = bench()
+    // An unknown kind or broken data is refused by the store, and nothing is kept.
+    expect(
+      (await b.run({ name: 'artifact_create', input: { kind: 'virus', title: 'T', content: 'x' } }))
+        .status
+    ).toBe('refused')
+    expect(
+      (
+        await b.run({
+          name: 'artifact_create',
+          input: { kind: 'chart', title: 'T', content: '{"type":"bar"}' }
+        })
+      ).status
+    ).toBe('failed')
+    expect(b.artifacts.list()).toEqual([])
+    // It never asks: an artifact is the agent's answer, every version kept.
+    expect(b.asked()).toBe(0)
+  },
+
+  async artifact_update() {
+    const none = bench({ noServices: true })
+    expect(
+      (await none.run({ name: 'artifact_update', input: { id: 'x', content: 'y' } })).status
+    ).toBe('refused')
+    const b = bench()
+    expect(
+      (await b.run({ name: 'artifact_update', input: { id: 'nope', content: 'y' } })).status
+    ).toBe('failed')
+  },
+
+  async artifact_read() {
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'artifact_read', input: { id: 'x' } })).status).toBe('refused')
+    const b = bench()
+    expect((await b.run({ name: 'artifact_read', input: { id: 'nope' } })).status).toBe('failed')
+  },
+
+  async artifact_list() {
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'artifact_list', input: {} })).status).toBe('refused')
+  },
+
+  async artifact_save() {
+    const b = bench()
+    const a = b.artifacts.create({
+      taskId: null,
+      kind: 'document',
+      title: 'Offer',
+      content: '# Offer',
+      author: 'Titan'
+    })
+    // Denied: nothing is written.
+    const denied = await b.run(
+      { name: 'artifact_save', input: { id: a.id, format: 'md', path: 'offer.md' } },
+      'deny'
+    )
+    expect(denied.status).toBe('refused')
+    expect(existsSync(join(b.allowed, 'offer.md'))).toBe(false)
+    // Approved, but outside the allowed folders: still refused.
+    const target = join(b.outside, 'offer.md')
+    const escaped = await b.run(
+      { name: 'artifact_save', input: { id: a.id, format: 'md', path: target } },
+      'approve'
+    )
+    expect(escaped.status).toBe('refused')
+    expect(existsSync(target)).toBe(false)
+  },
+
+  async browser_download() {
+    const b = bench()
+    b.browser.labels.set('7', 'Download invoice')
+    b.browser.downloads.set('7', {
+      name: 'invoice.pdf',
+      data: Buffer.from('%PDF-1.7'),
+      url: 'https://shop.example/invoice.pdf'
+    })
+    // Denied: nothing clicked, nothing written.
+    expect((await b.run({ name: 'browser_download', input: { ref: '7' } }, 'deny')).status).toBe(
+      'refused'
+    )
+    expect(b.browser.clicked).toEqual([])
+    expect(existsSync(join(b.allowed, 'invoice.pdf'))).toBe(false)
+    // Approved, but into a folder that isn't allowed: refused.
+    expect(
+      (await b.run({ name: 'browser_download', input: { ref: '7', folder: b.outside } }, 'approve'))
+        .status
+    ).toBe('refused')
+    expect(existsSync(join(b.outside, 'invoice.pdf'))).toBe(false)
+    // A program is never saved, even approved.
+    b.browser.labels.set('8', 'Get the app')
+    b.browser.downloads.set('8', {
+      name: 'setup.exe',
+      data: Buffer.from('MZ'),
+      url: 'https://shop.example/setup.exe'
+    })
+    expect((await b.run({ name: 'browser_download', input: { ref: '8' } }, 'approve')).status).toBe(
+      'refused'
+    )
+    expect(existsSync(join(b.allowed, 'setup.exe'))).toBe(false)
+    // Approved into an allowed folder: saved, and a second one doesn't overwrite it.
+    expect((await b.run({ name: 'browser_download', input: { ref: '7' } }, 'approve')).status).toBe(
+      'done'
+    )
+    expect((await b.run({ name: 'browser_download', input: { ref: '7' } }, 'approve')).status).toBe(
+      'done'
+    )
+    expect(existsSync(join(b.allowed, 'invoice.pdf'))).toBe(true)
+    expect(existsSync(join(b.allowed, 'invoice (2).pdf'))).toBe(true)
+  },
+
   async browser_open() {
     const b = bench()
     expect(
@@ -556,7 +745,10 @@ describe('tool denial tests', () => {
           () => ctx.memory.search(''),
           () => ctx.skills.list(),
           () => ctx.records.search('x'),
-          () => ctx.speech.transcribe('a.wav')
+          () => ctx.speech.transcribe('a.wav'),
+          () => ctx.search.search({ query: 'x' }),
+          () => ctx.pages.read('https://example.com'),
+          () => ctx.artifacts.list()
         ]
         const refused: string[] = []
         for (const attempt of tries) {
@@ -572,7 +764,7 @@ describe('tool denial tests', () => {
     })
     const b = bench({ extraTools: [greedy] })
     const outcome = await b.run({ name: 'greedy', input: {} })
-    expect(outcome.output.split(',')).toEqual(Array(8).fill('PermissionError'))
+    expect(outcome.output.split(',')).toEqual(Array(11).fill('PermissionError'))
   })
 
   it('every tool declares a risk and its permissions', () => {

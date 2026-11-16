@@ -356,7 +356,7 @@ One web search tool that every agent can call during a task. Searching finds lin
 |---|---|---|---|
 | 16.1 | Search tool for all agents | V1 | The model decides when to search, how often, and what to read next |
 | 16.2 | **Default** search source: a paid search API through our credits | V1 | OpenRouter's web search server tool (native search for some models, Exa for the rest, about 2 cents a search), or Brave Search's API. Its old `:online` suffix and web plugin are deprecated |
-| 16.3 | Search source: the user's own key | V1 | Brave Search, Tavily, Exa, Serper |
+| 16.3 | Search source: the user's own key | V1 | Brave Search, Tavily, Exa (~~Serper~~: dropped 15 Nov 2026, it resells scraped Google results; decisions §44) |
 | 16.4 | Search in the browser, on the user's request | V1 | Replaces the old free mode (no background scraping of search engines). When the user asks, the browser agent searches in a visible browser at a human pace, like a person would; search engines are on the "forbids automation" warning list; a CAPTCHA stops it and hands over to the user (decisions §29, §30) |
 | 16.5 | Read a page | V1 | Fetch it and turn it into clean text: Mozilla Readability and Trafilatura (both Apache 2.0) for most pages; our browser tool (3.10) for pages that need JavaScript |
 | 16.6 | Read a whole site | V1 | Crawl a site into clean text; ideas and maybe code from Crawl4AI (to check: Apache 2.0); Firecrawl is AGPL, so ideas only |

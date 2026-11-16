@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-import { isAllowedNavigation, isSafeExternalUrl, windowWebPreferences } from '../src/main/window'
+import {
+  isAllowedNavigation,
+  isSafeExternalUrl,
+  printWebPreferences,
+  windowWebPreferences
+} from '../src/main/window'
 
 describe('window settings', () => {
   const prefs = windowWebPreferences('/app/preload.js')
@@ -87,5 +92,29 @@ describe('browser permissions (feature 3.14)', () => {
     const main = readFileSync(join(__dirname, '../src/main/index.ts'), 'utf8')
     expect(main).toMatch(/setPermissionRequestHandler\([\s\S]*allowPermission/)
     expect(main).toMatch(/setPermissionCheckHandler\([\s\S]*allowPermission/)
+  })
+})
+
+describe('artifacts in the window (decisions §44)', () => {
+  it('prints in a sandboxed window with no preload and no Node', () => {
+    const prefs = printWebPreferences({} as never)
+    expect(prefs).toMatchObject({
+      contextIsolation: true,
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      sandbox: true,
+      webSecurity: true
+    })
+    expect(prefs.preload).toBeUndefined()
+    const main = readFileSync(join(__dirname, '../src/main/index.ts'), 'utf8')
+    expect(main).toMatch(/webPreferences:\s*printWebPreferences\(/)
+    // Every request the print window makes outside the sandbox is cancelled.
+    expect(main).toMatch(/cancel: !\/\^\(titan117:\|data:\|blob:\|about:\)\//)
+  })
+
+  it('lets the page frame only the artifact sandbox', () => {
+    const html = readFileSync(join(__dirname, '../src/renderer/index.html'), 'utf8')
+    expect(html).toMatch(/frame-src titan117:\/\/sandbox;/)
+    expect(html).toMatch(/default-src 'none'/)
   })
 })

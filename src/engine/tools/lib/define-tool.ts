@@ -13,6 +13,9 @@ import type { MemoryAccess } from '../../memory'
 import type { SkillAccess } from '../../lib/skills'
 import type { RecordAccess } from '../../records'
 import type { SpeechAccess } from '../../lib/speech'
+import type { SearchAccess } from '../../lib/search'
+import type { Page } from '../../lib/read'
+import type { ArtifactAccess } from '../../artifacts'
 
 /** A small JSON schema: what models are told and what input is checked against. */
 export interface ParamSchema {
@@ -47,6 +50,18 @@ export interface ToolPermissions {
   records?: boolean
   /** Speech to text and text to speech (feature 3.14). */
   speech?: boolean
+  /** Web search through the user's chosen source (features 16.1-16.3). */
+  search?: boolean
+  /** Artifacts: reading them, or also making and changing them (§17). */
+  artifacts?: 'read' | 'write'
+}
+
+/** Reading pages as clean text (16.5), through the task's network policy and the agent's site lists. */
+export interface PageAccess {
+  read(url: string): Promise<Page>
+  allowedByRobots(url: string): Promise<boolean>
+  /** Whether the agent's trusted and blocked lists allow this site (16.9). */
+  allowedSite(host: string): boolean
 }
 
 export interface ToolContext {
@@ -60,6 +75,9 @@ export interface ToolContext {
   skills: SkillAccess
   records: RecordAccess
   speech: SpeechAccess
+  search: SearchAccess
+  pages: PageAccess
+  artifacts: ArtifactAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.
@@ -76,6 +94,8 @@ export interface ToolResult {
   output: string
   /** One line for the activity timeline. */
   summary: string
+  /** What this call cost (a search through credits); counts towards the task's budget (16.12). */
+  costUsd?: number
 }
 
 /**

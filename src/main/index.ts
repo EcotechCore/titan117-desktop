@@ -6,6 +6,8 @@ import {
   dialog,
   ipcMain,
   net,
+  Notification,
+  powerSaveBlocker,
   protocol,
   safeStorage,
   session,
@@ -14,10 +16,12 @@ import {
   type UtilityProcess
 } from 'electron'
 import { join, normalize, sep } from 'path'
+import { SANDBOX_HOST, Staged, isSandboxUrl, safeName, writeChosenFile } from './lib/export'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { Account, type AccountView } from './lib/account'
+import { startUpdates, type UpdateState } from './lib/updates'
 import { Keys } from './lib/keys'
 import { ConnectorSecrets } from './lib/connector-secrets'
 import {
@@ -26,6 +30,7 @@ import {
   allowPermission,
   isAllowedNavigation,
   isSafeExternalUrl,
+  printWebPreferences,
   windowWebPreferences
 } from './window'
 
@@ -53,6 +58,8 @@ let engine: UtilityProcess | null = null
 let connection: Promise<Connection> | null = null
 let quitting = false
 let restarts = 0
+/** The exit code of an engine that stopped unexpectedly, until the next one has heard it. */
+let crashed: number | null = null
 
 /**
  * From source only: the repo's local .env (a development OpenRouter key and
@@ -78,7 +85,12 @@ function developmentKey(): string {
  * the development web app and Convex deployment; a packaged build uses the
  * production addresses, set before the first external testers (phase 18).
  */
-const PRODUCTION = { webUrl: 'https://titan117.com', apiUrl: null as string | null }
+const PRODUCTION = {
+  webUrl: 'https://titan117.com',
+  apiUrl: null as string | null,
+  // Where signed releases are published (feature 1.10); set with code signing (decisions §50).
+  updateUrl: null as string | null
+}
 
 function accountConfig(): { webUrl: string | null; apiUrl: string | null } {
   if (!is.dev) return PRODUCTION
@@ -195,15 +207,34 @@ function startEngine(): void {
         // A new or restarted engine starts locked until it hears where the account stands.
         pushAccount()
         pushKeys()
+        // The engine before this one crashed: the new one keeps it as an error to report (19.1).
+        if (crashed !== null) {
+          child.postMessage({ type: 'crashed', code: crashed })
+          crashed = null
+        }
       }
     })
     child.once('exit', () => reject(new Error('The engine stopped before it was ready.')))
   })
   connection.catch(() => undefined)
+  // The engine is back online (1.24): renew the lease now rather than in up to 30 minutes.
+  child.on(
+    'message',
+    (message: {
+      type?: string
+      running?: number
+      note?: { title: string; body: string; taskId: string }
+    }) => {
+      if (message?.type === 'online') renewLease()
+      else if (message?.type === 'busy') keepAwake((message.running ?? 0) > 0)
+      else if (message?.type === 'notify' && message.note) notify(message.note)
+    }
+  )
 
-  child.once('exit', () => {
+  child.once('exit', (code) => {
     if (engine === child) engine = null
     if (quitting) return
+    crashed = code
     // The engine crashed: start it again (a few times), and tell the window.
     if (restarts++ < 3) {
       startEngine()
@@ -211,6 +242,38 @@ function startEngine(): void {
         window.webContents.send('engine:restarted')
     }
   })
+}
+
+// ---------------------------------------------------------------- awake and notifications
+
+let awakeBlocker: number | null = null
+
+/** While a task runs the laptop doesn't go to sleep on its own (1.5); the screen still may. */
+function keepAwake(busy: boolean): void {
+  if (busy && awakeBlocker === null) awakeBlocker = powerSaveBlocker.start('prevent-app-suspension')
+  if (!busy && awakeBlocker !== null) {
+    powerSaveBlocker.stop(awakeBlocker)
+    awakeBlocker = null
+  }
+}
+
+/** Done, failed, paused or needs approval (1.9): only when the window isn't in front. */
+function notify(note: { title: string; body: string; taskId: string }): void {
+  const [window] = BrowserWindow.getAllWindows()
+  if (window?.isFocused() || !Notification.isSupported()) return
+  const shown = new Notification({
+    title: note.title.slice(0, 80),
+    body: note.body.slice(0, 200),
+    silent: false
+  })
+  shown.on('click', () => {
+    if (!window) return
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
+    window.webContents.send('task:open', note.taskId)
+  })
+  shown.show()
 }
 
 function dirnameOfInstall(): string {
@@ -221,6 +284,132 @@ function dirnameOfInstall(): string {
 function fromOurPage(event: IpcMainInvokeEvent): boolean {
   const url = event.senderFrame?.url ?? ''
   return isAllowedNavigation(url, devServerUrl)
+}
+
+// ---------------------------------------------------------------- artifacts
+
+const staged = new Staged()
+
+/** Prints a page in a hidden window with no network and no Node (decisions §44). */
+async function printPage<T>(html: string, work: (window: BrowserWindow) => Promise<T>): Promise<T> {
+  const id = staged.put(html)
+  const ses = session.fromPartition('artifact-print')
+  if (!ses.protocol.isProtocolHandled(APP_SCHEME))
+    ses.protocol.handle(APP_SCHEME, (request) => {
+      const url = new URL(request.url)
+      return url.host === SANDBOX_HOST
+        ? staged.respond(url.pathname)
+        : new Response(null, { status: 404 })
+    })
+  // Nothing an artifact asks for leaves the laptop.
+  ses.webRequest.onBeforeRequest((details, callback) =>
+    callback({ cancel: !/^(titan117:|data:|blob:|about:)/.test(details.url) })
+  )
+  ses.setPermissionRequestHandler((_c, _p, callback) => callback(false))
+  const window = new BrowserWindow({
+    show: false,
+    width: 1000,
+    height: 1300,
+    webPreferences: printWebPreferences(ses)
+  })
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.on('will-navigate', (event) => event.preventDefault())
+  try {
+    await window.loadURL(`${APP_SCHEME}://${SANDBOX_HOST}/${id}`)
+    // Charts and diagrams are drawn by then; give scripts in small tools a moment.
+    await new Promise((r) => setTimeout(r, 400))
+    return await work(window)
+  } finally {
+    window.destroy()
+  }
+}
+
+async function saveAs(
+  event: IpcMainInvokeEvent,
+  name: string,
+  data: Buffer
+): Promise<string | null> {
+  const window = BrowserWindow.fromWebContents(event.sender)
+  const options = {
+    title: 'Save',
+    defaultPath: join(app.getPath('documents'), name),
+    buttonLabel: 'Save'
+  }
+  const result = window
+    ? await dialog.showSaveDialog(window, options)
+    : await dialog.showSaveDialog(options)
+  if (result.canceled || !result.filePath) return null
+  await writeChosenFile(result.filePath, data)
+  return result.filePath
+}
+
+// ---------------------------------------------------------------- updates
+
+let updates: ReturnType<typeof startUpdates> | null = null
+
+function registerUpdates(): void {
+  updates = startUpdates({
+    packaged: app.isPackaged,
+    url: is.dev ? process.env['TITAN117_UPDATE_URL'] || null : PRODUCTION.updateUrl,
+    onChange: (state: UpdateState) => {
+      for (const window of BrowserWindow.getAllWindows())
+        window.webContents.send('update:state', state)
+    }
+  })
+  ipcMain.handle('update:state', (event) => {
+    if (!fromOurPage(event)) throw new Error('Refused.')
+    return updates?.state() ?? { state: 'off', why: 'Not started.' }
+  })
+  // Only when the user presses it; the window asks first if a task is running.
+  ipcMain.handle('update:install', (event) => {
+    if (!fromOurPage(event)) throw new Error('Refused.')
+    updates?.install()
+    return true
+  })
+}
+
+function registerArtifacts(): void {
+  // The window hands over a page to show in its sandboxed frame.
+  ipcMain.handle('artifacts:stage', async (event, html: unknown) => {
+    if (!fromOurPage(event)) throw new Error('Refused.')
+    return `${APP_SCHEME}://${SANDBOX_HOST}/${staged.put(html)}`
+  })
+
+  ipcMain.handle(
+    'artifacts:pdf',
+    async (event, html: unknown, name: unknown, pageSize: unknown) => {
+      if (!fromOurPage(event) || typeof html !== 'string') throw new Error('Refused.')
+      const pdf = await printPage(html, (window) =>
+        window.webContents.printToPDF({
+          pageSize: pageSize === 'Letter' ? 'Letter' : 'A4',
+          printBackground: true
+        })
+      )
+      return saveAs(event, safeName(name, 'Artifact.pdf'), pdf)
+    }
+  )
+
+  ipcMain.handle('artifacts:png', async (event, html: unknown, name: unknown) => {
+    if (!fromOurPage(event) || typeof html !== 'string') throw new Error('Refused.')
+    const png = await printPage(html, async (window) => {
+      const height = Number(
+        await window.webContents.executeJavaScript(
+          'Math.min(12000, document.documentElement.scrollHeight)',
+          true
+        )
+      )
+      window.setContentSize(1000, Math.max(300, height || 1300))
+      await new Promise((r) => setTimeout(r, 150))
+      return (await window.webContents.capturePage()).toPNG()
+    })
+    return saveAs(event, safeName(name, 'Artifact.png'), png)
+  })
+
+  // A file the engine converted (Word, Excel, PowerPoint, Markdown, ...).
+  ipcMain.handle('artifacts:save', async (event, name: unknown, base64: unknown) => {
+    if (!fromOurPage(event) || typeof base64 !== 'string') throw new Error('Refused.')
+    return saveAs(event, safeName(name, 'Artifact'), Buffer.from(base64, 'base64'))
+  })
 }
 
 function registerBridge(): void {
@@ -359,6 +548,15 @@ function createWindow(): void {
     if (!isAllowedNavigation(url, devServerUrl)) event.preventDefault()
   })
 
+  // An artifact's frame stays on its sandbox page; its links open in the system browser.
+  mainWindow.webContents.on('will-frame-navigate', (event) => {
+    if (event.isMainFrame) return
+    if (!isSandboxUrl(event.url, APP_SCHEME)) {
+      event.preventDefault()
+      if (isSafeExternalUrl(event.url)) void shell.openExternal(event.url)
+    }
+  })
+
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl)
   } else {
@@ -386,6 +584,8 @@ function start(): void {
   // The app's own files, and nothing outside the renderer folder.
   protocol.handle(APP_SCHEME, (request) => {
     const { host, pathname } = new URL(request.url)
+    // Artifacts, in their sandbox (decisions §44).
+    if (host === SANDBOX_HOST) return staged.respond(pathname)
     const file = normalize(join(rendererDir, decodeURIComponent(pathname)))
     if (host !== 'app' || !file.startsWith(rendererDir + sep))
       return new Response(null, { status: 404 })
@@ -426,6 +626,8 @@ function start(): void {
 
   loadDevelopmentEnv()
   registerBridge()
+  registerArtifacts()
+  registerUpdates()
   startAccount()
   startEngine()
   createWindow()

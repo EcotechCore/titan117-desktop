@@ -6,6 +6,10 @@ Local-first AI team for small companies: a desktop app (agents run on the user's
 
 After finishing any piece of work, update `docs/progress.md` in the same commit: add a log entry under today's date (newest first) and update the phase table and the "Now / Next step" line if they changed. Phases are defined in `docs/01-launch-roadmap-v1.md`.
 
+# Owner checklist
+
+Everything waiting on the owner (decisions to confirm, checks only they can run, accounts, legal) is in `docs/owner-checklist.md`. A piece of work that leaves the owner something to do or decide adds it there in the same commit.
+
 # Before you build
 
 - **Decisions:** `docs/notes/decisions.md` wins over every other doc. A new decision gets a row and a section there in the same commit.

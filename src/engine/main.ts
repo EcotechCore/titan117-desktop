@@ -13,6 +13,8 @@ type FromShell =
   | { type: 'keys'; keys: OwnKeys }
   | { type: 'connectorSecrets'; secrets: Record<string, Record<string, string>> }
   | { type: 'shutdown' }
+  /** The engine before this one stopped unexpectedly (19.1): kept as a caught error. */
+  | { type: 'crashed'; code: number }
 
 function env(name: string): string {
   const value = process.env[name]
@@ -27,7 +29,12 @@ async function main(): Promise<void> {
     appVersion: env('TITAN117_VERSION'),
     coreDirs: [dataDir, env('TITAN117_APP_DIR')],
     allowedOrigins: JSON.parse(env('TITAN117_ORIGINS')) as string[],
-    openRouterKey: process.env['OPENROUTER_API_KEY'] ?? null
+    openRouterKey: process.env['OPENROUTER_API_KEY'] ?? null,
+    // Back online (1.24): the shell renews the licence lease.
+    onOnline: () => process.parentPort.postMessage({ type: 'online' }),
+    // Keep the laptop awake while tasks run (1.5); tell the user what happened (1.9).
+    onBusy: (running) => process.parentPort.postMessage({ type: 'busy', running }),
+    onNotify: (note) => process.parentPort.postMessage({ type: 'notify', note })
   })
 
   // Error capture (feature 19.1): nothing fails silently.
@@ -45,6 +52,11 @@ async function main(): Promise<void> {
       else if (data.type === 'account') engine.setAccount(data.account)
       else if (data.type === 'keys') engine.setKeys(data.keys)
       else if (data.type === 'connectorSecrets') engine.setConnectorSecrets(data.secrets)
+      else if (data.type === 'crashed')
+        engine.parts.log.capture(
+          'engine crash',
+          new Error(`The engine stopped unexpectedly (exit code ${data.code}) and was restarted.`)
+        )
       else if (data.type === 'shutdown') void engine.close().finally(() => process.exit(0))
     } catch (error) {
       engine.parts.log.capture('engine', error, { message: data.type })

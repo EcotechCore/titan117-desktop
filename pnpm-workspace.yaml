@@ -6,3 +6,12 @@ allowBuilds:
   onnxruntime-node: false
   # Its script only prints a version notice.
   protobufjs: false
+# Fixed versions of packages inside our dependencies, for known advisories
+# (CI fails on high ones, guardrails §11):
+overrides:
+  # GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr (high), inside PptxGenJS; only used for images in slides.
+  image-size: 2.0.3
+  # GHSA-w5hq-g745-h8pq (moderate), inside ExcelJS.
+  uuid: 11.1.1
+  # GHSA-w74x-v6f9-j3xg and three more (moderate and low), inside the MCP SDK's ajv.
+  fast-uri: 3.1.9

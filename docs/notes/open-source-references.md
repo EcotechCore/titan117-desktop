@@ -82,16 +82,18 @@ injathons` (next to the repos, not in the references folder) | ours | `f9d719e` 
 |---|---|---|---|---|---|---|
 | [deedy5/ddgs](https://github.com/deedy5/ddgs) | Free-mode metasearch | MIT | Code | `search/ddgs` | MIT | `70a5635510fb` |
 | [Aas-ee/open-webSearch](https://github.com/Aas-ee/open-webSearch) | Free-mode search server | Apache 2.0 *to check* | Code | `search/open-websearch` | Apache 2.0 | `fb11fd94df73` |
-| [mozilla/readability](https://github.com/mozilla/readability) | Page to clean text | Apache 2.0 | Lib | `search/readability` | | |
+| [mozilla/readability](https://github.com/mozilla/readability) | Page to clean text | Apache 2.0 | Lib | `search/readability` | Apache 2.0 (npm `@mozilla/readability` 0.6.0, used in phase 4) | |
 | [adbar/trafilatura](https://github.com/adbar/trafilatura) | Main-text extraction | Apache 2.0 | Code | `search/trafilatura` | Apache 2.0 | `e2f85c965662` |
 | [unclecode/crawl4ai](https://github.com/unclecode/crawl4ai) | Whole-site crawling to text | Apache 2.0 *to check* | Code | `search/crawl4ai` | Apache 2.0 | `94b67888ca8b` |
 | [assafelovic/gpt-researcher](https://github.com/assafelovic/gpt-researcher) | Deep research loop and reports | Apache 2.0 *to check* | Code | `search/gpt-researcher` | Apache 2.0 | `3582a6841fe7` |
 | [ItzCrazyKns/Perplexica](https://github.com/ItzCrazyKns/Perplexica) | Answer engine with sources | MIT *to check* | Code | `search/perplexica` | MIT | `348feca3e378` |
-| [dolanmiu/docx](https://github.com/dolanmiu/docx) | Word export | MIT | Lib | `artifacts/docx` | | |
-| [gitbrent/PptxGenJS](https://github.com/gitbrent/PptxGenJS) | PowerPoint export | MIT | Lib | `artifacts/pptxgenjs` | | |
-| [exceljs/exceljs](https://github.com/exceljs/exceljs) | Excel export | MIT | Lib | `artifacts/exceljs` | | |
-| [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid) | Diagrams | MIT | Lib | `artifacts/mermaid` | | |
+| [dolanmiu/docx](https://github.com/dolanmiu/docx) | Word export | MIT | Lib | `artifacts/docx` | MIT (9.15.4, used in phase 4) | |
+| [gitbrent/PptxGenJS](https://github.com/gitbrent/PptxGenJS) | PowerPoint export | MIT | Lib | `artifacts/pptxgenjs` | MIT (4.0.1, used in phase 4; its JSZip is MIT or GPL, taken as MIT) | |
+| [exceljs/exceljs](https://github.com/exceljs/exceljs) | Excel export | MIT | Lib | `artifacts/exceljs` | MIT (4.4.0, used in phase 4) | |
+| [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid) | Diagrams | MIT | Lib | `artifacts/mermaid` | MIT (12.3.0, used in phase 4); its optional ELK layout (elkjs, EPL-2.0 or GPL-3.0) is stubbed out at build, never shipped (decisions §44) | |
 | [hakimel/reveal.js](https://github.com/hakimel/reveal.js) | Slides | MIT | Lib | `artifacts/revealjs` | | |
+| [WebReflection/linkedom](https://github.com/WebReflection/linkedom) | A light DOM for Readability on Node | ISC | Lib | | ISC (0.18.15, used in phase 4) | |
+| [markedjs/marked](https://github.com/markedjs/marked) | Markdown to HTML and tokens (documents, Word, slides) | MIT | Lib | | MIT (18.2.0, used in phase 4) | |
 
 ## Phase 5 · Install and setup
 

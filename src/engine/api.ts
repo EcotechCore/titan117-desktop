@@ -33,6 +33,13 @@ import type { SpeechEngine } from './lib/speech'
 import type { MemoryStore } from './memory'
 import type { RecordStore } from './records'
 import type { CallOutcome } from './permissions'
+import { ArtifactError, type ArtifactStore } from './artifacts'
+import { convert, ConvertError, FORMATS, zipArtifacts, type ExportFormat } from './lib/convert'
+import { SearchError, DEFAULT_SEARCH_SETTINGS, siteOf } from './lib/search'
+import { ShareError, type ShareService } from './lib/share'
+import { ReportError, type ReportService } from './lib/reports'
+import type { SetupInterest, SetupState } from '../shared/protocol'
+import { SEARCH_KEY_PROVIDERS, type SearchSettings } from '../shared/protocol'
 
 export interface ApiRequest {
   method: string
@@ -72,6 +79,8 @@ export interface Settings {
   setDefaultModel(model: string | null): void
   folders(): string[]
   cloudKey(): boolean
+  /** Whether the engine can reach the internet (1.22). */
+  online(): boolean
   cloudVia(): 'own' | 'credits' | 'dev' | null
   ownKeys(): Record<KeyProvider, boolean>
 }
@@ -92,6 +101,16 @@ export function createApi(deps: {
   speech?: SpeechEngine
   /** A tool call from a task's script (feature 4.10). */
   scriptCall?(taskId: string, name: string, input: unknown): Promise<CallOutcome>
+  artifacts?: ArtifactStore
+  shares?: ShareService
+  search?: { get(): SearchSettings; set(next: SearchSettings): void }
+  reports?: ReportService
+  notifications?: { get(): boolean; set(on: boolean): void }
+  setup?: {
+    state(): Promise<SetupState>
+    runHealth(): Promise<SetupState>
+    save(next: { interests?: SetupInterest[]; done?: boolean }): void
+  }
 }): (request: ApiRequest) => Promise<ApiResponse> {
   const { store, runtime, permissions, router, local, settings, log } = deps
 
@@ -198,6 +217,250 @@ export function createApi(deps: {
     }
   }
 
+  function cleanSearchSettings(body: unknown): SearchSettings {
+    const source = field(body, 'source')
+    const sources = ['auto', 'credits', ...SEARCH_KEY_PROVIDERS]
+    if (typeof source !== 'string' || !sources.includes(source))
+      throw new ApiError(400, 'BAD_REQUEST', `The search source is one of: ${sources.join(', ')}.`)
+    const code = (value: unknown, upper: boolean): string => {
+      const text = typeof value === 'string' ? value.trim() : ''
+      if (text && !/^[A-Za-z]{2}$/.test(text))
+        throw new ApiError(400, 'BAD_REQUEST', 'Country and language are two-letter codes.')
+      return upper ? text.toUpperCase() : text.toLowerCase()
+    }
+    const list = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? [
+            ...new Set(
+              value
+                .filter((x): x is string => typeof x === 'string')
+                .map(siteOf)
+                .filter((x) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(x))
+            )
+          ].slice(0, 200)
+        : []
+    const sites: SearchSettings['sites'] = {}
+    const raw = field(body, 'sites')
+    if (raw && typeof raw === 'object')
+      for (const [agent, lists] of Object.entries(raw as Record<string, unknown>).slice(0, 50))
+        sites[agent.slice(0, 60)] = {
+          only: list(field(lists, 'only')),
+          blocked: list(field(lists, 'blocked'))
+        }
+    return {
+      source: source as SearchSettings['source'],
+      country: code(field(body, 'country'), true),
+      language: code(field(body, 'language'), false),
+      sites
+    }
+  }
+
+  /** Artifacts, sharing and search settings for the window (phase 4). Null when the route isn't one of these. */
+  async function phase4(
+    key: string,
+    id: string | undefined,
+    body: unknown,
+    query: Record<string, string>
+  ): Promise<unknown | null> {
+    switch (key) {
+      case 'GET setup':
+        return {
+          ...(await need(deps.setup).state()),
+          notifications: deps.notifications?.get() ?? true
+        }
+      case 'PUT notifications': {
+        const on = field(body, 'on')
+        if (typeof on !== 'boolean')
+          throw new ApiError(400, 'BAD_REQUEST', '"on" is true or false.')
+        need(deps.notifications).set(on)
+        return { on }
+      }
+      case 'POST tasks/:id/resume':
+        return { task: runtime.resume(id!, 'you asked') }
+      // `/v1/setup/health` reads as an id here.
+      case 'POST setup/:id':
+        if (id !== 'health') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        return need(deps.setup).runHealth()
+      case 'PUT setup': {
+        const interests = field(body, 'interests')
+        const done = field(body, 'done')
+        const allowed = ['everyday', 'documents', 'research', 'apps', 'marketing']
+        if (
+          interests !== undefined &&
+          (!Array.isArray(interests) || !interests.every((i) => allowed.includes(i as string)))
+        )
+          throw new ApiError(400, 'BAD_REQUEST', `Interests are some of: ${allowed.join(', ')}.`)
+        if (done !== undefined && typeof done !== 'boolean')
+          throw new ApiError(400, 'BAD_REQUEST', '"done" is true or false.')
+        need(deps.setup).save({
+          interests: interests as SetupInterest[] | undefined,
+          done: done as boolean | undefined
+        })
+        return need(deps.setup).state()
+      }
+      case 'GET reports': {
+        const reports = need(deps.reports)
+        return { mode: reports.mode(), reports: reports.list(), errors: reports.recentErrors() }
+      }
+      case 'PUT reports': {
+        const reports = need(deps.reports)
+        return { mode: reports.setMode(field(body, 'mode')) }
+      }
+      case 'POST reports': {
+        const errorRef = field(body, 'errorRef')
+        const feature = field(body, 'feature')
+        return {
+          report: need(deps.reports).draft({
+            errorRef: typeof errorRef === 'string' ? errorRef : undefined,
+            feature: typeof feature === 'string' ? feature : undefined
+          })
+        }
+      }
+      case 'POST reports/:id/send':
+        return { report: await need(deps.reports).send(id!, String(field(body, 'note') ?? '')) }
+      case 'DELETE reports/:id':
+        need(deps.reports).discard(id!)
+        return { ok: true }
+      case 'GET search':
+        return { settings: deps.search?.get() ?? DEFAULT_SEARCH_SETTINGS }
+      case 'PUT search': {
+        const next = cleanSearchSettings(body)
+        need(deps.search).set(next)
+        return { settings: next }
+      }
+      case 'GET artifacts':
+        return {
+          artifacts: need(deps.artifacts).list({
+            query: query.q || undefined,
+            taskId: query.taskId || undefined
+          })
+        }
+      case 'POST artifacts':
+        return {
+          artifact: need(deps.artifacts).create({
+            taskId: null,
+            kind: field(body, 'kind') as string,
+            title: field(body, 'title') as string,
+            content: field(body, 'content') as string,
+            author: 'you'
+          })
+        }
+      case 'GET artifacts/:id':
+        return need(deps.artifacts).get(id!)
+      case 'GET artifacts/:id/version':
+        return { version: need(deps.artifacts).version(id!, Number(query.v)) }
+      case 'PUT artifacts/:id': {
+        const content = field(body, 'content')
+        const title = field(body, 'title')
+        return {
+          artifact: need(deps.artifacts).update(id!, {
+            content: typeof content === 'string' ? content : undefined,
+            title: typeof title === 'string' ? title : undefined,
+            author: 'you',
+            note: 'Your edit'
+          })
+        }
+      }
+      case 'POST artifacts/:id/restore':
+        return {
+          artifact: need(deps.artifacts).restore(id!, Number(field(body, 'version')), 'you')
+        }
+      case 'DELETE artifacts/:id': {
+        const store = need(deps.artifacts)
+        const shareId = store.shareId(id!)
+        // A deleted artifact doesn't stay shared.
+        if (shareId) await need(deps.shares).unshare(shareId)
+        store.remove(id!)
+        return { ok: true }
+      }
+      case 'GET artifacts/:id/export': {
+        const store = need(deps.artifacts)
+        const detail = store.get(id!)
+        const version = query.v ? store.version(id!, Number(query.v)) : detail.current
+        const format = query.format as ExportFormat
+        if (!FORMATS[detail.artifact.kind].includes(format))
+          throw new ApiError(
+            400,
+            'BAD_REQUEST',
+            `A ${detail.artifact.kind} can't be downloaded as .${format}.`
+          )
+        const file = await convert(detail.artifact, version.content, format)
+        return { name: file.name, mime: file.mime, base64: file.data.toString('base64') }
+      }
+      case 'POST artifacts/:id': {
+        // `/v1/artifacts/zip`: several artifacts (or versions) as one ZIP (17.21, 17.22).
+        if (id !== 'zip') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        const store = need(deps.artifacts)
+        const raw = field(body, 'items')
+        if (!Array.isArray(raw) || !raw.length || raw.length > 50)
+          throw new ApiError(400, 'BAD_REQUEST', 'Choose between 1 and 50 artifacts.')
+        const items = raw.map((entry) => {
+          const artifactId = String(field(entry, 'id') ?? '')
+          const v = field(entry, 'version')
+          const detail = store.get(artifactId)
+          const version = typeof v === 'number' ? store.version(artifactId, v) : detail.current
+          return {
+            artifact: detail.artifact,
+            content: version.content,
+            version: version.version !== detail.artifact.version ? version.version : undefined
+          }
+        })
+        const zip = await zipArtifacts(items, field(body, 'every') === true)
+        const name =
+          items.length === 1
+            ? `${items[0].artifact.title.replace(/[<>:"/\\|?*]+/g, ' ').trim() || 'Artifact'}.zip`
+            : `Titan117 artifacts (${items.length}).zip`
+        return { name, base64: zip.toString('base64') }
+      }
+      case 'POST artifacts/:id/share': {
+        const store = need(deps.artifacts)
+        const { artifact } = store.get(id!)
+        const html = field(body, 'html')
+        if (typeof html !== 'string' || !html)
+          throw new ApiError(400, 'BAD_REQUEST', 'Nothing to share.')
+        const old = store.shareId(id!)
+        const shared = await need(deps.shares).share({
+          title: artifact.title,
+          kind: artifact.kind,
+          html
+        })
+        // Sharing again gives a new link and removes the old one's snapshot.
+        if (old)
+          await need(deps.shares)
+            .unshare(old)
+            .catch(() => undefined)
+        return { artifact: store.setShare(id!, shared) }
+      }
+      case 'GET artifacts/:id/comments':
+      case 'POST artifacts/:id/comments': {
+        const shareId = need(deps.artifacts).shareId(id!)
+        if (!shareId) throw new ApiError(400, 'BAD_REQUEST', 'This artifact is not shared.')
+        const op = field(body, 'op')
+        const comments = await need(deps.shares).comments(
+          shareId,
+          op === 'reply'
+            ? { op: 'reply', text: String(field(body, 'text') ?? '') }
+            : op === 'hide'
+              ? {
+                  op: 'hide',
+                  commentId: String(field(body, 'commentId') ?? ''),
+                  hidden: field(body, 'hidden') === true
+                }
+              : { op: 'list' }
+        )
+        return { comments }
+      }
+      case 'DELETE artifacts/:id/share': {
+        const store = need(deps.artifacts)
+        const shareId = store.shareId(id!)
+        if (shareId) await need(deps.shares).unshare(shareId)
+        return { artifact: store.setShare(id!, null) }
+      }
+      default:
+        return null
+    }
+  }
+
   function modelId(value: unknown): string {
     const prefixes = [LOCAL_MODEL_PREFIX, CLOUD_MODEL_PREFIX, ...Object.values(OWN_KEY_PREFIXES)]
     if (typeof value !== 'string' || !prefixes.some((p) => value.startsWith(p)))
@@ -234,6 +497,8 @@ export function createApi(deps: {
 
     const extra = await phase3(key, id, body, query)
     if (extra !== null) return extra
+    const more = await phase4(key, id, body, query)
+    if (more !== null) return more
 
     switch (key) {
       case 'GET state': {
@@ -243,6 +508,7 @@ export function createApi(deps: {
           folders: settings.folders(),
           defaultModel: settings.defaultModel(),
           cloudKey: settings.cloudKey(),
+          online: settings.online(),
           cloudVia: settings.cloudVia(),
           ownKeys: settings.ownKeys(),
           hardware: local.hardware(),
@@ -257,7 +523,11 @@ export function createApi(deps: {
 
       case 'POST tasks':
         return {
-          task: runtime.start(field(body, 'text') as string, modelId(field(body, 'model')))
+          task: runtime.start(
+            field(body, 'text') as string,
+            modelId(field(body, 'model')),
+            field(body, 'mode') === 'research' ? 'research' : 'normal'
+          )
         }
 
       case 'GET tasks/:id': {
@@ -354,9 +624,18 @@ export function createApi(deps: {
         error instanceof ModelError ||
         error instanceof MemoryError ||
         error instanceof SkillError ||
-        error instanceof ConnectorError
+        error instanceof ConnectorError ||
+        error instanceof SearchError ||
+        error instanceof ConvertError ||
+        error instanceof ShareError ||
+        error instanceof ReportError
       )
         return { status: 400, body: { error: 'BAD_REQUEST', message: error.message } }
+      if (error instanceof ArtifactError)
+        return {
+          status: error.code === 'NOT_FOUND' ? 404 : 400,
+          body: { error: error.code, message: error.message }
+        }
       const ref = log.capture('api', error, { method: request.method, path: request.path })
       return {
         status: 500,

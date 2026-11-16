@@ -37,6 +37,17 @@ import {
 } from './openrouter'
 import type { KeyProvider } from '../../shared/protocol'
 import { installToken, startServer } from './server'
+import { createArtifactStore, type ArtifactStore } from '../artifacts'
+import { createPageReader } from './read'
+import { createSearchService, DEFAULT_SEARCH_SETTINGS } from './search'
+import { createShareService } from './share'
+import { createReportService, type ReportService } from './reports'
+import { createSetupService } from './setup'
+import { createConnectivity, OFFLINE_NOTE, type Connectivity } from './online'
+import { findBrowserChannel } from './browser'
+import type { SetupInterest } from '../../shared/protocol'
+import type { SearchSettings } from '../../shared/protocol'
+import { KEY_PROVIDERS } from '../../shared/protocol'
 
 export interface AccountState {
   /** The device token, sent only to our credits proxy. */
@@ -75,7 +86,17 @@ export interface EngineOptions {
   browserHeadless?: boolean
   browser?: BrowserHost
   speech?: SpeechEngine
+  /** The internet came back (1.24): the shell renews the licence lease. */
+  onOnline?: () => void
+  /** How many tasks are running (1.5): the shell keeps the laptop awake while any is. */
+  onBusy?: (running: number) => void
+  /** Something the user should hear about when the window isn't in front (1.9). */
+  onNotify?: (note: { title: string; body: string; taskId: string }) => void
 }
+
+/** A task is resumed by itself at most this many times, and only this soon after it stopped (1.6). */
+export const AUTO_RESUME_LIMIT = 2
+export const AUTO_RESUME_WITHIN_MS = 60 * 60 * 1000
 
 export interface Engine {
   port: number
@@ -101,6 +122,9 @@ export interface Engine {
     skills: SkillStore
     records: RecordStore
     connectors: ConnectorHub
+    artifacts: ArtifactStore
+    reports: ReportService
+    connectivity: Connectivity
     /** The token a running task's scripts use (feature 4.10). */
     scriptToken(taskId: string): string | null
   }
@@ -133,13 +157,57 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
 
   const events: EngineEvent[] = []
   let publish: (event: EngineEvent) => void = () => undefined
+  // Notifications (1.9): done, failed, paused, and approvals waiting.
+  const lastStatus = new Map<string, string>()
+  const notify = (event: EngineEvent): void => {
+    if (!options.onNotify || !getMeta<boolean>(db, 'notifications', true)) return
+    if (event.type === 'task') {
+      const { id, status, title, note } = event.task
+      const before = lastStatus.get(id)
+      lastStatus.set(id, status)
+      if (before === status || before === undefined) return
+      if (status === 'done') options.onNotify({ title: 'Titan finished', body: title, taskId: id })
+      else if (status === 'error')
+        options.onNotify({ title: 'A task failed', body: `${title}: ${note ?? ''}`, taskId: id })
+      else if (status === 'stopped' && note === OFFLINE_NOTE)
+        options.onNotify({ title: 'Paused: no internet', body: title, taskId: id })
+    } else if (event.type === 'approval' && event.approval.status === 'pending')
+      options.onNotify({
+        title: 'Titan needs your OK',
+        body: event.approval.summary,
+        taskId: event.approval.taskId
+      })
+  }
   const emit = (event: EngineEvent): void => {
     if (!options.dataDir && event.type !== 'delta') events.push(event)
+    notify(event)
     publish(event)
   }
 
+  // Online or offline (1.22, 1.24): learned from the engine's own requests.
+  const connectivity = createConnectivity({
+    fetch: engineFetch(options.fetch),
+    onChange(online) {
+      emit({ type: 'online', online })
+      if (!online) return
+      // Back online: what waited goes.
+      void reportsRef?.flush().then(() => reportsRef?.checkFixed())
+      options.onOnline?.()
+      // Tasks paused by the lost connection carry on (1.6).
+      autoResume(
+        store
+          .listTasks()
+          .filter((t) => t.status === 'stopped' && t.note === OFFLINE_NOTE)
+          .map((t) => t.id),
+        'the internet is back'
+      )
+    }
+  })
+  let reportsRef: ReportService | null = null
+
   const store = createStore(db, emit)
-  store.closeInterrupted()
+  // Tasks the app was running when it stopped resume once it's unlocked (1.6).
+  let toResume = store.closeInterrupted()
 
   const core = options.coreDirs.map((dir) => {
     try {
@@ -151,7 +219,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   const folders = (): string[] => getMeta<string[]>(db, 'folders', [])
   const policy = (): FolderPolicy => ({ allowed: folders(), core })
 
-  const changed = (what: 'memory' | 'skills' | 'records' | 'connectors') => (): void =>
+  const changed = (what: 'memory' | 'skills' | 'records' | 'connectors' | 'reports') => (): void =>
     emit({ type: 'changed', what })
   const memory = createMemoryStore(db, changed('memory'))
   const skills = createSkillStore(
@@ -202,6 +270,24 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   }
   let runtimeRef: Runtime | null = null
 
+  const artifacts = createArtifactStore(db, (artifact, byAgent) => {
+    emit({ type: 'changed', what: 'artifacts' })
+    // What an agent makes opens beside the chat (17.1).
+    if (artifact && byAgent) emit({ type: 'artifact', artifact })
+  })
+
+  // Search settings (§16): from the laptop's own language and country until the user changes them.
+  const searchSettings = (): SearchSettings => {
+    const saved = getMeta<SearchSettings | null>(db, 'search', null)
+    if (saved) return { ...DEFAULT_SEARCH_SETTINGS, ...saved }
+    const locale = new Intl.Locale(Intl.DateTimeFormat().resolvedOptions().locale)
+    return {
+      ...DEFAULT_SEARCH_SETTINGS,
+      country: locale.region && /^[A-Z]{2}$/.test(locale.region) ? locale.region : '',
+      language: /^[a-z]{2}$/.test(locale.language) ? locale.language : ''
+    }
+  }
+
   const tools = createRegistry(options.tools ?? builtInTools, () => connectors.tools())
   const permissions = createPermissionLayer({
     tools,
@@ -215,7 +301,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       browser,
       speech: (files) => speech.access(files),
       scratchRoot,
-      fetch: options.toolFetch,
+      fetch: connectivity.track(options.toolFetch ?? fetch),
       enginePorts: () => [serverPort],
       toolApi: (taskId) => {
         const value = scriptToken(taskId)
@@ -231,6 +317,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       }
     }
   })
+
+  const pages = createPageReader()
 
   const local = createLocalModels({
     db,
@@ -251,8 +339,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   })
   // Finding out whether llama.cpp starts can take a minute; the window doesn't wait for it.
   local.warm()
-  const fetchOut = engineFetch(options.fetch, () =>
-    account.proxyUrl ? [new URL(account.proxyUrl).origin] : []
+  const fetchOut = connectivity.track(
+    engineFetch(options.fetch, () => (account.proxyUrl ? [new URL(account.proxyUrl).origin] : []))
   )
   const openrouter = createOpenRouter({ fetch: fetchOut, access: cloud })
   const direct = (
@@ -276,6 +364,30 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       }
     }
   }
+  const reports = createReportService({
+    db,
+    appVersion: options.appVersion,
+    dataDir: options.dataDir,
+    fetch: fetchOut,
+    account: () =>
+      account.token && account.proxyUrl
+        ? { token: account.token, apiBase: account.proxyUrl }
+        : null,
+    onChange: changed('reports')
+  })
+  reportsRef = reports
+  // Every caught error: the window may offer a report (19.2); "send automatically" sends it.
+  log.onCapture((errorId, source) => {
+    emit({ type: 'error', errorId, source })
+    reports.onCaptured(errorId)
+  })
+
+  const shares = createShareService({
+    fetch: fetchOut,
+    account: () =>
+      account.token && account.proxyUrl ? { token: account.token, apiBase: account.proxyUrl } : null
+  })
+
   const router = createRouter({
     local,
     openrouter,
@@ -287,6 +399,64 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     hasKey: (provider) => !!ownKeys[provider]
   })
 
+  // The small model that lists OpenRouter's search results: cheap, with tools.
+  const SEARCH_MODELS = [
+    'openai/gpt-4.1-nano',
+    'google/gemini-2.5-flash-lite',
+    'openai/gpt-4o-mini'
+  ]
+  const search = createSearchService({
+    fetch: fetchOut,
+    cloud,
+    keys: () => ({ exa: ownKeys.exa, tavily: ownKeys.tavily, brave: ownKeys.brave }),
+    settings: searchSettings,
+    async pickModel() {
+      const models = await router.cloudModels().catch(() => [])
+      const preferred = SEARCH_MODELS.find((id) => models.some((m) => m.id === id))
+      if (preferred || !models.length) return preferred ?? SEARCH_MODELS[0]
+      const paid = models.filter((m) => m.inputPerMillion > 0 && !m.id.endsWith(':free'))
+      return (
+        [...paid].sort((a, b) => a.inputPerMillion - b.inputPerMillion)[0]?.id ?? SEARCH_MODELS[0]
+      )
+    }
+  })
+  permissions.useServices({ search, pages, artifacts })
+
+  // Setup and health (1.12, 1.20, 1.21): facts from every part of the engine.
+  const setup = createSetupService({
+    fetch: fetchOut,
+    done: () => getMeta<boolean>(db, 'setupDone', false),
+    async facts() {
+      const errorsToday = (
+        db
+          .prepare('select count(*) as n from errors where at > ?')
+          .get(Date.now() - 86_400_000) as {
+          n: number
+        }
+      ).n
+      return {
+        dataDir: options.dataDir,
+        signedIn: !!account.token,
+        locked: account.locked,
+        lockReason: account.reason,
+        cloud: cloud() !== null,
+        defaultModel: getMeta<string | null>(db, 'defaultModel', null),
+        hardware: local.hardware(),
+        localProblem: local.problem(),
+        localModels: await local.list(),
+        folders: folders(),
+        ownKeys: { ...ownKeys },
+        browser: findBrowserChannel(),
+        connectors: connectors
+          .list()
+          .map((c) => ({ name: c.name, status: c.status, error: c.error })),
+        queuedReports: reports.list().filter((r) => r.status === 'queued').length,
+        errorsToday,
+        interests: getMeta<SetupInterest[]>(db, 'interests', [])
+      }
+    }
+  })
+
   const runtime = createRuntime({
     store,
     emit,
@@ -296,12 +466,39 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     tools,
     folders,
     locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
+    online: () => connectivity.online(),
+    onBusy: options.onBusy,
     budget: options.budget,
     memory,
     skills,
     records
   })
   runtimeRef = runtime
+
+  /** Resume recent stopped tasks by themselves, a limited number of times each (1.6). */
+  function autoResume(ids: string[], why: string): void {
+    const counts = getMeta<Record<string, number>>(db, 'autoResumed', {})
+    for (const id of ids) {
+      const task = store.getTask(id)
+      if (!task || Date.now() - task.updatedAt > AUTO_RESUME_WITHIN_MS) continue
+      if ((counts[id] ?? 0) >= AUTO_RESUME_LIMIT) continue
+      try {
+        runtime.resume(id, why)
+        counts[id] = (counts[id] ?? 0) + 1
+      } catch (error) {
+        log.capture('runtime', error, { taskId: id, part: 'auto resume' })
+      }
+    }
+    setMeta(db, 'autoResumed', counts)
+  }
+
+  // Started unlocked (tests, or a lease already known): carry on at once.
+  if (!account.locked && toResume.length) {
+    const ids = toResume
+    toResume = []
+    queueMicrotask(() => autoResume(ids, 'Titan117 started again'))
+  }
+
 
   const handle = createApi({
     appVersion: options.appVersion,
@@ -319,13 +516,32 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       },
       folders,
       cloudKey: () => cloud() !== null,
+      online: () => connectivity.online(),
       cloudVia: () => cloud()?.via ?? null,
-      ownKeys: () => ({
-        openrouter: !!ownKeys.openrouter,
-        anthropic: !!ownKeys.anthropic,
-        openai: !!ownKeys.openai,
-        google: !!ownKeys.google
-      })
+      ownKeys: () =>
+        Object.fromEntries(KEY_PROVIDERS.map((p) => [p, !!ownKeys[p]])) as Record<
+          (typeof KEY_PROVIDERS)[number],
+          boolean
+        >
+    },
+    artifacts,
+    shares,
+    reports,
+    notifications: {
+      get: () => getMeta<boolean>(db, 'notifications', true),
+      set: (on) => setMeta(db, 'notifications', on)
+    },
+    setup: {
+      state: () => setup.state(),
+      runHealth: () => setup.runHealth(),
+      save(next) {
+        if (next.interests) setMeta(db, 'interests', next.interests)
+        if (next.done !== undefined) setMeta(db, 'setupDone', next.done)
+      }
+    },
+    search: {
+      get: searchSettings,
+      set: (next) => setMeta(db, 'search', next)
     },
     memory,
     skills,
@@ -396,10 +612,20 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     setAccount(next) {
       registerSecret(next.token)
       account = next
+      // Unlocked: tasks interrupted by the app stopping carry on, once.
+      if (!next.locked && toResume.length) {
+        const ids = toResume
+        toResume = []
+        autoResume(ids, 'Titan117 started again')
+      }
+      // Signed in again: reports waiting in the queue go, and fixes are checked (19.5, 19.8).
+      void reports.flush().then(() => reports.checkFixed())
       // The window re-reads the state (cloud models on or off) on a settings event.
       emit({ type: 'settings', defaultModel: getMeta<string | null>(db, 'defaultModel', null) })
     },
     async close() {
+      reports.close()
+      connectivity.close()
       await server.close()
       await browser.close()
       await connectors.close()
@@ -418,6 +644,9 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       skills,
       records,
       connectors,
+      artifacts,
+      reports,
+      connectivity,
       scriptToken
     }
   }

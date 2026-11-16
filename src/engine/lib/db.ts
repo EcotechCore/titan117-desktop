@@ -164,6 +164,51 @@ const MIGRATIONS: string[] = [
     enabled integer not null default 1,
     created_at integer not null
   );
+  `,
+  // Phase 4: artifacts (§17, decisions §44). Every change is a version.
+  `
+  -- Deep research (feature 16.8) is a mode a task runs in.
+  alter table tasks add column mode text not null default 'normal';
+
+  create table artifacts (
+    id text primary key,
+    task_id text references tasks(id) on delete set null,
+    kind text not null,
+    title text not null,
+    version integer not null,
+    -- The share link's public id and address (feature 17.13), when shared.
+    share_id text,
+    share_url text,
+    created_at integer not null,
+    updated_at integer not null
+  );
+  create index artifacts_task on artifacts(task_id);
+  create index artifacts_updated on artifacts(updated_at);
+
+  create table artifact_versions (
+    artifact_id text not null references artifacts(id) on delete cascade,
+    version integer not null,
+    content text not null,
+    author text not null,
+    note text not null,
+    created_at integer not null,
+    primary key (artifact_id, version)
+  );
+  `,
+  // Phase 5: error reports the user chose to send, and the offline queue (19.8, decisions §45).
+  `
+  create table report_queue (
+    id text primary key,
+    -- draft: built and shown, not yet sent; queued: waiting to go; sent: has a reference.
+    status text not null,
+    report text not null,
+    ref text,
+    fixed_in text,
+    problem text,
+    created_at integer not null,
+    sent_at integer
+  );
+  create index report_queue_status on report_queue(status, created_at);
   `
 ]
 

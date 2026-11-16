@@ -34,6 +34,8 @@ export interface FakeBrowser {
   labels: Map<string, string>
   /** What open() shows for an address. */
   pages: Map<string, string>
+  /** What a download control hands over, by ref. */
+  downloads: Map<string, { name: string; data: Buffer; url: string }>
 }
 
 /** A browser that checks every address and field with the task's network policy, like the real one. */
@@ -44,6 +46,7 @@ export function fakeBrowser(): FakeBrowser {
     typed: [],
     labels: new Map(),
     pages: new Map(),
+    downloads: new Map(),
     host: undefined as unknown as BrowserHost
   }
   let current = 'about:blank'
@@ -81,7 +84,14 @@ export function fakeBrowser(): FakeBrowser {
           return view()
         },
         select: async () => view(),
-        back: async () => view()
+        back: async () => view(),
+        async download(ref) {
+          const file = state.downloads.get(ref)
+          if (!file) throw new Error('Nothing downloaded.')
+          state.clicked.push(ref)
+          await net.check(file.url, null, 'resource')
+          return file
+        }
       }
     },
     release: async () => undefined,

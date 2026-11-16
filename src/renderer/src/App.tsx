@@ -24,10 +24,16 @@ import { MemoryView } from './Memory'
 import { ConnectorsView } from './Connectors'
 import { play, record, type Recording } from './voice'
 import { VoiceBar } from './VoiceBar'
+import { ArtifactPanel, ArtifactsView } from './Artifacts'
+import { SearchView } from './Search'
+import { ReportDialog } from './Reports'
+import { SetupView, SetupWizard, type FixHandler } from './Setup'
+import type { ReportMode } from '../../shared/protocol'
 
 const PROMPTS = [
   'Find every invoice in my folder and total them in a CSV.',
   'Read https://titan117.com and tell me what it offers.',
+  'Research the rules for e-invoicing in Romania and make a report with sources.',
   'Rename the photos in my folder by the date they were taken.',
   'Remember that our company is called … and what we sell.'
 ]
@@ -44,6 +50,14 @@ function App(): React.JSX.Element {
   const account = useAccount()
   const recording = useRef<Recording | null>(null)
   const [voice, setVoice] = useState<'off' | 'recording' | 'transcribing'>('off')
+  // Deep research (16.8): the next new task runs as research.
+  const [research, setResearch] = useState(false)
+  // Error reports (19.7): "never" means no card after an error; Report a problem still works.
+  const [reportMode, setReportMode] = useState<ReportMode>('ask')
+  // The first-launch wizard (1.12), until it's finished or skipped.
+  const [wizard, setWizard] = useState(false)
+  // A downloaded update waiting for a restart (1.10).
+  const [update, setUpdate] = useState<string | null>(null)
 
   const { engine, view, model } = state
   const taskId = view.kind === 'task' ? view.id : null
@@ -69,6 +83,14 @@ function App(): React.JSX.Element {
         setApi(api)
         dispatch({ type: 'loaded', engine: await api.get<EngineState>('/v1/state') })
         void api
+          .get<{ mode: ReportMode }>('/v1/reports')
+          .then((r) => setReportMode(r.mode))
+          .catch(() => undefined)
+        void api
+          .get<{ done: boolean }>('/v1/setup')
+          .then((s) => setWizard(!s.done))
+          .catch(() => undefined)
+        void api
           .get<{ cloud: CloudModel[]; own: OwnKeyModel[] }>('/v1/models')
           .then((m) => dispatch({ type: 'cloud', models: m.cloud, own: m.own }))
           .catch(() => undefined)
@@ -87,6 +109,14 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     window.titan117.onEngineRestart(() => setAttempt((n) => n + 1))
+    window.titan117.onOpenTask((id) => dispatch({ type: 'view', view: { kind: 'task', id } }))
+    const onUpdate = (s: { state: string; version?: string }): void =>
+      setUpdate(s.state === 'ready' ? (s.version ?? '') : null)
+    window.titan117.updates.onChange(onUpdate)
+    void window.titan117.updates
+      .state()
+      .then(onUpdate)
+      .catch(() => undefined)
   }, [])
 
   // Open a task: load its messages, approvals and activity once.
@@ -140,8 +170,10 @@ function App(): React.JSX.Element {
       } else {
         const { task: created } = await api.send<{ task: Task }>('POST', '/v1/tasks', {
           text: message,
-          model
+          model,
+          mode: research || /^research\b/i.test(message) ? 'research' : 'normal'
         })
+        setResearch(false)
         dispatch({
           type: 'detail',
           detail: { task: created, messages: [], approvals: [], activity: [] }
@@ -153,6 +185,16 @@ function App(): React.JSX.Element {
       fail(error)
     }
   }
+
+  /** A checklist item's fix button (1.17, 1.20). */
+  const fix: FixHandler = useCallback((f) => {
+    if (f.kind === 'view' && f.target) dispatch({ type: 'view', view: { kind: f.target } as never })
+    else if (f.kind === 'folder') void window.titan117.addFolder()
+    else if (f.kind === 'account') void window.titan117.account.signIn().catch(() => undefined)
+    else if (f.kind === 'link' && f.target) window.open(f.target)
+    else if (f.kind === 'report')
+      dispatch({ type: 'report', report: { feature: 'report a problem' } })
+  }, [])
 
   /** After a key is saved or removed: what cloud calls can reach has changed. */
   const reloadModels = useCallback(async () => {
@@ -241,7 +283,17 @@ function App(): React.JSX.Element {
   const canSend = !!text.trim() && !busy
 
   return (
-    <div className={state.showDetails && detail ? 'win' : 'win no-details'}>
+    <div
+      className={
+        state.artifact && api
+          ? state.artifactFull
+            ? 'win artifact-full-win'
+            : 'win with-artifact'
+          : state.showDetails && detail
+            ? 'win'
+            : 'win no-details'
+      }
+    >
       <header className="bar">
         <div className="brand">
           <Eyes state="idle" />
@@ -298,10 +350,28 @@ function App(): React.JSX.Element {
           <Icon name="plug" /> Connectors
         </button>
         <button
+          className={view.kind === 'artifacts' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'artifacts' } })}
+        >
+          <Icon name="file" /> Artifacts
+        </button>
+        <button
+          className={view.kind === 'search' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'search' } })}
+        >
+          <Icon name="globe" /> Web search
+        </button>
+        <button
           className={view.kind === 'models' ? 'nav on' : 'nav'}
           onClick={() => dispatch({ type: 'view', view: { kind: 'models' } })}
         >
           <Icon name="chip" /> Models
+        </button>
+        <button
+          className={view.kind === 'setup' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'setup' } })}
+        >
+          <Icon name="check" /> Setup
         </button>
 
         <p className="label">Agents</p>
@@ -350,6 +420,12 @@ function App(): React.JSX.Element {
           <Icon name="plus" /> Allow a folder
         </button>
 
+        <button
+          className="nav"
+          onClick={() => dispatch({ type: 'report', report: { feature: 'report a problem' } })}
+        >
+          <Icon name="flag" /> Report a problem
+        </button>
         <p className="foot mono">
           <span className={state.status === 'ready' ? 'dot dot-done' : 'dot dot-error'} />
           {state.status === 'ready' ? 'Engine running' : 'Engine restarting'} · v{engine.appVersion}
@@ -359,6 +435,58 @@ function App(): React.JSX.Element {
 
       <main className="work">
         {account && <LeaseWarning view={account} />}
+        {update !== null && (
+          <div className="note offline-switch" role="status">
+            <span>Titan117 {update} is ready.</span>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                const running = state.tasks.some(
+                  (t) => t.status === 'running' || t.status === 'waiting'
+                )
+                if (
+                  running &&
+                  !window.confirm(
+                    'A task is still working. Restart now? It carries on after the update.'
+                  )
+                )
+                  return
+                void window.titan117.updates.install()
+              }}
+            >
+              Restart to update
+            </button>
+          </div>
+        )}
+        {!engine.online && (
+          <div className="note offline-bar" role="status">
+            <strong>Offline.</strong> Local models, your files and tools keep working. Cloud models,
+            web search and sharing wait for the internet; error reports wait and go by themselves.
+          </div>
+        )}
+        {state.lastError && reportMode === 'ask' && (
+          <div className="note note-error error-card" role="alert">
+            <span>
+              Something went wrong ({state.lastError.source}). It was saved to the local log. Send
+              us a report? You&apos;ll see all of it first.
+            </span>
+            <button
+              className="btn"
+              onClick={() =>
+                dispatch({ type: 'report', report: { errorRef: state.lastError!.errorId } })
+              }
+            >
+              Review the report
+            </button>
+            <button
+              className="icon-btn"
+              aria-label="Dismiss"
+              onClick={() => dispatch({ type: 'dismissError' })}
+            >
+              <Icon name="x" />
+            </button>
+          </div>
+        )}
         <div className="work-scroll">
           {view.kind === 'approvals' && (
             <ApprovalsView
@@ -370,6 +498,30 @@ function App(): React.JSX.Element {
           )}
           {view.kind === 'memory' && (
             <MemoryView client={api} changed={state.changed} onProblem={fail} />
+          )}
+          {view.kind === 'artifacts' && (
+            <ArtifactsView
+              client={api}
+              changed={state.changed.artifacts ?? 0}
+              onOpen={(id) => dispatch({ type: 'artifact', id })}
+              onProblem={fail}
+            />
+          )}
+          {view.kind === 'setup' && (
+            <SetupView
+              client={api}
+              changed={(state.changed.connectors ?? 0) + (state.changed.reports ?? 0)}
+              onFix={fix}
+              onProblem={fail}
+            />
+          )}
+          {view.kind === 'search' && (
+            <SearchView
+              client={api}
+              engine={engine}
+              onKeysChanged={() => void reloadModels().catch(fail)}
+              onProblem={fail}
+            />
           )}
           {view.kind === 'connectors' && (
             <ConnectorsView client={api} changed={state.changed.connectors ?? 0} onProblem={fail} />
@@ -419,6 +571,47 @@ function App(): React.JSX.Element {
 
         {(view.kind === 'start' || view.kind === 'task') && (
           <div className="composer">
+            {task?.status === 'stopped' &&
+              !task.note?.startsWith('No internet') &&
+              task.note !== 'You stopped this task.' && (
+                <div className="note offline-switch">
+                  <span>{task.note ?? 'This task stopped.'}</span>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() =>
+                      client.current?.send('POST', `/v1/tasks/${task.id}/resume`).catch(fail)
+                    }
+                  >
+                    Resume
+                  </button>
+                </div>
+              )}
+            {task?.status === 'stopped' && task.note?.startsWith('No internet') && (
+              <div className="note offline-switch">
+                <span>This task stopped because the internet is gone.</span>
+                {ready[0] ? (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      const local = `local:${ready[0].id}`
+                      chooseModel(local)
+                      client.current
+                        ?.send('POST', `/v1/tasks/${task.id}/messages`, {
+                          text: 'Continue with the local model.',
+                          model: local
+                        })
+                        .catch(fail)
+                    }}
+                  >
+                    Continue with {ready[0].name} (local)
+                  </button>
+                ) : (
+                  <span className="muted">
+                    Download a local model in Models to keep working offline.
+                  </span>
+                )}
+              </div>
+            )}
             {state.problem && (
               <p className="note note-error" role="alert">
                 {state.problem}
@@ -472,6 +665,16 @@ function App(): React.JSX.Element {
                     <option value="more">More models…</option>
                   </select>
                 </label>
+                {!task && (
+                  <button
+                    className={research ? 'chip chip-on' : 'chip'}
+                    aria-pressed={research}
+                    title="Many searches, reading and cross-checking, then a report with sources"
+                    onClick={() => setResearch(!research)}
+                  >
+                    <Icon name="globe" /> Deep research
+                  </button>
+                )}
                 <span className="cost mono">{model && estimate ? estimate.label : ''}</span>
                 {voice === 'off' && (
                   <button
@@ -509,7 +712,59 @@ function App(): React.JSX.Element {
         )}
       </main>
 
-      {state.showDetails && detail && (
+      {wizard && api && (
+        <SetupWizard
+          client={api}
+          signedIn={!!account?.signedIn}
+          onFix={fix}
+          onDone={() => setWizard(false)}
+          onProblem={fail}
+        />
+      )}
+
+      {state.report && api && (
+        <ReportDialog
+          client={api}
+          errorRef={state.report.errorRef}
+          feature={state.report.feature}
+          onClose={() => {
+            dispatch({ type: 'report', report: null })
+            void api
+              .get<{ mode: ReportMode }>('/v1/reports')
+              .then((r) => setReportMode(r.mode))
+              .catch(() => undefined)
+          }}
+          onProblem={fail}
+        />
+      )}
+
+      {state.artifact && api && (
+        <ArtifactPanel
+          key={state.artifact}
+          client={api}
+          id={state.artifact}
+          changed={state.changed.artifacts ?? 0}
+          full={state.artifactFull}
+          onFull={() => dispatch({ type: 'artifactFull' })}
+          onClose={() => dispatch({ type: 'artifact', id: null })}
+          onProblem={fail}
+          onAsk={(text) => {
+            if (!model) return dispatch({ type: 'view', view: { kind: 'models' } })
+            client.current
+              ?.send<{ task: Task }>('POST', '/v1/tasks', { text, model })
+              .then(({ task: created }) => {
+                dispatch({
+                  type: 'detail',
+                  detail: { task: created, messages: [], approvals: [], activity: [] }
+                })
+                dispatch({ type: 'view', view: { kind: 'task', id: created.id } })
+              })
+              .catch(fail)
+          }}
+        />
+      )}
+
+      {!state.artifact && state.showDetails && detail && (
         <aside className="details" aria-label="Task details">
           <span className={`status status-${detail.task.status}`}>
             {
@@ -532,6 +787,19 @@ function App(): React.JSX.Element {
             <dt>Cost</dt>
             <dd className="mono">{usd(detail.task.costUsd)}</dd>
           </dl>
+          {detail.task.status === 'error' && /ref ([0-9a-f]{8})/.exec(detail.task.note ?? '') && (
+            <button
+              className="btn"
+              onClick={() =>
+                dispatch({
+                  type: 'report',
+                  report: { errorRef: /ref ([0-9a-f]{8})/.exec(detail.task.note ?? '')![1] }
+                })
+              }
+            >
+              Send a report about this
+            </button>
+          )}
           <p className="label">Activity</p>
           <ol className="log">
             {detail.activity.map((a) => (

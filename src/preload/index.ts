@@ -16,6 +16,17 @@ contextBridge.exposeInMainWorld('titan117', {
   onEngineRestart: (listener: () => void) => {
     ipcRenderer.on('engine:restarted', () => listener())
   },
+  updates: {
+    state: () => ipcRenderer.invoke('update:state'),
+    install: () => ipcRenderer.invoke('update:install'),
+    onChange: (listener: (state: unknown) => void) => {
+      ipcRenderer.on('update:state', (_event, state) => listener(state))
+    }
+  },
+  /** A notification was clicked (1.9): open that task. */
+  onOpenTask: (listener: (taskId: string) => void) => {
+    ipcRenderer.on('task:open', (_event, taskId: string) => listener(String(taskId)))
+  },
   keys: {
     saved: () => ipcRenderer.invoke('keys:saved'),
     save: (provider: string, key: string) => ipcRenderer.invoke('keys:save', provider, key),
@@ -25,6 +36,13 @@ contextBridge.exposeInMainWorld('titan117', {
     setSecrets: (id: string, secrets: Record<string, string>) =>
       ipcRenderer.invoke('connectors:setSecrets', id, secrets),
     removeSecrets: (id: string) => ipcRenderer.invoke('connectors:removeSecrets', id)
+  },
+  artifacts: {
+    stage: (html: string) => ipcRenderer.invoke('artifacts:stage', html),
+    pdf: (html: string, name: string, pageSize: 'A4' | 'Letter') =>
+      ipcRenderer.invoke('artifacts:pdf', html, name, pageSize),
+    png: (html: string, name: string) => ipcRenderer.invoke('artifacts:png', html, name),
+    save: (name: string, base64: string) => ipcRenderer.invoke('artifacts:save', name, base64)
   },
   account: {
     status: () => ipcRenderer.invoke('account:status'),

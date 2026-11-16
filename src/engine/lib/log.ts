@@ -16,6 +16,8 @@ export interface Logger {
   info(message: string, context?: Record<string, unknown>): void
   /** Catch an error: log it and keep it. Returns its reference id. */
   capture(source: string, error: unknown, context?: Record<string, unknown>): string
+  /** Called after each caught error (error reports, 19.2). */
+  onCapture(listener: (id: string, source: string) => void): void
 }
 
 export function createLogger(db: Db, dataDir: string | null): Logger {
@@ -41,7 +43,12 @@ export function createLogger(db: Db, dataDir: string | null): Logger {
     }
   }
 
+  const listeners: ((id: string, source: string) => void)[] = []
+
   return {
+    onCapture(listener) {
+      listeners.push(listener)
+    },
     info(message, context) {
       write('info', message, context)
     },
@@ -66,6 +73,13 @@ export function createLogger(db: Db, dataDir: string | null): Logger {
         // The database may be the thing that failed; the log line still goes out.
       }
       write('error', message, { id, source, stack, ...(safeContext ?? {}) })
+      for (const listener of listeners) {
+        try {
+          listener(id, source)
+        } catch {
+          // A listener failing must not hide the error it was told about.
+        }
+      }
       return id
     }
   }

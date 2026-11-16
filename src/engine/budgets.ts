@@ -21,6 +21,14 @@ export const DEFAULT_BUDGET: Budget = {
   maxRepeats: 3
 }
 
+/** Deep research (16.8, decisions §44): many searches and pages, so a bigger budget. */
+export const RESEARCH_BUDGET: Budget = {
+  maxSteps: 60,
+  maxSeconds: 30 * 60,
+  maxCostUsd: 2,
+  maxRepeats: 3
+}
+
 export interface BudgetMeter {
   /** Call before each model step. Returns why the task must stop, or null. */
   beforeStep(): string | null

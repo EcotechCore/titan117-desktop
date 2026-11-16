@@ -132,7 +132,11 @@ describe('the prompt-injection suite', () => {
       { web, answers: ['deny'] }
     )
     expect(asked[0]).toMatch(/Open collect\.evil\.example\? This task has read/)
-    expect(web.requests.map((r) => r.url)).toEqual(['https://docs.example.com/'])
+    // robots.txt is read first on a site the task may open (decisions §44); nothing reached the other site.
+    expect(web.requests.map((r) => r.url)).toEqual([
+      'https://docs.example.com/robots.txt',
+      'https://docs.example.com/'
+    ])
   })
 
   it('a form field carrying private data is blocked', async () => {

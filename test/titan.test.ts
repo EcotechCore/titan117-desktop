@@ -393,8 +393,11 @@ describe('the network policy in a task', () => {
     await call(engine, 'POST', `/v1/approvals/${approval.id}`, { answer: 'approve' })
     const done = await finished(taskId)
     expect(done.task.status).toBe('done')
+    // Each site's robots.txt is read once, after the network policy allowed the site.
     expect(web.requests.map((r) => r.url)).toEqual([
+      'https://docs.example.com/robots.txt',
       'https://docs.example.com/guide',
+      'https://other.example/robots.txt',
       'https://other.example/'
     ])
     const page = done.messages

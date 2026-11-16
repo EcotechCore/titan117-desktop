@@ -1,6 +1,6 @@
 /**
- * The user's own API keys (features 2.9, 11.5): OpenRouter, Anthropic,
- * OpenAI and Google. Kept on this laptop only, encrypted by the OS keychain
+ * The user's own API keys (features 2.9, 11.5, 16.3): OpenRouter, Anthropic,
+ * OpenAI and Google for models; Exa, Tavily and Brave for web search. Kept on this laptop only, encrypted by the OS keychain
  * (Electron's safeStorage); never sent to our servers (decisions §32) or to
  * the window. The engine receives them to call each provider directly.
  *
@@ -33,6 +33,32 @@ async function tryKey(provider: KeyProvider, key: string, fetchFn: typeof fetch)
         return false
       throw error
     }
+  }
+  // Search keys (decisions §44): one small search, the only check these providers offer.
+  if (provider === 'brave') {
+    const res = await fetchFn('https://api.search.brave.com/res/v1/web/search?q=titan117&count=1', {
+      headers: { 'X-Subscription-Token': key, Accept: 'application/json' }
+    })
+    if (res.ok) return true
+    if ([400, 401, 403, 422].includes(res.status)) return false
+    throw new Error(`The provider answered ${res.status}.`)
+  }
+  if (provider === 'tavily' || provider === 'exa') {
+    const res =
+      provider === 'tavily'
+        ? await fetchFn('https://api.tavily.com/search', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: 'titan117', max_results: 1, search_depth: 'basic' })
+          })
+        : await fetchFn('https://api.exa.ai/search', {
+            method: 'POST',
+            headers: { 'x-api-key': key, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: 'titan117', numResults: 1 })
+          })
+    if (res.ok) return true
+    if ([400, 401, 403].includes(res.status)) return false
+    throw new Error(`The provider answered ${res.status}.`)
   }
   const url = {
     openrouter: 'https://openrouter.ai/api/v1/key',

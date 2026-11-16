@@ -8,11 +8,12 @@
  * arrive in phase 11.
  */
 import type { ChatMessage, Task } from '../shared/protocol'
-import { createBudgetMeter, DEFAULT_BUDGET, type Budget } from './budgets'
+import { createBudgetMeter, DEFAULT_BUDGET, RESEARCH_BUDGET, type Budget } from './budgets'
 import type { Logger } from './lib/log'
 import type { SkillStore } from './lib/skills'
 import type { MemoryStore } from './memory'
 import { ModelError } from './models/types'
+import { isNetworkFailure, OFFLINE_NOTE } from './lib/online'
 import type { PermissionLayer } from './permissions'
 import { formatRecord, type RecordStore } from './records'
 import type { Router } from './router'
@@ -29,7 +30,20 @@ export interface PromptContext {
   skills?: { name: string; description: string }[]
   pastTasks?: string[]
   platform?: NodeJS.Platform
+  /** Deep research (feature 16.8). */
+  research?: boolean
 }
+
+/** Deep research's own instructions (16.8, decisions §44; ideas from GPT Researcher). */
+export const RESEARCH_RULES = [
+  'This task is DEEP RESEARCH. Work like a careful analyst:',
+  '1. Plan: write down the questions the report must answer.',
+  "2. Search widely: several web_search calls with different words, in the user's language and in English where that finds more.",
+  '3. Read the best sources with web_fetch: official, primary and recent first; read_site for a company or institution.',
+  '4. Cross-check: a fact that matters needs two independent sources, or say that it rests on one. Note where sources disagree.',
+  '5. Finish with ONE document artifact (artifact_create, kind "document"): a short summary first, then sections, tables where they help, a numbered citation like [1] after every fact from the web, and a final "## Sources" section listing each as "[n] [Title](address)". Say what you could not find.',
+  'Then answer in the chat with two or three sentences and point to the report.'
+].join('\n')
 
 export function systemPrompt(folders: string[], context: PromptContext = {}): string {
   const platform = context.platform ?? process.platform
@@ -44,12 +58,14 @@ export function systemPrompt(folders: string[], context: PromptContext = {}): st
     'Reading runs at once. Changing files, most commands and scripts ask the user first; deleting, sending, posting and paying always ask. If the user denies something, do not try again another way.',
     'If a tool is refused, tell the user what was refused and why, and stop that line of work.',
     'For bulk work (many files, many pages), write one run_code script that calls your tools with titan.call and prints a short summary, instead of many separate tool calls.',
-    'Read web pages with web_fetch, or browser_open when a page needs clicking; not with the shell. Use the file tools for files and run_command for real commands.',
+    'Search the web with web_search, then read the best pages with web_fetch (read_site for a whole site, browser_open when a page needs clicking); not with the shell. Every fact from the web gets its address next to it. Use the file tools for files and run_command for real commands.',
+    'When the answer is something to keep, look at or share (a report, offer, table, chart, diagram, slides, a small tool), make it with artifact_create instead of writing it all in the chat, then say in a sentence or two what it holds. To change it, use artifact_update with the whole new content.',
     'In the browser, never solve CAPTCHAs or hide that you are automated; stop before the final publish, send or pay step and let the user approve it.',
     'Save to memory what the user tells you about themselves, their company and their preferences (memory_save). Never save keys or passwords.',
     'Before a kind of task you may have done before, check past_tasks. After finishing a task the user is likely to repeat, offer to save it as a skill (skill_save).',
     UNTRUSTED_RULE
   ]
+  if (context.research) lines.push('', RESEARCH_RULES)
   if (context.memories?.length)
     lines.push(
       '',
@@ -94,7 +110,7 @@ function specFor(tool: {
 }
 
 export interface Runtime {
-  start(text: string, model: string): Task
+  start(text: string, model: string, mode?: Task['mode']): Task
   send(taskId: string, text: string, model?: string): Task
   cancel(taskId: string): void
   isRunning(taskId: string): boolean
@@ -102,7 +118,16 @@ export interface Runtime {
   signal(taskId: string): AbortSignal | null
   /** Resolves when a task's current run is over. For tests. */
   settled(taskId: string): Promise<void>
+  /**
+   * Carry on a stopped task from where it was (1.6): every step is stored, so
+   * the conversation is the checkpoint. A tool call that never finished is
+   * answered "not run" first, so nothing is done twice without the model knowing.
+   */
+  resume(taskId: string, why: string): Task
 }
+
+export const NOT_FINISHED =
+  'Not run to the end: Titan117 stopped before this finished. Check whether it already happened before doing it again.'
 
 export class RuntimeError extends Error {
   constructor(
@@ -127,6 +152,10 @@ export function createRuntime(deps: {
   records?: RecordStore
   /** Why Titan117 is locked (decisions §17), or null when it may work. */
   locked?: () => string | null
+  /** Whether the internet can be reached; a cloud model's step waits for it (1.22). */
+  online?: () => boolean
+  /** How many tasks are running, whenever it changes (keep awake, 1.5). */
+  onBusy?: (running: number) => void
   budget?: Budget
   now?: () => number
 }): Runtime {
@@ -159,10 +188,14 @@ export function createRuntime(deps: {
   }
 
   async function run(taskId: string, signal: AbortSignal): Promise<void> {
-    const meter = createBudgetMeter(deps.budget ?? DEFAULT_BUDGET, deps.now)
+    const research = store.getTask(taskId)?.mode === 'research'
+    const meter = createBudgetMeter(
+      deps.budget ?? (research ? RESEARCH_BUDGET : DEFAULT_BUDGET),
+      deps.now
+    )
     const startCost = store.getTask(taskId)?.costUsd ?? 0
     const startSteps = store.getTask(taskId)?.steps ?? 0
-    const context = promptContext(taskId)
+    const context = { ...promptContext(taskId), research }
 
     function finish(status: Task['status'], note: string | null): void {
       store.updateTask(taskId, {
@@ -203,6 +236,20 @@ export function createRuntime(deps: {
 
         const task = store.getTask(taskId)!
         const route = router.route(task.model)
+        // Offline with a cloud model: stop cleanly at this step, so the user can switch to a local one.
+        if (route.source !== 'local' && deps.online && !deps.online()) {
+          store.log({
+            taskId,
+            kind: 'error',
+            agent: AGENT,
+            model: task.model,
+            tool: null,
+            summary: OFFLINE_NOTE,
+            costUsd: 0,
+            approvedBy: null
+          })
+          return finish('stopped', OFFLINE_NOTE)
+        }
         const messages: ChatMessage[] = store.listMessages(taskId).map((m) => m.message)
 
         const result = await route.provider.turn({
@@ -267,6 +314,11 @@ export function createRuntime(deps: {
             signal
           })
           meter.resume()
+          // A search through credits counts towards the task's budget (16.12).
+          if (outcome.status === 'done' && outcome.costUsd) {
+            meter.addCost(outcome.costUsd)
+            store.updateTask(taskId, { costUsd: startCost + meter.costUsd })
+          }
           store.addMessage(taskId, {
             role: 'tool',
             callId: call.id,
@@ -291,6 +343,20 @@ export function createRuntime(deps: {
       }
     } catch (error) {
       if (signal.aborted) return finish('stopped', 'You stopped this task.')
+      // The connection dropped mid-step: not a bug, so no error report, and the task can go on later.
+      if (isNetworkFailure(error) || (deps.online && !deps.online())) {
+        store.log({
+          taskId,
+          kind: 'error',
+          agent: AGENT,
+          model: null,
+          tool: null,
+          summary: OFFLINE_NOTE,
+          costUsd: 0,
+          approvedBy: null
+        })
+        return finish('stopped', OFFLINE_NOTE)
+      }
       const friendly = error instanceof ModelError
       const id = log.capture('runtime', error, { taskId })
       const note = friendly
@@ -320,6 +386,8 @@ export function createRuntime(deps: {
         if (running.get(taskId)?.abort === abort) running.delete(taskId)
       })
     running.set(taskId, { abort, done })
+    deps.onBusy?.(running.size)
+    void done.finally(() => deps.onBusy?.(running.size))
   }
 
   function clean(text: unknown): string {
@@ -330,7 +398,7 @@ export function createRuntime(deps: {
   }
 
   return {
-    start(text, model) {
+    start(text, model, mode = 'normal') {
       const lock = deps.locked?.()
       if (lock) throw new RuntimeError('LOCKED', lock)
       const message = clean(text)
@@ -338,7 +406,8 @@ export function createRuntime(deps: {
       const task = store.createTask({
         title: message.split('\n')[0].slice(0, 80),
         agent: AGENT,
-        model
+        model,
+        mode: mode === 'research' ? 'research' : 'normal'
       })
       store.log({
         taskId: task.id,
@@ -387,6 +456,47 @@ export function createRuntime(deps: {
 
     signal: (taskId) => running.get(taskId)?.abort.signal ?? null,
 
-    settled: (taskId) => running.get(taskId)?.done ?? Promise.resolve()
+    settled: (taskId) => running.get(taskId)?.done ?? Promise.resolve(),
+
+    resume(taskId, why) {
+      const lock = deps.locked?.()
+      if (lock) throw new RuntimeError('LOCKED', lock)
+      const task = store.getTask(taskId)
+      if (!task) throw new RuntimeError('NOT_FOUND', 'No such task.')
+      if (running.has(taskId)) throw new RuntimeError('CONFLICT', 'This task is already working.')
+      if (task.status !== 'stopped' && task.status !== 'error')
+        throw new RuntimeError('CONFLICT', 'Only a stopped task can be resumed.')
+      // Tool calls that never got an answer get one now.
+      const messages = store.listMessages(taskId).map((m) => m.message)
+      const answered = new Set(messages.flatMap((m) => (m.role === 'tool' ? [m.callId] : [])))
+      const last = [...messages].reverse().find((m) => m.role === 'assistant')
+      if (last?.role === 'assistant')
+        for (const call of last.toolCalls ?? [])
+          if (!answered.has(call.id))
+            store.addMessage(taskId, {
+              role: 'tool',
+              callId: call.id,
+              name: call.name,
+              output: NOT_FINISHED,
+              isError: true
+            })
+      // A conversation that ends with the model's own answer needs a nudge to go on.
+      const end = store.listMessages(taskId).at(-1)?.message
+      if (end?.role === 'assistant' && !end.toolCalls?.length)
+        store.addMessage(taskId, { role: 'user', text: 'Please continue where you left off.' })
+      store.log({
+        taskId,
+        kind: 'task',
+        agent: AGENT,
+        model: task.model,
+        tool: null,
+        summary: `Resumed: ${why}`,
+        costUsd: 0,
+        approvedBy: null
+      })
+      store.updateTask(taskId, { status: 'running', note: null })
+      launch(taskId)
+      return store.getTask(taskId)!
+    }
   }
 }

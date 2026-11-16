@@ -8,7 +8,13 @@ import { useState } from 'react'
 
 import type { KeyProvider, OwnKeyModel } from '../../shared/protocol'
 
-const PROVIDERS: { id: KeyProvider; name: string; where: string; note: string }[] = [
+const PROVIDERS: {
+  id: KeyProvider
+  name: string
+  where: string
+  note: string
+  kind?: 'search'
+}[] = [
   {
     id: 'openrouter',
     name: 'OpenRouter',
@@ -32,6 +38,27 @@ const PROVIDERS: { id: KeyProvider; name: string; where: string; note: string }[
     name: 'Google',
     where: 'aistudio.google.com',
     note: 'Gemini. In the EU, UK and Switzerland Google requires billing turned on for the key’s project.'
+  },
+  {
+    id: 'exa',
+    name: 'Exa',
+    where: 'dashboard.exa.ai',
+    note: 'Search made for AI, with the most relevant passages of each page.',
+    kind: 'search'
+  },
+  {
+    id: 'tavily',
+    name: 'Tavily',
+    where: 'app.tavily.com',
+    note: 'Search made for AI agents; a free monthly allowance.',
+    kind: 'search'
+  },
+  {
+    id: 'brave',
+    name: 'Brave Search',
+    where: 'api-dashboard.search.brave.com',
+    note: 'An independent web index. Its results are never cached, as Brave’s terms ask.',
+    kind: 'search'
   }
 ]
 
@@ -40,8 +67,11 @@ export function OwnKeys({
   models,
   model,
   onUse,
-  onChanged
+  onChanged,
+  kind = 'models'
 }: {
+  /** Model keys (the Models view) or search keys (Web search). */
+  kind?: 'models' | 'search'
   saved: Record<KeyProvider, boolean>
   models: OwnKeyModel[]
   model: string | null
@@ -79,12 +109,14 @@ export function OwnKeys({
 
   return (
     <>
-      <h2 className="section">Your own API keys</h2>
+      <h2 className="section">
+        {kind === 'search' ? 'Your own search keys' : 'Your own API keys'}
+      </h2>
       <p className="muted">
         Optional. Calls with your own key go straight to the provider and are billed by them, not in
         credits. Keys stay on this computer, in its keychain, and are never sent to Titan117.
       </p>
-      {PROVIDERS.map((p) => (
+      {PROVIDERS.filter((p) => (p.kind ?? 'models') === kind).map((p) => (
         <div key={p.id} className="row key-row">
           <div className="row-main">
             <p className="row-title">

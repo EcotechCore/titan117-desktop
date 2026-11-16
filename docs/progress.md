@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 3, Titan and memory, is done (15 Nov 2026). **Next step:** phase 4, Web search and artifacts, when you say so.
+**Now:** phase 4 is built and waiting for the owner's checks; phase 5 has started early at the owner's request, with error reports (15 Nov 2026). **Next step:** more of phase 5 (installer, setup, offline); the owner works through `docs/owner-checklist.md` at the end.
 
 ## Phases
 
@@ -12,8 +12,8 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 1 | Engine core | Done | 14 Nov 2026 | 14 Nov 2026 |
 | 2 | Accounts and money | Done | 15 Nov 2026 | 15 Nov 2026 |
 | 3 | Titan and memory | Done | 15 Nov 2026 | 15 Nov 2026 |
-| 4 | Web search and artifacts | Not started | | |
-| 5 | Install and setup | Not started | | |
+| 4 | Web search and artifacts | In progress | 15 Nov 2026 | |
+| 5 | Install and setup | In progress | 15 Nov 2026 | |
 | 6 | Folder agent | Not started | | |
 | 7 | Coding engine and code builder | Not started | | |
 | 8 | App builder: web | Not started | | |
@@ -31,6 +31,112 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 16 Nov 2026 · CI: dependency advisories and a licence the Linux check couldn't read
+
+Two high advisories in `image-size` (inside PptxGenJS) failed CI's audit; `uuid` (inside ExcelJS) and `fast-uri` (inside the MCP SDK) had moderate ones. All three are pinned to fixed versions with `overrides` in `pnpm-workspace.yaml`; PowerPoint and Excel export tests still pass. `khroma` (inside Mermaid) is MIT by its licence file but declares no licence, so the licence check on Linux read it as unknown: named as an exception. One moderate advisory is left in the linter's `minimatch`, a development tool that isn't shipped, below CI's "high" bar.
+
+### 15 Nov 2026 · Phase 4 leftovers and auto-update
+
+Built on `phase-4-leftovers`, on top of `phase-5-installer` (the web side in `titan117-web` on the same branch name). Decisions §50, **to be confirmed**.
+
+- **ZIP (17.21, 17.22):** tick artifacts in the gallery and download them as one ZIP (best format, or every format); "Every format (ZIP)" in the panel for the version on screen. Seen in the real app: an offer and a project plan came out as `Offer/Offer.docx` and `Project plan/Project plan.pptx`.
+- **Browser downloads:** `browser_download` saves a file a site offers into an allowed folder after approval; never programs or scripts, 200 MB at most, never over an existing file. Its denial test covers a refusal, a folder outside, a program and a second download not overwriting the first.
+- **Comments on shared pages (17.14):** in the Share section: every comment, reply on the page, hide or show, and "Apply with Titan".
+- **Auto-update (1.10):** electron-updater, off until a signing certificate and an update address exist; when on, "Restart to update" in the window.
+- **Tests:** 6 new here; 276 in all; build and build-contents check pass.
+- **Not checked:** comments and replies against our real web app (need a live share, the owner's step); a real download from a real site in the browser; auto-update for real (needs signing and an update address).
+
+### 15 Nov 2026 · Phase 5: Microsoft's runtime inside the installer
+
+With the owner's OK, `scripts/fetch-vc-redist.mjs` fetched Microsoft's Visual C++ redistributable (14.44.35211, Authenticode signature valid, Microsoft Corporation); `pnpm build:win` now ships it in `resources\vendor` (installer 235 MB).
+
+- **Not run:** the install test of the new installer. Windows' **Smart App Control** (on, on this laptop) blocked it: "An Application Control policy has blocked this file", Code Integrity event 3033, the installer doesn't meet the signing level. The earlier build without the runtime had been allowed. Turning Smart App Control off is a security setting left to the owner; the real fix is code signing (on the owner checklist), then a clean Windows virtual machine to see the runtime step run.
+- **Checked:** the file is in the build's `resources\vendor`; the installer's check reads this laptop's runtime as 14.52, so it would skip Microsoft's installer here.
+
+### 15 Nov 2026 · Phase 5: the Windows installer
+
+Built on `phase-5-installer`, on top of `phase-5-awake`. Decisions §49, **to be confirmed**.
+
+- **Smaller:** llama.cpp ships CPU and Vulkan only (CUDA and ARM left out); ONNX Runtime only for Windows x64, its unused web build and dependency source maps left out. Installed size 1.1 GB to 693 MB; the installer 290 MB to 211 MB.
+- **The Visual C++ runtime:** `build/installer.nsh` runs Microsoft's redistributable from `resources\vendor` only when the registry shows none or one older than 14.40; `scripts/fetch-vc-redist.mjs` fetches it from Microsoft and keeps it only with a valid Microsoft signature (not committed, `build/vendor/*.exe` ignored). Setup's checklist links to Microsoft's download when local models can't start for that reason.
+- **Checked for real:** `pnpm build:win` makes `titan117-0.1.0-setup.exe`; the trimmed llama.cpp and ONNX Runtime load from the packaged app (llama.cpp on Vulkan, the RTX 4070 found); a silent install into a throwaway folder, the installed app started (engine running, local models able to run with 8 GB of graphics memory, the sign-in screen as a production build should), then a silent uninstall left no files, entry or shortcuts.
+- **Tests:** the runtime link added to the setup tests; 270 in all.
+- **Not checked:** the runtime step itself (the redistributable isn't fetched yet, and this laptop already has 14.52); a clean Windows virtual machine (none here); NVIDIA speed on Vulkan against CUDA; macOS.
+- **Earlier oddity explained:** "Graphics: not used for models" in the setup wizard came from the development run before its check finished; the installed app reports the RTX 4070.
+
+### 15 Nov 2026 · Phase 5: keep awake, checkpoints and notifications
+
+Built on `phase-5-awake`, on top of `phase-5-offline`. Decisions §48, **to be confirmed**.
+
+- **Keep awake (1.5):** the engine tells the shell how many tasks run; the shell holds Electron's `prevent-app-suspension` blocker while any does.
+- **Checkpoints and resume (1.6):** tasks running when the app stopped, and tasks paused by a lost connection, resume by themselves (twice at most, within an hour); a tool call that never finished is answered "not run to the end" first; a **Resume** button on any other stopped task; `POST /v1/tasks/<id>/resume`.
+- **Notifications (1.9):** finished, failed, paused (no internet), needs your OK; only when the window isn't in front; a click opens the task; on or off in Setup.
+- **Tests:** 5 new (resume after the app closed with a write waiting, the twice-only limit, resume refusals, resume after the internet returns, busy counts and notifications with the switch); 270 in all; build passes.
+- **Seen in the real app** (built, Playwright, throwaway data, one tiny task on the development key): the blocker started with the task and stopped after it; "Titan finished" was shown with the window in the background.
+- **Not checked:** a real crash or sleep in the real app (covered by tests that close and restart the engine); the notification's look on Windows, since the test recorded it instead of showing it; macOS.
+
+### 15 Nov 2026 · Phase 5: offline mode and the offline queue
+
+Built on `phase-5-offline`, on top of `phase-5-setup`. Decisions §47, **to be confirmed**.
+
+- **Knowing it's offline (1.22):** every request the engine and its tools make is watched; a network failure marks it offline, a check every 20 seconds notices the internet coming back. The window gets the change at once.
+- **Cloud tasks offline:** they stop at the next step with a plain note instead of failing (no error card, no report); the window offers "Continue with <local model> (local)" or points to Models.
+- **Online-only features** (web pages, search, sharing) say "No internet connection: … needs it."
+- **The queue (1.24):** error reports waiting go as soon as the internet is back; the shell renews the licence lease at once.
+- **Offline banner** with what still works.
+- **The 14-day lock** was already tested (account.test.ts: unlocked on day 13 offline, locked on day 14).
+- **Tests:** 5 new; 265 in all; build passes.
+- **Not checked:** the banner and the Continue button in the real window (the laptop's network can't be cut from here without changing system settings; on the owner checklist), a whole local-model task offline end to end (local models are faked in tests), macOS.
+
+### 15 Nov 2026 · Phase 5: setup, checklist and health check
+
+Built on `phase-5-setup`, on top of `phase-5-error-reports`. Decisions §46, **to be confirmed**.
+
+- **First-launch wizard (1.12):** welcome and sign-in, this laptop (system, processor, memory, graphics, disk, the local model that runs well), what you want to do; skippable, and gone for good once finished.
+- **Setup page (1.20):** the checklist (account, a chosen model, local and cloud models, folders, web search, the browser, connectors, disk space, waiting reports, recent errors), problems first, each with a fix button; what you use Titan117 for; the hardware; disk used by local models, the speech model, the browser profile and the log (1.13).
+- **Health check (1.21):** tries saved OpenRouter, Anthropic, OpenAI and Google keys with their free checks; a refused key shows as a problem with Replace.
+- **Fixed while checking:** the health check's route was read as an id and answered 404; now covered by a test.
+- **Tests:** 8 new; 260 in all. **Seen in the real app** (built, Playwright, throwaway data): all three wizard steps, Setup with the checklist after a health check, the wizard not shown again after a restart; no console errors.
+- **Not checked:** macOS; a refused key with a real provider (tested with a fake); "Graphics: not used for models" showed on this laptop with a throwaway data folder, worth a look once the local model probe has finished on the owner's own data.
+- **Not built yet:** "you need this first" cards inside tasks (1.17, 1.19) and requirements per agent (1.16), which need the agent definitions of phase 11 to list what each needs; guided OS steps (1.14) come with the features that need them (Android SDK, virtualization).
+
+### 15 Nov 2026 · Phase 5: error reports
+
+Started at the owner's request before phase 4's check is run. Built on `phase-5-error-reports`, branched from `phase-4` (the web side is in `titan117-web`). Decisions §45, **to be confirmed**.
+
+- **"Something went wrong" (19.2):** every caught error tells the window, which shows a card offering to review a report (unless the setting is "never ask"); a failed task's details have "Send a report about this".
+- **Report a problem (19.3)** in the sidebar: the full report is shown before anything is sent (app, system, where, the error and stack trace, the last 40 log lines), with a note; Send or Don't send.
+- **What's in it (19.4):** redacted, and the home folder shown as `~`; never prompts, files, memory, keys or tokens (tested with a task whose prompt held private text and an error holding a key and a home path).
+- **The queue (19.8):** a report that can't go (signed out, offline, today's limit) waits and goes on sign-in or every 10 minutes; the sent one is exactly the one shown, plus the note.
+- **References and fixes (19.5):** each sent report gets a `T117-...` reference; the app asks which ones a release fixed and shows "Fixed in ..." in Your reports.
+- **The setting (19.7):** always ask (default), send automatically (at most one a minute), never ask.
+- **Crashes (19.1):** when the engine stops unexpectedly, the restarted engine keeps it as a caught error to offer.
+- **Tests:** 6 new; 252 in all. **Seen in the real app** (built, driven by Playwright, throwaway data): the dialog with the full report and the setting, sending while signed out ("Waiting: sign in..."), no console errors.
+- **Not checked:** sending to the real web app (the routes must be deployed; needs the owner signed in), an engine crash in the real app, macOS.
+- **Not built yet in phase 5:** the installer, setup wizard, hardware check, components manager, offline mode and the offline queue for everything else, auto-update, the Visual C++ runtime and slimmer llama.cpp binaries.
+
+### 15 Nov 2026 · The owner checklist
+
+Every open item for the owner, from all three repos' logs, is now in one place: `docs/owner-checklist.md` (shared doc): decisions to confirm (§44 first), checks only the owner can run (phase 4's check), accounts and services, legal, vendors, before the beta. CLAUDE.md says new owner items go there in the same commit. At the owner's request, phase 5 starts before phase 4's check is run; that's recorded on the checklist for the owner to confirm.
+
+### 15 Nov 2026 · Phase 4: web search and artifacts
+
+Built on `phase-4` (decisions §44, **to be confirmed by the owner**). The web side (share links, the shared page, Report) is in `titan117-web` on `phase-4`.
+
+- **Web search (16.1-16.3, 16.9-16.12):** `web_search` through one service: credits use OpenRouter's `openrouter:web_search` server tool on Exa (through the proxy, or the user's own OpenRouter key); the user's own **Exa, Tavily or Brave** key goes straight to the provider (keys in the keychain, checked before saving, in a new "Your own search keys" list). The query is checked for private passages before anything is sent; results from blocked sites are dropped whatever the provider returns; a 15-minute memory cache (never for Brave, its terms); the cost of a credits search counts towards the task's budget and shows in the activity log. A **Web search** view sets the source, country and language (from the laptop's own by default) and Titan's trusted and blocked sites.
+- **Reading (16.5, 16.6):** `web_fetch` now uses Readability on linkedom (title, author, date, headings and lists kept); `read_site` follows a site's own links, at most 25 pages, one a second. robots.txt is respected, after the network policy has allowed the site, so a refused site gets no request at all.
+- **Deep research (16.8):** a **Deep research** chip in the composer (also when a message starts with "Research"): its own instructions and a bigger budget (60 steps, 30 minutes, $2), ending with a document artifact with numbered sources.
+- **Artifacts (17.1-17.12):** documents, pages and small tools, spreadsheets, charts (our own SVG), diagrams (Mermaid, drawn strictly in the window) and slides, in the local database with a version per change. Tools `artifact_create`, `artifact_update`, `artifact_read`, `artifact_list` (no approval: the agent's answer) and `artifact_save` (asks, like any file write). The panel opens beside the chat with Edit, Versions (compare and restore), Download, Share and full screen; an **Artifacts** gallery with search and five templates (offer, invoice items, monthly report, meeting notes, project plan).
+- **Sandbox (17.18):** artifacts are shown from `titan117://sandbox/<random id>`, served with a `sandbox allow-scripts allow-popups` content policy and no network; their links open in the system browser. PDF and PNG are printed by a hidden window in its own session that cancels every request outside the sandbox.
+- **Downloads (17.8, 17.19, 17.20, 17.23):** PDF (A4 or Letter, light or dark), Word with real headings, lists, tables and links, Excel with real cells and formulas (a document's Excel file holds its tables and a Sources sheet), PowerPoint with editable text, plus Markdown, HTML, text, CSV, SVG, PNG and the Mermaid source; copy to clipboard.
+- **Sharing (17.13):** Share makes a light, self-contained snapshot; anything that looks like a key or token, or any secret the engine holds, stops it before it is sent.
+- **Licences:** Mermaid's optional ELK layout (elkjs, EPL or GPL) is replaced by a stub at build time and isn't in the bundle (checked); `Zlib` allowed; buffers and chainsaw (MIT/X11, inside ExcelJS) named exceptions.
+- **Tests:** denial tests for all 7 new tools; 20 new behaviour tests (search sources, cache, Brave not cached, site lists, robots.txt, Readability, versions, Word/Excel/PowerPoint files read back, CSV formula defusing, the sandbox policy, sharing refusals, an agent-made artifact exported and shared through the engine, deep research); the print window and the frame policy in the window tests. 246 in all.
+- **Seen in the real app on Windows** (the built app driven by Playwright, a throwaway data folder): the gallery and templates, a document in the sandboxed panel (it could reach neither the app's page nor the network), an edit as version 2 and the compare view, slides, PDF, Word, Excel and PowerPoint saved through the real save path, the Web search view and the Deep research chip; no console errors.
+- **Real search checked once** with the development key: OpenRouter returns the results as citations on Chat Completions, and `usage.cost` includes the search.
+- **Not checked:** a full research task with a real model through credits (the phase's check, for the owner); sharing against our real web app; macOS; Brave, Tavily and Exa with real keys; dark mode of the panel's own controls.
+- **Carried forward:** comments on shared pages (17.14), live data from sidebar apps and the documents index (17.15, phases 6 and 10), turning an artifact into an app (17.16, phase 8), scheduled artifacts (17.17, phase 13), Google Docs, Sheets and Slides (17.25, waits for the Google sign-in), the brand kit (17.11, with 15.1 in phase 14), several artifacts as one ZIP (17.21), sharing with chosen people (sign-in), browser downloads (from phase 3).
 
 ### 15 Nov 2026 · Phase 3 done
 

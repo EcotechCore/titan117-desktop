@@ -41,7 +41,9 @@ export default defineConfig({
   renderer: {
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer/src')
+        '@renderer': resolve('src/renderer/src'),
+        // Mermaid's optional ELK layout is EPL-2.0 or GPL-3.0: replaced by a stub, never shipped (decisions §44).
+        'elkjs/lib/elk.bundled.js': resolve('src/renderer/src/stubs/elk.ts')
       }
     },
     plugins: [react(), devCsp()]

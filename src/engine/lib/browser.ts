@@ -36,7 +36,12 @@ export interface BrowserAccess {
   type(ref: string, text: string, submit: boolean): Promise<PageView>
   select(ref: string, value: string): Promise<PageView>
   back(): Promise<PageView>
+  /** Click a control that downloads a file, and hand the file over (decisions §50). */
+  download(ref: string): Promise<{ name: string; data: Buffer; url: string }>
 }
+
+/** A download bigger than this is stopped (decisions §50). */
+export const MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024
 
 export interface BrowserHost {
   /** The browser for one task, sharing the one profile. */
@@ -297,6 +302,29 @@ export function createBrowserHost(options: {
           await page.goBack({ timeout: 15_000 }).catch(() => undefined)
           await settle(page)
           return view(page)
+        },
+        async download(ref) {
+          const page = await pageFor(taskId)
+          const [file] = await Promise.all([
+            page.waitForEvent('download', { timeout: 60_000 }),
+            locator(page, ref).click({ timeout: 10_000 })
+          ])
+          // The file's own address is checked like any request the task makes.
+          await net.check(file.url(), null, 'resource')
+          const stream = await file.createReadStream()
+          const chunks: Buffer[] = []
+          let size = 0
+          for await (const chunk of stream) {
+            size += (chunk as Buffer).length
+            if (size > MAX_DOWNLOAD_BYTES) {
+              stream.destroy()
+              await file.cancel().catch(() => undefined)
+              throw new PermissionError('That file is larger than 200 MB, so it was not downloaded.')
+            }
+            chunks.push(chunk as Buffer)
+          }
+          await file.delete().catch(() => undefined)
+          return { name: file.suggestedFilename(), data: Buffer.concat(chunks), url: file.url() }
         }
       }
     },
