@@ -50,6 +50,9 @@ const EXCEPTIONS = {
   // EPL-2.0 OR GPL: mermaid's optional ELK layout. Aliased to an empty stub in
   // electron.vite.config.ts, so none of it ships (decisions §44).
   elkjs: "EPL-2.0 OR GPL-3.0, never bundled: aliased to a stub",
+  // Mermaid's colour helper: its \`license\` file is MIT, its package.json names no licence,
+  // so the check reads "Unknown" on Linux (it found the file on Windows).
+  khroma: "MIT (license file), no licence field in package.json; inside mermaid",
 };
 
 /** "MIT OR Apache-2.0" passes if any side is allowed; "A AND B" needs both. */
