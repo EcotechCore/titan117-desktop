@@ -107,14 +107,15 @@ injathons` (next to the repos, not in the references folder) | ours | `f9d719e` 
 
 | Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
 |---|---|---|---|---|---|---|
-| [docling-project/docling](https://github.com/docling-project/docling) | PDF, Office and scan parsing with layout | MIT | Lib (separate Python program) | `docs/docling` | | |
-| [microsoft/markitdown](https://github.com/microsoft/markitdown) | Office and PDF to Markdown | MIT | Lib (separate Python program) | `docs/markitdown` | | |
-| [mozilla/pdf.js](https://github.com/mozilla/pdf.js) | PDF reading in Node and the viewer | Apache 2.0 | Lib | `docs/pdfjs` | | |
-| [mwilliamson/mammoth.js](https://github.com/mwilliamson/mammoth.js) | Word to text and HTML | BSD-2 | Lib | `docs/mammoth` | | |
-| [naptha/tesseract.js](https://github.com/naptha/tesseract.js) | OCR | Apache 2.0 | Lib | `docs/tesseract-js` | | |
-| [asg017/sqlite-vec](https://github.com/asg017/sqlite-vec) | Vector search in SQLite | MIT or Apache 2.0 | Lib | `docs/sqlite-vec` | | |
-| [huggingface/transformers.js](https://github.com/huggingface/transformers.js) | Local embeddings (multilingual, for example bge-m3) | Apache 2.0 | Lib | `docs/transformers-js` | | |
-| AnythingLLM (above) | Document workspaces and citations | MIT | Code | — | | |
+| [docling-project/docling](https://github.com/docling-project/docling) | PDF, Office and scan parsing with layout | MIT | Ideas (a Python program; not shipped, decisions §51) | `docs/docling` | MIT | `e16c4b71a7b7` |
+| [microsoft/markitdown](https://github.com/microsoft/markitdown) | Office and PDF to Markdown | MIT | Ideas (a Python program; not shipped, decisions §51) | `docs/markitdown` | MIT | `ed178952a667` |
+| [mozilla/pdf.js](https://github.com/mozilla/pdf.js) | PDF reading in Node and the viewer | Apache 2.0 | Lib | — | Apache 2.0 (`pdfjs-dist` 6.5.438, used in phase 6) | |
+| [mwilliamson/mammoth.js](https://github.com/mwilliamson/mammoth.js) | Word to text and HTML | BSD-2 | Lib | `docs/mammoth` | BSD-2 (1.13.0, used in phase 6; its helper `duck` named in the licence check) | `5171a9072f8b` |
+| [naptha/tesseract.js](https://github.com/naptha/tesseract.js) | OCR | Apache 2.0 | Lib | `docs/tesseract-js` | Waiting: where its language files come from is the owner's choice (decisions §51) | |
+| [asg017/sqlite-vec](https://github.com/asg017/sqlite-vec) | Vector search in SQLite | MIT or Apache 2.0 | Later, if needed (vectors are compared in memory for now, decisions §51) | `docs/sqlite-vec` | MIT or Apache 2.0 | `04d28bd21773` |
+| [huggingface/transformers.js](https://github.com/huggingface/transformers.js) | Local embeddings (multilingual-e5-small, MIT) | Apache 2.0 | Lib | — | Apache 2.0 (already used for speech; embeddings in phase 6) | |
+| [postalsys/postal-mime](https://github.com/postalsys/postal-mime) | Reading emails (.eml) | MIT-0 | Lib | — | MIT-0 (4.2.1, used in phase 6) | |
+| AnythingLLM (above) | Document workspaces and citations | MIT | Ideas (its PDF loader joins pages before splitting; we keep pages apart) | `titan/anything-llm` | MIT | |
 
 ## Phase 7 · Coding engine and code builder
 

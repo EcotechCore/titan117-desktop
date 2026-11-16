@@ -54,6 +54,18 @@ export interface ToolPermissions {
   search?: boolean
   /** Artifacts: reading them, or also making and changing them (§17). */
   artifacts?: 'read' | 'write'
+  /** The document folders' index (§7). */
+  documents?: boolean
+}
+
+/** The folder agent's view of the document folders (§7, decisions §51). */
+export interface DocumentsAccess {
+  search(query: string, limit?: number): Promise<import('../../../shared/protocol').DocHit[]>
+  page(file: string, page: number): Promise<{ label: string; text: string; pages: number }>
+  sheet(
+    file: string,
+    query: import('../../lib/sheets').SheetQuery
+  ): Promise<{ sheet: string; rows: number; result: Record<string, number | string[]> }>
 }
 
 /** Reading pages as clean text (16.5), through the task's network policy and the agent's site lists. */
@@ -78,6 +90,7 @@ export interface ToolContext {
   search: SearchAccess
   pages: PageAccess
   artifacts: ArtifactAccess
+  documents: DocumentsAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.

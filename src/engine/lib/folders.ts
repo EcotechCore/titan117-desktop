@@ -105,6 +105,22 @@ export interface FolderPolicy {
   allowed: string[]
   /** Folders that are never reachable: the app itself and its data. */
   core: string[]
+  /** Allowed folders agents may read but never change (7.8, decisions §51). */
+  readOnly?: string[]
+  /** Folders whose contents may reach local models only (7.7, decisions §51). */
+  localOnly?: string[]
+  /** Called when a tool reads inside a local-models-only folder. */
+  onLocalOnly?: () => void
+}
+
+/** The read-only and local-only rules on a resolved path (decisions §51). */
+function folderRules(policy: FolderPolicy, real: string, write: boolean): void {
+  const cmp = comparable(real)
+  if (write && (policy.readOnly ?? []).some((f) => isInside(cmp, comparable(f))))
+    throw new PermissionError(
+      'That folder is read-only for agents. Change it in Documents if Titan should be able to write there.'
+    )
+  if ((policy.localOnly ?? []).some((f) => isInside(cmp, comparable(f)))) policy.onLocalOnly?.()
 }
 
 export function realFolder(path: string): string {
@@ -116,6 +132,10 @@ export function realFolder(path: string): string {
  * allowed folder. Relative paths are relative to the first allowed folder.
  */
 export async function resolveAllowed(policy: FolderPolicy, path: string): Promise<string> {
+  return resolveAllowedPath(policy, path)
+}
+
+async function resolveAllowedPath(policy: FolderPolicy, path: string): Promise<string> {
   if (typeof path !== 'string' || path.length === 0 || path.includes('\0'))
     throw new PermissionError('That is not a valid path.')
   if (policy.allowed.length === 0)
@@ -158,7 +178,16 @@ export function createFileAccess(
   policy: FolderPolicy,
   mode: 'read' | 'write' | undefined
 ): FileAccess {
+  // Every path a tool touches passes the folder rules too.
+  let writing = false
+  async function resolveAllowed(p: FolderPolicy, path: string): Promise<string> {
+    const real = await resolveAllowedPath(p, path)
+    folderRules(p, real, writing)
+    return real
+  }
+
   function need(wanted: 'read' | 'write'): void {
+    writing = wanted === 'write'
     if (!mode) throw new PermissionError('This tool did not declare access to folders.')
     if (wanted === 'write' && mode !== 'write')
       throw new PermissionError('This tool may read folders, not change them.')

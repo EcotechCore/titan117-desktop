@@ -22,6 +22,7 @@ export type View =
   | { kind: 'artifacts' }
   | { kind: 'search' }
   | { kind: 'setup' }
+  | { kind: 'documents' }
 
 export interface AppState {
   status: 'connecting' | 'ready' | 'lost'

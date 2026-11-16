@@ -209,6 +209,43 @@ const MIGRATIONS: string[] = [
     sent_at integer
   );
   create index report_queue_status on report_queue(status, created_at);
+  `,
+  // Phase 6: the folder agent's index (features 7.1-7.5, decisions §51).
+  `
+  create table doc_files (
+    id integer primary key,
+    folder text not null,
+    path text not null unique,
+    size integer not null,
+    mtime integer not null,
+    indexed_at integer not null,
+    title text not null default '',
+    pages integer not null default 0,
+    empty_pages integer not null default 0,
+    -- ok, error (couldn't be read) or skipped (too large)
+    status text not null,
+    error text
+  );
+  create index doc_files_folder on doc_files(folder);
+
+  -- Passages, each within one page, so a citation knows its page.
+  create table doc_chunks (
+    id integer primary key,
+    file_id integer not null references doc_files(id) on delete cascade,
+    page integer not null,
+    label text not null,
+    text text not null,
+    -- The passage's embedding (float32), once the model is on the laptop.
+    vec blob
+  );
+  create index doc_chunks_file on doc_chunks(file_id, page);
+  create virtual table doc_chunks_fts using fts5(text, content='doc_chunks', content_rowid='id', tokenize='porter unicode61 remove_diacritics 2');
+  create trigger doc_chunks_ai after insert on doc_chunks begin
+    insert into doc_chunks_fts(rowid, text) values (new.id, new.text);
+  end;
+  create trigger doc_chunks_ad after delete on doc_chunks begin
+    insert into doc_chunks_fts(doc_chunks_fts, rowid, text) values ('delete', old.id, old.text);
+  end;
   `
 ]
 

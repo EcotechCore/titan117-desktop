@@ -106,6 +106,7 @@ export function createApi(deps: {
   search?: { get(): SearchSettings; set(next: SearchSettings): void }
   reports?: ReportService
   notifications?: { get(): boolean; set(on: boolean): void }
+  documents?: import('./lib/doc-index').DocIndex
   setup?: {
     state(): Promise<SetupState>
     runHealth(): Promise<SetupState>
@@ -263,6 +264,47 @@ export function createApi(deps: {
     query: Record<string, string>
   ): Promise<unknown | null> {
     switch (key) {
+      case 'GET documents':
+        return { folders: need(deps.documents).status() }
+      case 'PUT documents': {
+        const path = field(body, 'path')
+        if (typeof path !== 'string') throw new ApiError(400, 'BAD_REQUEST', 'Which folder?')
+        const flag = (name: string): boolean | undefined => {
+          const v = field(body, name)
+          if (v === undefined) return undefined
+          if (typeof v !== 'boolean')
+            throw new ApiError(400, 'BAD_REQUEST', `"${name}" is true or false.`)
+          return v
+        }
+        try {
+          need(deps.documents).setFolder(path, {
+            indexed: flag('indexed'),
+            readOnly: flag('readOnly'),
+            localOnly: flag('localOnly')
+          })
+        } catch (error) {
+          throw new ApiError(400, 'BAD_REQUEST', (error as Error).message)
+        }
+        return { folders: need(deps.documents).status() }
+      }
+      case 'POST documents/:id': {
+        // `/v1/documents/reindex` and `/v1/documents/search` (to try a search in the window).
+        if (id === 'reindex') {
+          const path = field(body, 'path')
+          void need(deps.documents).reindex(
+            typeof path === 'string' ? path : undefined,
+            field(body, 'full') === true
+          )
+          return { ok: true }
+        }
+        if (id === 'search') {
+          const query = field(body, 'query')
+          if (typeof query !== 'string' || !query.trim())
+            throw new ApiError(400, 'BAD_REQUEST', 'Search for something.')
+          return { hits: await need(deps.documents).search(query, { limit: 10 }) }
+        }
+        throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+      }
       case 'GET setup':
         return {
           ...(await need(deps.setup).state()),

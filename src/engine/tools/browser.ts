@@ -160,7 +160,8 @@ export const browserClick = defineTool<{ ref: string }>({
 })
 
 /** Programs and scripts: never downloaded by an agent (decisions §50). */
-const PROGRAM = /\.(exe|msi|msix|appx|bat|cmd|com|scr|ps1|psm1|vbs|vbe|js|jse|wsf|hta|jar|dll|sys|reg|lnk|app|dmg|pkg|sh|command|apk)$/i
+const PROGRAM =
+  /\.(exe|msi|msix|appx|bat|cmd|com|scr|ps1|psm1|vbs|vbe|js|jse|wsf|hta|jar|dll|sys|reg|lnk|app|dmg|pkg|sh|command|apk)$/i
 
 /** A name that is safe as a file name on Windows and macOS. */
 function safeFile(name: string): string {
@@ -185,7 +186,8 @@ export const browserDownload = defineTool<{ ref: string; folder?: string }>({
       ref: { type: 'string', description: 'The number of the download link or button.' },
       folder: {
         type: 'string',
-        description: 'Where to save it, inside an allowed folder. Default: the first allowed folder.'
+        description:
+          'Where to save it, inside an allowed folder. Default: the first allowed folder.'
       }
     },
     required: ['ref']
@@ -198,7 +200,9 @@ export const browserDownload = defineTool<{ ref: string; folder?: string }>({
     await finalStepCheck(input.ref, ctx, 'Click')
     const label = await ctx.browser.label(input.ref)
     if (PROGRAM.test(label))
-      throw new PermissionError("That looks like a program. Titan doesn't download programs; download it yourself if you trust it.")
+      throw new PermissionError(
+        "That looks like a program. Titan doesn't download programs; download it yourself if you trust it."
+      )
     const file = await ctx.browser.download(input.ref)
     const name = safeFile(file.name)
     if (PROGRAM.test(name))

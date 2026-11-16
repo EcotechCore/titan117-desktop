@@ -1593,3 +1593,18 @@ textarea.edit {
 .share-comments li.hidden {
   opacity: 0.55;
 }
+
+/* ---------- documents (7) ---------- */
+.doc-flags {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+  color: var(--soft);
+}
+.doc-flags input {
+  accent-color: var(--accent);
+}
+.doc-passage {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

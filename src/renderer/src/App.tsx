@@ -28,6 +28,7 @@ import { ArtifactPanel, ArtifactsView } from './Artifacts'
 import { SearchView } from './Search'
 import { ReportDialog } from './Reports'
 import { SetupView, SetupWizard, type FixHandler } from './Setup'
+import { DocumentsView } from './Documents'
 import type { ReportMode } from '../../shared/protocol'
 
 const PROMPTS = [
@@ -350,6 +351,12 @@ function App(): React.JSX.Element {
           <Icon name="plug" /> Connectors
         </button>
         <button
+          className={view.kind === 'documents' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'documents' } })}
+        >
+          <Icon name="folder" /> Documents
+        </button>
+        <button
           className={view.kind === 'artifacts' ? 'nav on' : 'nav'}
           onClick={() => dispatch({ type: 'view', view: { kind: 'artifacts' } })}
         >
@@ -507,6 +514,14 @@ function App(): React.JSX.Element {
               onProblem={fail}
             />
           )}
+          {view.kind === 'documents' && (
+            <DocumentsView
+              client={api}
+              engine={engine}
+              changed={state.changed.documents ?? 0}
+              onProblem={fail}
+            />
+          )}
           {view.kind === 'setup' && (
             <SetupView
               client={api}
@@ -586,32 +601,36 @@ function App(): React.JSX.Element {
                   </button>
                 </div>
               )}
-            {task?.status === 'stopped' && task.note?.startsWith('No internet') && (
-              <div className="note offline-switch">
-                <span>This task stopped because the internet is gone.</span>
-                {ready[0] ? (
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => {
-                      const local = `local:${ready[0].id}`
-                      chooseModel(local)
-                      client.current
-                        ?.send('POST', `/v1/tasks/${task.id}/messages`, {
-                          text: 'Continue with the local model.',
-                          model: local
-                        })
-                        .catch(fail)
-                    }}
-                  >
-                    Continue with {ready[0].name} (local)
-                  </button>
-                ) : (
-                  <span className="muted">
-                    Download a local model in Models to keep working offline.
-                  </span>
-                )}
-              </div>
-            )}
+            {task?.status === 'stopped' &&
+              (task.note?.startsWith('No internet') ||
+                task.note?.startsWith(
+                  'This task read files from a folder kept for local models'
+                )) && (
+                <div className="note offline-switch">
+                  <span>{task.note}</span>
+                  {ready[0] ? (
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => {
+                        const local = `local:${ready[0].id}`
+                        chooseModel(local)
+                        client.current
+                          ?.send('POST', `/v1/tasks/${task.id}/messages`, {
+                            text: 'Continue with the local model.',
+                            model: local
+                          })
+                          .catch(fail)
+                      }}
+                    >
+                      Continue with {ready[0].name} (local)
+                    </button>
+                  ) : (
+                    <span className="muted">
+                      Download a local model in Models to keep working offline.
+                    </span>
+                  )}
+                </div>
+              )}
             {state.problem && (
               <p className="note note-error" role="alert">
                 {state.problem}

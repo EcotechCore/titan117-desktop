@@ -174,7 +174,7 @@ export type EngineEvent =
   /** Memory, skills, past-task records or connectors changed: the window reloads that list. */
   | {
       type: 'changed'
-      what: 'memory' | 'skills' | 'records' | 'connectors' | 'artifacts' | 'reports'
+      what: 'memory' | 'skills' | 'records' | 'connectors' | 'artifacts' | 'reports' | 'documents'
     }
   /** The engine went offline or came back online (1.22). */
   | { type: 'online'; online: boolean }
@@ -420,4 +420,41 @@ export interface SetupState {
   checkedAt: number | null
   /** Desktop notifications on (1.9). */
   notifications?: boolean
+}
+
+/** A document folder (features 7.1, 7.7, 7.8; decisions §51): an allowed folder the folder agent reads. */
+export interface DocFolder {
+  path: string
+  /** Read into the index, and watched for changes. */
+  indexed: boolean
+  /** Agents may read it but never change it (on by default). */
+  readOnly: boolean
+  /** What's inside may reach local models only. */
+  localOnly: boolean
+}
+
+export interface DocFolderStatus extends DocFolder {
+  files: number
+  ok: number
+  problems: number
+  /** Pages with no text layer (scans), waiting for OCR. */
+  scannedPages: number
+  passages: number
+  /** Passages that can also be found by meaning. */
+  withMeaning: number
+  progress: { done: number; total: number } | null
+  errors: { path: string; error: string }[]
+}
+
+/** A passage the folder agent found, with what a citation needs. */
+export interface DocHit {
+  path: string
+  /** The path inside its folder, e.g. "Contracts/Lease 2025.pdf". */
+  file: string
+  folder: string
+  page: number
+  /** "page 3", "slide 2", "sheet \"Totals\"", "section \"Prices\"". */
+  label: string
+  text: string
+  score: number
 }

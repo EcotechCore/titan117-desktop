@@ -33,9 +33,12 @@
     "exceljs": "^4.4.0",
     "fflate": "0.8.3",
     "linkedom": "^0.18.15",
+    "mammoth": "^1.13.0",
     "marked": "^18.2.0",
     "node-llama-cpp": "3.22.3",
+    "pdfjs-dist": "^6.5.438",
     "playwright-core": "1.65.1",
+    "postal-mime": "^4.2.1",
     "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {

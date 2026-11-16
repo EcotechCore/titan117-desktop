@@ -44,6 +44,8 @@ import { createShareService } from './share'
 import { createReportService, type ReportService } from './reports'
 import { createSetupService } from './setup'
 import { createConnectivity, OFFLINE_NOTE, type Connectivity } from './online'
+import { createDocIndex, type DocIndex, type Embedder } from './doc-index'
+import { createLocalEmbedder } from './embed'
 import { findBrowserChannel } from './browser'
 import type { SetupInterest } from '../../shared/protocol'
 import type { SearchSettings } from '../../shared/protocol'
@@ -92,6 +94,8 @@ export interface EngineOptions {
   onBusy?: (running: number) => void
   /** Something the user should hear about when the window isn't in front (1.9). */
   onNotify?: (note: { title: string; body: string; taskId: string }) => void
+  /** Search by meaning (7.4); tests pass a fake or null, the app the local model. */
+  embedder?: Embedder | null
 }
 
 /** A task is resumed by itself at most this many times, and only this soon after it stopped (1.6). */
@@ -125,6 +129,7 @@ export interface Engine {
     artifacts: ArtifactStore
     reports: ReportService
     connectivity: Connectivity
+    documents: DocIndex
     /** The token a running task's scripts use (feature 4.10). */
     scriptToken(taskId: string): string | null
   }
@@ -217,7 +222,38 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     }
   })
   const folders = (): string[] => getMeta<string[]>(db, 'folders', [])
-  const policy = (): FolderPolicy => ({ allowed: folders(), core })
+
+  // The folder agent (§7): document folders, their index, and search by meaning on the laptop.
+  const embedder: Embedder | null =
+    options.embedder !== undefined
+      ? options.embedder
+      : options.dataDir
+        ? createLocalEmbedder({ modelsDir: join(options.dataDir, 'components', 'embeddings') })
+        : null
+  const documents = createDocIndex({
+    db,
+    allowed: folders,
+    embedder: () => embedder,
+    onChange: () => emit({ type: 'changed', what: 'documents' }),
+    log: (error, context) => log.capture('documents', error, context)
+  })
+  const policy = (): FolderPolicy => {
+    const docs = documents.folders()
+    return {
+      allowed: folders(),
+      core,
+      readOnly: docs.filter((f) => f.readOnly).map((f) => f.path),
+      localOnly: docs.filter((f) => f.localOnly).map((f) => f.path)
+    }
+  }
+  // Tasks that read from a local-models-only folder stay on local models (7.7), across restarts.
+  const localOnlyTasks = {
+    has: (taskId: string) => getMeta<string[]>(db, 'localOnlyTasks', []).includes(taskId),
+    add(taskId: string) {
+      const list = getMeta<string[]>(db, 'localOnlyTasks', [])
+      if (!list.includes(taskId)) setMeta(db, 'localOnlyTasks', [...list, taskId].slice(-2000))
+    }
+  }
 
   const changed = (what: 'memory' | 'skills' | 'records' | 'connectors' | 'reports') => (): void =>
     emit({ type: 'changed', what })
@@ -420,7 +456,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       )
     }
   })
-  permissions.useServices({ search, pages, artifacts })
+  permissions.useServices({ search, pages, artifacts, documents, localOnlyTasks })
 
   // Setup and health (1.12, 1.20, 1.21): facts from every part of the engine.
   const setup = createSetupService({
@@ -467,6 +503,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     folders,
     locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
     online: () => connectivity.online(),
+    localOnly: (taskId) => permissions.isLocalOnly(taskId),
     onBusy: options.onBusy,
     budget: options.budget,
     memory,
@@ -499,7 +536,6 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     queueMicrotask(() => autoResume(ids, 'Titan117 started again'))
   }
 
-
   const handle = createApi({
     appVersion: options.appVersion,
     store,
@@ -527,6 +563,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     artifacts,
     shares,
     reports,
+    documents,
     notifications: {
       get: () => getMeta<boolean>(db, 'notifications', true),
       set: (on) => setMeta(db, 'notifications', on)
@@ -580,6 +617,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   serverPort = server.port
   publish = server.publish
   void connectors.connectAll()
+  documents.start()
   log.info('engine started', { port: server.port, version: options.appVersion })
 
   function saveFolders(next: string[]): string[] {
@@ -626,6 +664,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     async close() {
       reports.close()
       connectivity.close()
+      documents.close()
       await server.close()
       await browser.close()
       await connectors.close()
@@ -647,6 +686,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       artifacts,
       reports,
       connectivity,
+      documents,
       scriptToken
     }
   }
