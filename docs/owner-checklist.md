@@ -53,6 +53,7 @@ Signed in to the desktop app with your plan:
 - [ ] **Stripe's written OK** that our credits are allowed (before live mode).
 - [ ] The trademark lawyer's short opinion, then file the EU trademark "TITAN117" in classes 9 and 42 (decisions §33.7).
 - [ ] One resale rule for every paid service other than OpenRouter (open decision 5; the default today is the user's own account, §31).
+- [ ] **Videos for the website's home page and Learn lessons** (placeholders since phase 2), or say who makes them.
 - [ ] Visual C++ redistributable: shipping it is allowed under a Visual Studio licence (Community is free for small companies); confirm one is in place. Already fetched with your OK: 14.44.35211, signed by Microsoft.
 
 ## Step 6 · Waiting on vendors
@@ -62,6 +63,7 @@ Signed in to the desktop app with your plan:
 ## Step 7 · Before external testers and the public beta
 
 - [ ] macOS: a Mac to build and test every phase so far.
+- [ ] **Our own redraw of the eyes logo** before the beta (open decision 3, decisions §9), so the mark is ours before the trademark is filed.
 - [ ] Clerk production instances on our own domain; production web and Convex addresses and the production lease key in the desktop build (phase 18).
 - [ ] An OS sandbox for commands on Windows, revisited (decisions §43.1).
 - [ ] The external penetration test; critical and high findings fixed (phase 18).
