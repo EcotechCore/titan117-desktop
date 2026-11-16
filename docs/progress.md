@@ -46,6 +46,9 @@ Started at the owner's request while phases 4 and 5 wait for the owner's checks.
 - **Fixed while checking:** in the bundled app pdf.js couldn't find its worker file and every PDF failed ("No GlobalWorkerOptions.workerSrc"); tests run unbundled and didn't show it. Now set explicitly.
 - **Not explained:** the window crashed three times during one long test script that polled the engine; five dedicated four-minute runs (idle, polling, a folder on, real documents with the model loaded) didn't crash, with steady memory. Watching for it; error reports would capture it.
 - **Not built yet:** OCR for scans (7.3, waits for the owner's choice of where its language files come from), Word page numbers (not in the file; sections instead), the check with the owner's own documents and a real model (owner checklist).
+### 16 Nov 2026 · CI: dependency advisories and a licence the Linux check couldn't read
+
+Two high advisories in `image-size` (inside PptxGenJS) failed CI's audit; `uuid` (inside ExcelJS) and `fast-uri` (inside the MCP SDK) had moderate ones. All three are pinned to fixed versions with `overrides` in `pnpm-workspace.yaml`; PowerPoint and Excel export tests still pass. `khroma` (inside Mermaid) is MIT by its licence file but declares no licence, so the licence check on Linux read it as unknown: named as an exception. One moderate advisory is left in the linter's `minimatch`, a development tool that isn't shipped, below CI's "high" bar.
 
 ### 15 Nov 2026 · Phase 4 leftovers and auto-update
 
