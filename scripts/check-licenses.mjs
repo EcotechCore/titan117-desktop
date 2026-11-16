@@ -52,6 +52,9 @@ const EXCEPTIONS = {
   elkjs: "EPL-2.0 OR GPL-3.0, never bundled: aliased to a stub",
   // mammoth's author's own small helper; its LICENSE file is the BSD 2-clause text, package.json says only "BSD".
   duck: "BSD 2-clause (LICENSE file), inside mammoth",
+  // Mermaid's colour helper: its license file is MIT, its package.json names no licence,
+  // so the check reads "Unknown" on Linux (it found the file on Windows).
+  khroma: "MIT (license file), no licence field in package.json; inside mermaid",
 };
 
 /** "MIT OR Apache-2.0" passes if any side is allowed; "A AND B" needs both. */
