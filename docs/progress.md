@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 16 Nov 2026 · CI: dependency advisories and a licence the Linux check couldn't read
+
+Two high advisories in `image-size` (inside PptxGenJS) failed CI's audit; `uuid` (inside ExcelJS) and `fast-uri` (inside the MCP SDK) had moderate ones. All three are pinned to fixed versions with `overrides` in `pnpm-workspace.yaml`; PowerPoint and Excel export tests still pass. `khroma` (inside Mermaid) is MIT by its licence file but declares no licence, so the licence check on Linux read it as unknown: named as an exception. One moderate advisory is left in the linter's `minimatch`, a development tool that isn't shipped, below CI's "high" bar.
+
 ### 15 Nov 2026 · Phase 4 leftovers and auto-update
 
 Built on `phase-4-leftovers`, on top of `phase-5-installer` (the web side in `titan117-web` on the same branch name). Decisions §50, **to be confirmed**.
