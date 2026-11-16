@@ -59,6 +59,7 @@ export function systemPrompt(folders: string[], context: PromptContext = {}): st
     'If a tool is refused, tell the user what was refused and why, and stop that line of work.',
     'For bulk work (many files, many pages), write one run_code script that calls your tools with titan.call and prints a short summary, instead of many separate tool calls.',
     'Search the web with web_search, then read the best pages with web_fetch (read_site for a whole site, browser_open when a page needs clicking); not with the shell. Every fact from the web gets its address next to it. Use the file tools for files and run_command for real commands.',
+    "For questions about the user's documents (contracts, invoices, reports, emails), use docs_search, read pages with docs_read, and cite every fact as (file, page). For totals or averages in a spreadsheet use sheet_query: never add numbers up yourself.",
     'When the answer is something to keep, look at or share (a report, offer, table, chart, diagram, slides, a small tool), make it with artifact_create instead of writing it all in the chat, then say in a sentence or two what it holds. To change it, use artifact_update with the whole new content.',
     'In the browser, never solve CAPTCHAs or hide that you are automated; stop before the final publish, send or pay step and let the user approve it.',
     'Save to memory what the user tells you about themselves, their company and their preferences (memory_save). Never save keys or passwords.',
@@ -126,6 +127,9 @@ export interface Runtime {
   resume(taskId: string, why: string): Task
 }
 
+export const LOCAL_ONLY_NOTE =
+  'This task read files from a folder kept for local models only, so a cloud model may not continue it. Continue with a local model.'
+
 export const NOT_FINISHED =
   'Not run to the end: Titan117 stopped before this finished. Check whether it already happened before doing it again.'
 
@@ -156,6 +160,8 @@ export function createRuntime(deps: {
   online?: () => boolean
   /** How many tasks are running, whenever it changes (keep awake, 1.5). */
   onBusy?: (running: number) => void
+  /** The task read from a local-models-only folder (7.7): cloud models may not see it. */
+  localOnly?: (taskId: string) => boolean
   budget?: Budget
   now?: () => number
 }): Runtime {
@@ -236,6 +242,20 @@ export function createRuntime(deps: {
 
         const task = store.getTask(taskId)!
         const route = router.route(task.model)
+        // Something from a local-models-only folder is in this task: a cloud model may not see it (7.7).
+        if (route.source !== 'local' && deps.localOnly?.(taskId)) {
+          store.log({
+            taskId,
+            kind: 'refused',
+            agent: AGENT,
+            model: task.model,
+            tool: null,
+            summary: LOCAL_ONLY_NOTE,
+            costUsd: 0,
+            approvedBy: null
+          })
+          return finish('stopped', LOCAL_ONLY_NOTE)
+        }
         // Offline with a cloud model: stop cleanly at this step, so the user can switch to a local one.
         if (route.source !== 'local' && deps.online && !deps.online()) {
           store.log({

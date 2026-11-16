@@ -319,7 +319,9 @@ export function createBrowserHost(options: {
             if (size > MAX_DOWNLOAD_BYTES) {
               stream.destroy()
               await file.cancel().catch(() => undefined)
-              throw new PermissionError('That file is larger than 200 MB, so it was not downloaded.')
+              throw new PermissionError(
+                'That file is larger than 200 MB, so it was not downloaded.'
+              )
             }
             chunks.push(chunk as Buffer)
           }

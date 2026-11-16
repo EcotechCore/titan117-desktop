@@ -31,7 +31,10 @@ import { convert, ConvertError, type ExportFormat } from './lib/convert'
 import { ReadError, type PageReader } from './lib/read'
 import { SearchError, type SearchAccess, type SearchService } from './lib/search'
 import { isNetworkFailure } from './lib/online'
-import type { PageAccess } from './tools/lib/define-tool'
+import type { DocumentsAccess, PageAccess } from './tools/lib/define-tool'
+import type { DocIndex } from './lib/doc-index'
+import { querySheet, SheetError } from './lib/sheets'
+import { DocumentError } from './lib/documents'
 
 export interface CallContext {
   taskId: string
@@ -63,6 +66,8 @@ export interface PermissionLayer {
   release(taskId: string): Promise<void>
   /** Services made after the layer (search needs the model router). */
   useServices(more: Partial<Services>): void
+  /** The task read from a local-models-only folder: cloud models may not see it (7.7). */
+  isLocalOnly(taskId: string): boolean
 }
 
 /** Optional services; a tool that needs a missing one is refused. */
@@ -88,6 +93,10 @@ export interface Services {
   pages?: PageReader
   /** Artifacts (§17). */
   artifacts?: ArtifactStore
+  /** The document folders' index (§7). */
+  documents?: DocIndex
+  /** Tasks that read from a local-models-only folder (7.7), kept across runs. */
+  localOnlyTasks?: { has(taskId: string): boolean; add(taskId: string): void }
 }
 
 interface Waiting {
@@ -209,8 +218,10 @@ export function createPermissionLayer(deps: {
 
   function toolContext(tool: AnyTool, ctx: CallContext, callId: string): ToolContext {
     const p = tool.permissions
-    const policy = deps.folders()
     const state = stateOf(ctx.taskId)
+    // Reading inside a local-models-only folder keeps this task on local models (7.7).
+    const markLocalOnly = (): void => services.localOnlyTasks?.add(ctx.taskId)
+    const policy = { ...deps.folders(), onLocalOnly: markLocalOnly }
     const files = createFileAccess(policy, p.folders)
 
     const ask = async (summary: string): Promise<boolean> => {
@@ -381,11 +392,51 @@ export function createPermissionLayer(deps: {
         }
       : denied<ArtifactAccess>('artifacts')
 
+    const docIndex = services.documents
+    const docFile = (file: string): { path: string; localOnly: boolean } => {
+      const found = needService(docIndex, 'Documents').resolve(file)
+      if (!found)
+        throw new PermissionError(
+          `"${file}" isn't in a document folder that is turned on in Documents.`
+        )
+      return found
+    }
+    const documents: DocumentsAccess = p.documents
+      ? {
+          async search(query, limit) {
+            const index = needService(docIndex, 'Documents')
+            const hits = await index.search(query, { limit })
+            const localOnly = new Set(
+              index
+                .folders()
+                .filter((f) => f.localOnly)
+                .map((f) => f.path)
+            )
+            if (hits.some((h) => localOnly.has(h.folder))) markLocalOnly()
+            return hits
+          },
+          async page(file, page) {
+            const found = docFile(file)
+            if (found.localOnly) markLocalOnly()
+            const result = needService(docIndex, 'Documents').page(found.path, page)
+            if (!result) throw new DocumentError(`"${file}" has no page ${page}.`)
+            return result
+          },
+          async sheet(file, query) {
+            if (!/\.xlsx$/i.test(file)) throw new SheetError('sheet_query reads .xlsx files.')
+            // Through the folder rules, so a local-only folder is noticed and the path is checked.
+            const data = await files.readBytes(file)
+            return querySheet(data, query)
+          }
+        }
+      : denied<DocumentsAccess>('documents')
+
     return {
       taskId: ctx.taskId,
       agent: ctx.agent,
       files,
       search,
+      documents,
       pages,
       artifacts,
       net: p.network ? net : denied<TaskNet>('the network'),
@@ -497,7 +548,9 @@ export function createPermissionLayer(deps: {
           error instanceof SearchError ||
           error instanceof ReadError ||
           error instanceof ArtifactError ||
-          error instanceof ConvertError
+          error instanceof ConvertError ||
+          error instanceof DocumentError ||
+          error instanceof SheetError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }
@@ -552,7 +605,9 @@ export function createPermissionLayer(deps: {
 
     useServices(more) {
       Object.assign(services, more)
-    }
+    },
+
+    isLocalOnly: (taskId) => services.localOnlyTasks?.has(taskId) ?? false
   }
 }
 

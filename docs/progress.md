@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 4 is built and waiting for the owner's checks; phase 5 has started early at the owner's request, with error reports (15 Nov 2026). **Next step:** more of phase 5 (installer, setup, offline); the owner works through `docs/owner-checklist.md` at the end.
+**Now:** phases 4 and 5 wait for the owner's checks (`docs/owner-checklist.md`); phase 6, the folder agent, is under way (16 Nov 2026). **Next step:** OCR once the owner chooses its language files' source, then phase 6's check with the owner's own documents.
 
 ## Phases
 
@@ -14,7 +14,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 3 | Titan and memory | Done | 15 Nov 2026 | 15 Nov 2026 |
 | 4 | Web search and artifacts | In progress | 15 Nov 2026 | |
 | 5 | Install and setup | In progress | 15 Nov 2026 | |
-| 6 | Folder agent | Not started | | |
+| 6 | Folder agent | In progress | 16 Nov 2026 | |
 | 7 | Coding engine and code builder | Not started | | |
 | 8 | App builder: web | Not started | | |
 | 9 | App builder: mobile and desktop | Not started | | |
@@ -32,6 +32,20 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 16 Nov 2026 · Phase 6: the folder agent, first part
+
+Started at the owner's request while phases 4 and 5 wait for the owner's checks. Built on `phase-6-folder-agent`, on top of `phase-4-leftovers`. Decisions §51, **to be confirmed**.
+
+- **Documents** in the sidebar: turn an allowed folder on; it's read, watched for new and changed files, read-only for agents by default, optionally for local models only; progress, files that couldn't be read, scanned pages, and a search to try.
+- **Reading (7.2):** PDF page by page (pdf.js), Word by section heading (mammoth), Excel by sheet, PowerPoint by slide, emails, text files; passages never cross a page.
+- **Search (7.4):** full-text with word stems plus search by meaning with multilingual-e5-small on the laptop, combined.
+- **Tools:** `docs_search` and `docs_read` (cite as file and page), `sheet_query` (sums, averages, counts, groups, computed from the cells).
+- **Local models only (7.7):** a task that read such a folder never runs a cloud model step again; it offers to continue with a local model.
+- **Tests:** 8 new behaviour tests including **the phase 6 test set** (seven questions over a PDF, a Word offer, a sales sheet, a deck and an email: each finds its file and page in the first three passages) and 3 denial tests; 287 in all; build, lint and the licence check pass.
+- **Seen in the real app** (built, Playwright, throwaway data): a folder of a PDF, a Romanian Word offer and an Excel sheet turned on and read in 8 seconds; the real embedding model downloaded and gave all 6 passages vectors; the Romanian question "cât costă site-ul?" found the offer's "Prețuri" section first.
+- **Fixed while checking:** in the bundled app pdf.js couldn't find its worker file and every PDF failed ("No GlobalWorkerOptions.workerSrc"); tests run unbundled and didn't show it. Now set explicitly.
+- **Not explained:** the window crashed three times during one long test script that polled the engine; five dedicated four-minute runs (idle, polling, a folder on, real documents with the model loaded) didn't crash, with steady memory. Watching for it; error reports would capture it.
+- **Not built yet:** OCR for scans (7.3, waits for the owner's choice of where its language files come from), Word page numbers (not in the file; sections instead), the check with the owner's own documents and a real model (owner checklist).
 ### 16 Nov 2026 · CI: dependency advisories and a licence the Linux check couldn't read
 
 Two high advisories in `image-size` (inside PptxGenJS) failed CI's audit; `uuid` (inside ExcelJS) and `fast-uri` (inside the MCP SDK) had moderate ones. All three are pinned to fixed versions with `overrides` in `pnpm-workspace.yaml`; PowerPoint and Excel export tests still pass. `khroma` (inside Mermaid) is MIT by its licence file but declares no licence, so the licence check on Linux read it as unknown: named as an exception. One moderate advisory is left in the linter's `minimatch`, a development tool that isn't shipped, below CI's "high" bar.

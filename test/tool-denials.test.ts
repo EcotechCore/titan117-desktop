@@ -19,6 +19,7 @@ import { fakeBrowser, fakeSpeech, fakeWeb, type FakeBrowser, type FakeWeb } from
 import { createArtifactStore, type ArtifactStore } from '../src/engine/artifacts'
 import { createPageReader } from '../src/engine/lib/read'
 import { createSearchService } from '../src/engine/lib/search'
+import { createDocIndex } from '../src/engine/lib/doc-index'
 import { tempFolder, until } from './helpers'
 
 interface Bench {
@@ -89,6 +90,7 @@ function bench(
         search,
         pages: createPageReader(),
         artifacts,
+        documents: createDocIndex({ db, allowed: () => [allowed], embedder: () => null }),
         enginePorts: () => [4999],
         answers: { get: (k) => answers.get(k) ?? null, set: (k, v) => void answers.set(k, v) }
       }
@@ -490,6 +492,54 @@ const DENIALS: Record<string, () => Promise<void>> = {
     expect(existsSync(target)).toBe(false)
   },
 
+  async docs_search() {
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'docs_search', input: { query: 'rent' } })).status).toBe(
+      'refused'
+    )
+    // No folder turned on in Documents: nothing to search, nothing outside reached.
+    const b = bench()
+    const found = await b.run({ name: 'docs_search', input: { query: 'outside' } })
+    expect(found.status).toBe('done')
+    expect(found.output).not.toContain('secret.txt')
+  },
+
+  async docs_read() {
+    const b = bench()
+    // A file that isn't in a document folder, or outside every allowed folder.
+    expect(
+      (await b.run({ name: 'docs_read', input: { file: 'docs/note.txt', page: 1 } })).status
+    ).toBe('refused')
+    expect(
+      (await b.run({ name: 'docs_read', input: { file: join(b.outside, 'secret.txt'), page: 1 } }))
+        .status
+    ).toBe('refused')
+  },
+
+  async sheet_query() {
+    const b = bench()
+    expect(
+      (
+        await b.run({
+          name: 'sheet_query',
+          input: { file: join(b.outside, 'sales.xlsx'), op: 'sum', column: 'A' }
+        })
+      ).status
+    ).toBe('refused')
+    expect(
+      (
+        await b.run({
+          name: 'sheet_query',
+          input: { file: 'docs/note.txt', op: 'sum', column: 'A' }
+        })
+      ).status
+    ).toBe('failed')
+    const none = bench({ noFolders: true })
+    expect(
+      (await none.run({ name: 'sheet_query', input: { file: 'a.xlsx', op: 'count' } })).status
+    ).toBe('refused')
+  },
+
   async browser_download() {
     const b = bench()
     b.browser.labels.set('7', 'Download invoice')
@@ -748,7 +798,8 @@ describe('tool denial tests', () => {
           () => ctx.speech.transcribe('a.wav'),
           () => ctx.search.search({ query: 'x' }),
           () => ctx.pages.read('https://example.com'),
-          () => ctx.artifacts.list()
+          () => ctx.artifacts.list(),
+          () => ctx.documents.search('x')
         ]
         const refused: string[] = []
         for (const attempt of tries) {
@@ -764,7 +815,7 @@ describe('tool denial tests', () => {
     })
     const b = bench({ extraTools: [greedy] })
     const outcome = await b.run({ name: 'greedy', input: {} })
-    expect(outcome.output.split(',')).toEqual(Array(11).fill('PermissionError'))
+    expect(outcome.output.split(',')).toEqual(Array(12).fill('PermissionError'))
   })
 
   it('every tool declares a risk and its permissions', () => {

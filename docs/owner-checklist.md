@@ -2,11 +2,11 @@
 
 Everything waiting on the owner, in the order to do it. Gathered from every repo's progress log; last rewritten 15 Nov 2026 after phase 4's leftovers and the first part of phase 5. Shared doc: edited in `titan117-web`, copied to the other repos. When an item is done, tick it here and add a line to `progress.md`; when the build adds a new one, it goes here in the same commit.
 
-**Where the code is:** nothing is pushed yet. Every piece is a local branch, stacked in this order in all three repos: `phase-4` (`phase-4-docs` in the portal) → `phase-5-error-reports` → `phase-5-setup` → `phase-5-offline` → `phase-5-awake` → `phase-5-installer` → `phase-4-leftovers`. The last branch holds everything.
+**Where the code is:** pushed. Pull requests from `phase-4-leftovers` in all three repos (titan117-web #26, titan117-desktop #24, titan117-pop #21) hold phases 4 and 5 so far; phase 6 is on `phase-6-folder-agent`, stacked on top, with its own pull requests.
 
 ## Step 1 · Push and review (about an hour)
 
-- [ ] **Push the branches and open the pull requests** (or ask Claude to): one pull request per repo from `phase-4-leftovers` holds all of it; or one per branch for smaller reviews.
+- [x] ~~Push the branches and open the pull requests~~ Done 16 Nov 2026: review titan117-web #26, titan117-desktop #24, titan117-pop #21, then phase 6's.
 - [ ] **Deploy the web app and Convex to production** once merged, so the desktop app's share links, error reports and comments reach real routes (the development deployment already has the Convex functions).
 
 ## Step 2 · Confirm the decisions (about an hour of reading)
@@ -20,6 +20,8 @@ Each is in `docs/notes/decisions.md`, marked "to be confirmed". Any one can be c
 - [ ] **§48, keep awake, checkpoints and notifications:** tasks resume by themselves at most twice within an hour; an unfinished step is answered "not run to the end", never repeated silently; notifications only when the window is in the background.
 - [ ] **§49, the Windows installer:** no CUDA back end (Vulkan covers NVIDIA, AMD and Intel); trimmed to 693 MB installed, 211 MB to download (235 MB with Microsoft's runtime); Microsoft's runtime installer run only when needed.
 - [ ] **§50, phase 4 leftovers and auto-update:** ZIP downloads; the browser tool never downloads programs or scripts, 200 MB at most; comments on shared pages open to anyone with the link (100 a day per page; you can hide them); auto-update off until signing and an update address exist.
+- [ ] **§51, the folder agent (phase 6):** document folders read-only for agents by default; reading in Node only (no Python: Docling and MarkItDown not used); citations by page, or by section heading for Word; search with word stems plus meaning (multilingual-e5-small, MIT, about 120 MB downloaded once); a task that touched a local-models-only folder never goes back to a cloud model.
+- [ ] **OCR for scanned documents:** where Tesseract.js's Romanian and English language files come from (its CDN, our own server, or inside the installer, about 15 MB each). Until you choose, scanned pages are counted and shown as waiting.
 - [ ] **Phase 5 started before phase 4's check passed**, at your request on 15 Nov 2026: confirm that stands.
 - [ ] **Whether the repos stay public.**
 
@@ -31,6 +33,7 @@ Signed in to the desktop app with your plan:
 - [ ] **Report a problem:** send one and check a `T117-…` reference appears.
 - [ ] **Turn off Wi-Fi** with the app open: the Offline banner, a cloud task stopping with "Continue with … (local)" (download a local model first), and both clearing when Wi-Fi is back.
 - [ ] **A notification:** start a task, switch to another window, wait for "Titan finished".
+- [ ] **Phase 6's check (the folder agent):** turn on a folder of your own real documents (contracts, invoices, offers) in Documents, ask questions whose answers you know, and see that the answers cite the right file and page. Also mark a folder "Local models only" and check that a cloud model task stops and offers a local model.
 - [ ] Search with your own Exa, Tavily or Brave key, if you have one (optional).
 - [ ] The microphone button with your own microphone (phase 3).
 
