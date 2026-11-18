@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phases 4 and 5 wait for the owner's checks (`docs/owner-checklist.md`); phase 6, the folder agent, is under way (16 Nov 2026). **Next step:** OCR once the owner chooses its language files' source, then phase 6's check with the owner's own documents.
+**Now:** decisions §44–§51 are confirmed; the owner is working through step 3 of `docs/owner-checklist.md` (trying phases 4–6 locally). Production waits (§52). **Next step:** phase 4's check, then phase 6's, both on this laptop.
 
 ## Phases
 
@@ -31,6 +31,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 18 Nov 2026 · Decisions §44–§51 confirmed; production waits
+
+The owner reviewed and confirmed decisions §44 to §51 (web search and artifacts, error reports, setup, offline, keep awake and resume, the installer, the phase 4 leftovers and auto-update, the folder agent) and that phase 5 started before phase 4's check. One addition to §44: when asked to search on Google or another engine, Titan does that search in the visible browser (§44.12; the instruction is in the desktop app's prompt). Decided (§52): **production waits** until everything works locally; nothing built so far depends on it. The owner checklist now starts at step 3, trying it all locally.
 
 ### 16 Nov 2026 · Phase 6: the folder agent, first part
 
