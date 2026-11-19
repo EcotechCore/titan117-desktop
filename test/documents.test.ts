@@ -162,10 +162,7 @@ describe('reading documents page by page (7.2)', () => {
     )
     expect(pdf.pages.map((p) => p.label)).toEqual(['page 1', 'page 2', 'page 3'])
     expect(pdf.pages[1].text).toContain('4,200 EUR per month')
-    const word = await parseDocument(
-      'a.docx',
-      readFileSync(join(dir, 'Offer Miere Buna.docx'))
-    )
+    const word = await parseDocument('a.docx', readFileSync(join(dir, 'Offer Miere Buna.docx')))
     expect(word.pages.map((p) => p.label)).toEqual([
       'section "Offer for Miere Buna SRL"',
       'section "Prices"',
@@ -174,16 +171,10 @@ describe('reading documents page by page (7.2)', () => {
     const sheet = await parseDocument('a.xlsx', readFileSync(join(dir, 'Sales.xlsx')))
     expect(sheet.pages.map((p) => p.label)).toEqual(['sheet "Sales 2026"', 'sheet "Notes"'])
     expect(sheet.pages[0].text).toContain('February | South | 950.5')
-    const slides = await parseDocument(
-      'a.pptx',
-      readFileSync(join(dir, 'Plan 2027.pptx'))
-    )
+    const slides = await parseDocument('a.pptx', readFileSync(join(dir, 'Plan 2027.pptx')))
     expect(slides.pages[1]).toMatchObject({ label: 'slide 2' })
     expect(slides.pages[1].text).toContain('two developers')
-    const mail = await parseDocument(
-      'a.eml',
-      readFileSync(join(dir, 'Supplier delay.eml'))
-    )
+    const mail = await parseDocument('a.eml', readFileSync(join(dir, 'Supplier delay.eml')))
     expect(mail.title).toBe('Delivery delayed')
     expect(mail.pages[0].text).toContain('20 November')
     await expect(parseDocument('a.xyz', Buffer.from('x'))).rejects.toThrow(/can't read \.xyz/)

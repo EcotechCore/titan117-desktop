@@ -32,6 +32,16 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 19 Nov 2026 · Dependencies updated
+
+All the Dependabot updates in one tested change: Vite 8.3.8, @vitejs/plugin-react 6.3.0, electron-builder 26.18.0, Prettier 3.10.1 (one test file reformatted), ESLint 10, TypeScript 6.0.3. Not taken:
+
+- **TypeScript 7:** the newest typescript-eslint supports TypeScript below 6.1 only. TypeScript 6 deprecates `baseUrl`, so the renderer's paths are now relative.
+- **Electron 45:** Windows Smart App Control on the owner's laptop blocks Electron 45's `electron.exe` (unsigned and too new to have a reputation), which would stop `pnpm dev`. Stays on Electron 44.10.2, a supported line; retry when Dependabot proposes a later 45 or 46.
+- **@types/node 26:** stays on 24, matching Node 24 in Electron 44 and CI.
+
+eslint-plugin-react's React version detection calls an API ESLint 10 removed, so the version is set (19.3). Typecheck, lint, 287 tests, build, licences pass; the built app's smoke run (full-screen artifact, read aloud) passes.
+
 ### 19 Nov 2026 · Phase 4 done; the owner's checks; two fixes
 
 The owner ran phases 4-6 on this laptop (details in the web repo's log): **phase 4's check is met**, phase 6's check is met (phase 6 stays open for OCR). Fixed from what the owner found:

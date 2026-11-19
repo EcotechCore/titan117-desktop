@@ -68,7 +68,8 @@ export default defineConfig(
   {
     settings: {
       react: {
-        version: 'detect'
+        // Not 'detect': eslint-plugin-react's detection calls an API ESLint 10 removed.
+        version: '19.3'
       }
     }
   },
