@@ -8,6 +8,8 @@ allowBuilds:
   protobufjs: false
 # Fixed versions of packages inside our dependencies, for known advisories
 # (CI fails on high ones, guardrails §11):
+minimumReleaseAgeExclude:
+  - electron@45.4.1
 overrides:
   # GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr (high), inside PptxGenJS; only used for images in slides.
   image-size: 2.0.3
