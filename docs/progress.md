@@ -37,7 +37,7 @@ Each entry: date, phase, what was done, and anything left open. One entry per pi
 All the Dependabot updates in one tested change: Vite 8.3.8, @vitejs/plugin-react 6.3.0, electron-builder 26.18.0, Prettier 3.10.1 (one test file reformatted), ESLint 10, TypeScript 6.0.3. Not taken:
 
 - **TypeScript 7:** the newest typescript-eslint supports TypeScript below 6.1 only. TypeScript 6 deprecates `baseUrl`, so the renderer's paths are now relative.
-- **Electron 45:** Windows Smart App Control on the owner's laptop blocks Electron 45's `electron.exe` (unsigned and too new to have a reputation), which would stop `pnpm dev`. Stays on Electron 44.10.2, a supported line; retry once 45 is established (owner checklist).
+- **Electron 45:** Windows Smart App Control on the owner's laptop blocks Electron 45's `electron.exe` (unsigned and too new to have a reputation), which would stop `pnpm dev`. Stays on Electron 44.10.2, a supported line; retry when Dependabot proposes a later 45 or 46.
 - **@types/node 26:** stays on 24, matching Node 24 in Electron 44 and CI.
 
 eslint-plugin-react's React version detection calls an API ESLint 10 removed, so the version is set (19.3). Typecheck, lint, 287 tests, build, licences pass; the built app's smoke run (full-screen artifact, read aloud) passes.
