@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** decisions §44–§51 are confirmed; the owner is working through step 3 of `docs/owner-checklist.md` (trying phases 4–6 locally). Production waits (§52). **Next step:** phase 4's check, then phase 6's, both on this laptop.
+**Now:** phase 4 is done (19 Nov 2026). Phase 6's check is met; phase 6 waits for OCR. Phase 5 waits for signing, a Mac and the portal's error screens. **Next step:** the owner's open choices (OCR's language files, Gmail's route, code signing), then the rest of phase 5. Production waits (§52).
 
 ## Phases
 
@@ -12,7 +12,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 1 | Engine core | Done | 14 Nov 2026 | 14 Nov 2026 |
 | 2 | Accounts and money | Done | 15 Nov 2026 | 15 Nov 2026 |
 | 3 | Titan and memory | Done | 15 Nov 2026 | 15 Nov 2026 |
-| 4 | Web search and artifacts | In progress | 15 Nov 2026 | |
+| 4 | Web search and artifacts | Done | 15 Nov 2026 | 19 Nov 2026 |
 | 5 | Install and setup | In progress | 15 Nov 2026 | |
 | 6 | Folder agent | In progress | 16 Nov 2026 | |
 | 7 | Coding engine and code builder | Not started | | |
@@ -31,6 +31,15 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 19 Nov 2026 · Phase 4 done; the owner's checks; two fixes
+
+The owner ran phases 4-6 on this laptop (details in the web repo's log): **phase 4's check is met**, phase 6's check is met (phase 6 stays open for OCR). Fixed from what the owner found:
+
+- **Full-screen artifact:** the panel moved into the hidden chat's column (0 pixels wide), so only its toolbar showed. It now takes the space beside the sidebar; checked in the built app (panel 1014 px wide, the page showing).
+- **Read aloud controls:** a bar above the message box while Titan reads: "Preparing…" while the voice is made, then pause and resume, the time, a position slider, the speed (0.75× to 1.5×) and Stop (also Escape). Checked in the built app on a short reply: pause, speed and stop work. Not checked: the time counting up, as the automated run has no sound device.
+- **Search in the browser on request** (decisions §44.12): the instruction is in Titan's prompt.
+- **Tests:** 287 passing; lint and build pass.
 
 ### 18 Nov 2026 · Decisions §44–§51 confirmed; production waits
 

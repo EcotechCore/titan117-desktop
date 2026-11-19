@@ -26,15 +26,15 @@ All confirmed by the owner on 18 Nov 2026 (decisions §44–§51), with one addi
 
 ## Step 3 · Try it yourself (an afternoon)
 
-All of it runs on this laptop: the web app from the "web" preview (port 3100) against the development Convex deployment, the desktop app from source (`pnpm dev`), Stripe in test mode. Signed in to the desktop app with your plan:
+All of it runs on this laptop: the web app from the "web" preview (port 3100) against the development Convex deployment, the desktop app from source (`pnpm dev`), Stripe in test mode. Done by the owner on 19 Nov 2026: everything below worked, except two things fixed the same day (the full-screen artifact panel showed only its toolbar; read aloud had no controls, now Pause, Resume, speed and Stop). Signed in to the desktop app with your plan:
 
-- [ ] **Phase 4's check (closes phase 4):** turn on Deep research, ask for a real report (for example "Research e-invoicing rules in Romania"), download it as PDF, Word and Excel, press Share, open the link in a browser, leave a comment and send a test report with the Report button. Then, in the app, see the comment, reply, and try "Apply with Titan".
-- [ ] **Report a problem:** send one and check a `T117-…` reference appears.
-- [ ] **Turn off Wi-Fi** with the app open: the Offline banner, a cloud task stopping with "Continue with … (local)" (download a local model first), and both clearing when Wi-Fi is back.
-- [ ] **A notification:** start a task, switch to another window, wait for "Titan finished".
-- [ ] **Phase 6's check (the folder agent):** turn on a folder of your own real documents (contracts, invoices, offers) in Documents, ask questions whose answers you know, and see that the answers cite the right file and page. Also mark a folder "Local models only" and check that a cloud model task stops and offers a local model.
+- [x] **Phase 4's check (closes phase 4):** turn on Deep research, ask for a real report (for example "Research e-invoicing rules in Romania"), download it as PDF, Word and Excel, press Share, open the link in a browser, leave a comment and send a test report with the Report button. Then, in the app, see the comment, reply, and try "Apply with Titan".
+- [x] **Report a problem:** send one and check a `T117-…` reference appears.
+- [x] **Turn off Wi-Fi** with the app open: the Offline banner, a cloud task stopping with "Continue with … (local)" (download a local model first), and both clearing when Wi-Fi is back.
+- [x] **A notification:** start a task, switch to another window, wait for "Titan finished".
+- [x] **Phase 6's check (the folder agent):** turn on a folder of your own real documents (contracts, invoices, offers) in Documents, ask questions whose answers you know, and see that the answers cite the right file and page. Also mark a folder "Local models only" and check that a cloud model task stops and offers a local model.
 - [ ] Search with your own Exa, Tavily or Brave key, if you have one (optional).
-- [ ] The microphone button with your own microphone (phase 3).
+- [x] The microphone button with your own microphone (phase 3).
 
 ## Step 4 · Accounts and services
 
@@ -60,7 +60,7 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 
 ## Step 6 · Waiting on vendors
 
-- [ ] Google's app verification for Gmail, Calendar, Drive and Docs, and Microsoft's publisher verification for Outlook; until then the one inbox (3.6) and Google Docs, Sheets and Slides downloads (17.25) wait.
+- [ ] **Not needed now; only when the one inbox (3.6) and Google Docs downloads (17.25) are built.** Google's app verification for Gmail, Calendar, Drive and Docs, and Microsoft's publisher verification for Outlook. Both are free; what decisions §27 avoids is Google's *paid* yearly security assessment, not this verification. It's needed only because Titan signs in to Gmail through our own Google app for every user (unverified: a warning screen and at most 100 test users). Until then Gmail works through IMAP with an app password, and testers use Google's testing mode.
 
 ## Step 7 · Before external testers and the public beta
 
