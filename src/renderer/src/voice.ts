@@ -70,13 +70,39 @@ export async function record(): Promise<Recording> {
 
 let playing: HTMLAudioElement | null = null
 
-/** Play a WAV (base64) the engine made; a new one stops the last. */
-export function play(wavBase64: string): void {
-  playing?.pause()
+/**
+ * Play a WAV (base64) the engine made; a new one stops the last. Returns the
+ * audio, so the window can pause, resume, seek, change the speed and stop it.
+ */
+export function play(wavBase64: string, onEnd?: () => void): HTMLAudioElement {
+  stopPlaying()
   const bytes = Uint8Array.from(atob(wavBase64), (c) => c.charCodeAt(0))
   const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
   const audio = new Audio(url)
-  audio.onended = () => URL.revokeObjectURL(url)
+  audio.onended = () => {
+    URL.revokeObjectURL(url)
+    if (playing === audio) playing = null
+    onEnd?.()
+  }
   playing = audio
   void audio.play()
+  return audio
+}
+
+/** Stop whatever is being read aloud. */
+export function stopPlaying(): void {
+  if (!playing) return
+  playing.pause()
+  if (playing.src.startsWith('blob:')) URL.revokeObjectURL(playing.src)
+  playing = null
+}
+
+/** Move the voice being read aloud to a time, in seconds. */
+export function seekPlaying(seconds: number): void {
+  if (playing) playing.currentTime = seconds
+}
+
+/** Read aloud faster or slower (1 is normal). */
+export function setPlayingSpeed(rate: number): void {
+  if (playing) playing.playbackRate = rate
 }

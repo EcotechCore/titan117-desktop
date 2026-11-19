@@ -22,7 +22,8 @@ import { useAccount } from './useAccount'
 import { ApprovalsView, ModelsView } from './Views'
 import { MemoryView } from './Memory'
 import { ConnectorsView } from './Connectors'
-import { play, record, type Recording } from './voice'
+import { play, record, stopPlaying, type Recording } from './voice'
+import { ReadAloudBar, type Reading } from './ReadAloudBar'
 import { VoiceBar } from './VoiceBar'
 import { ArtifactPanel, ArtifactsView } from './Artifacts'
 import { SearchView } from './Search'
@@ -248,15 +249,33 @@ function App(): React.JSX.Element {
 
   const micLevel = useCallback(() => recording.current?.level() ?? 0, [])
 
-  const readAloud = useCallback(
-    (spoken: string) => {
-      client.current
-        ?.send<{ wav: string }>('POST', '/v1/speech/speak', { text: spoken })
-        .then((r) => play(r.wav))
-        .catch(fail)
-    },
-    [fail]
-  )
+  // Read aloud (3.14), with pause, resume, speed and stop in a bar while it plays.
+  const [reading, setReading] = useState<Reading | null>(null)
+  const readingId = useRef(0)
+  function stopReading(): void {
+    readingId.current++
+    stopPlaying()
+    setReading(null)
+  }
+  function readAloud(spoken: string): void {
+    const id = ++readingId.current
+    stopPlaying()
+    setReading({ state: 'preparing' })
+    client.current
+      ?.send<{ wav: string }>('POST', '/v1/speech/speak', { text: spoken })
+      .then((r) => {
+        // Stopped, or another reply asked for, while the voice was being made.
+        if (id !== readingId.current) return
+        const audio = play(r.wav, () => {
+          if (id === readingId.current) setReading(null)
+        })
+        setReading({ state: 'playing', audio })
+      })
+      .catch((error) => {
+        if (id === readingId.current) setReading(null)
+        fail(error)
+      })
+  }
 
   const answer = useCallback(
     (id: string, reply: ApprovalAnswer) => {
@@ -586,6 +605,22 @@ function App(): React.JSX.Element {
 
         {(view.kind === 'start' || view.kind === 'task') && (
           <div className="composer">
+            {reading && (
+              <ReadAloudBar
+                reading={reading}
+                onPause={() => {
+                  if (reading.state === 'preparing') return
+                  reading.audio.pause()
+                  setReading({ state: 'paused', audio: reading.audio })
+                }}
+                onResume={() => {
+                  if (reading.state === 'preparing') return
+                  void reading.audio.play()
+                  setReading({ state: 'playing', audio: reading.audio })
+                }}
+                onStop={stopReading}
+              />
+            )}
             {task?.status === 'stopped' &&
               !task.note?.startsWith('No internet') &&
               task.note !== 'You stopped this task.' && (
