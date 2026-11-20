@@ -23,6 +23,7 @@ All confirmed by the owner on 18 Nov 2026 (decisions §44–§51), with one addi
 - [x] **OCR for scanned documents:** decided 20 Nov 2026: the language files ship inside the app (decisions §51.8). Built the same day.
 - [x] **Phase 5 started before phase 4's check passed**, at your request on 15 Nov 2026: confirm that stands.
 - [ ] **§53, the coding engine (phase 7), items 3–9:** one OpenCode server per coding task with a password; its model steps through our router (a coding job's budget: 150 steps, $3); our approvals decide every command and change it makes, and it never remembers an "always" of its own; its own internet calls, plugins and repo or home settings switched off; Codex and Cursor stay experimental. (Items 1 and 2, shipping OpenCode unchanged and downloading it on first use, you decided on 20 Nov 2026.)
+- [ ] **§54, git and the code builder screen (phase 7):** commits as you with a `Co-authored-by: Titan117` line; never a force-push, a push to the main branch or a commit carrying secrets; pushes and pull requests ask every time; pull requests through GitHub's CLI or GitHub's own page until the app is registered; project memory per repository; the code review changes nothing; open in VS Code or Cursor (items 9–13).
 - [ ] **The repos go private** (decided 20 Nov 2026; no rush). Your contribution graph keeps counting the commits if "Private contributions" is on in your GitHub profile settings; others see only the counts, not the repos.
 
 ## Step 3 · Try it yourself (an afternoon)
@@ -34,6 +35,7 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [x] **Turn off Wi-Fi** with the app open: the Offline banner, a cloud task stopping with "Continue with … (local)" (download a local model first), and both clearing when Wi-Fi is back.
 - [x] **A notification:** start a task, switch to another window, wait for "Titan finished".
 - [x] **Phase 6's check (the folder agent):** turn on a folder of your own real documents (contracts, invoices, offers) in Documents, ask questions whose answers you know, and see that the answers cite the right file and page. Also mark a folder "Local models only" and check that a cloud model task stops and offers a local model.
+- [ ] **Phase 7's check, done on 20 Nov 2026:** look at [the pull request](https://github.com/ispasdani/titan117-sample-shop/pull/5) the code builder opened in the private sample repo `ispasdani/titan117-sample-shop`, then merge or close it as you like. Also try the Code screen yourself on a project of your own: a job with Plan first, then Build, and Review the changes.
 - [ ] Search with your own Exa, Tavily or Brave key, if you have one (optional).
 - [x] The microphone button with your own microphone (phase 3).
 
@@ -45,7 +47,7 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [ ] **A Windows code signing certificate: you start on Monday 23 Nov 2026** (a reminder is set for that morning). Needed sooner than planned: Windows' Smart App Control blocks our unsigned installer outright (it did on this laptop on 15 Nov 2026), and auto-update only installs updates signed by the same publisher.
 - [ ] **Where updates are published** (an HTTPS address for signed releases, for example a GitHub release or our own storage); then set `PRODUCTION.updateUrl` in `src/main/index.ts` of the desktop app.
 - [ ] Once signed: **install on a clean Windows** (a virtual machine without the Visual C++ runtime) to see Microsoft's runtime step run.
-- [ ] **Register our GitHub App** under the EcotechCore organisation (needed for pull requests in phase 7, decisions §25): Settings → Developer settings → GitHub Apps → New. Turn on **device flow**; no webhook; no client secret needed; "Expire user authorization tokens" on. Permissions (repository): Contents read and write, Pull requests read and write, Metadata read. Then send me the app's **client ID** (it isn't secret).
+- [ ] **Register our GitHub App** under the EcotechCore organisation (one-click GitHub sign-in for pull requests, decisions §25; **no longer blocking**: until then pull requests go through GitHub's CLI or GitHub's own page, §54): Settings → Developer settings → GitHub Apps → New. Turn on **device flow**; no webhook; no client secret needed; "Expire user authorization tokens" on. Permissions (repository): Contents read and write, Pull requests read and write, Metadata read. Then send me the app's **client ID** (it isn't secret).
 - [ ] Mailboxes `support@`, `privacy@` and **`abuse@titan117.com`** (the Digital Services Act contact point for shared pages), or change the addresses in `apps/web/content/legal.ts`.
 - [ ] Stripe: the terms address in public details and "Successful payments" customer emails on, then switch on `STRIPE_REQUIRE_TERMS`.
 - [ ] Hard spending caps on our OpenRouter account and every paid provider, alerts at 50% and 80% (guardrails §3).

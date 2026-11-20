@@ -22,7 +22,8 @@
     "build:win": "pnpm build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "test:opencode": "vitest run test/code-engine.contract.test.ts",
-    "eval:code": "vitest run -c vitest.live.config.mts test/live/code.live.ts"
+    "eval:code": "vitest run -c vitest.live.config.mts test/live/code.live.ts",
+    "eval:pr": "vitest run -c vitest.live.config.mts test/live/code-pr.live.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.8.0",

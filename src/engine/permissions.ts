@@ -13,7 +13,13 @@
  */
 import type { ApprovalAnswer, Risk, ToolCall } from '../shared/protocol'
 import type { BrowserAccess, BrowserHost } from './lib/browser'
-import { createFileAccess, PermissionError, type FolderPolicy } from './lib/folders'
+import {
+  checkWritable,
+  createFileAccess,
+  PermissionError,
+  resolveAllowed,
+  type FolderPolicy
+} from './lib/folders'
 import type { Logger } from './lib/log'
 import { createShell, type ShellAccess, type ToolApi } from './lib/shell'
 import { SkillError, type SkillAccess, type SkillStore } from './lib/skills'
@@ -34,7 +40,17 @@ import { isNetworkFailure } from './lib/online'
 import type { DocumentsAccess, PageAccess } from './tools/lib/define-tool'
 import type { DocIndex } from './lib/doc-index'
 import type { CodeService } from './lib/code/service'
-import type { CodeAccess } from './tools/lib/define-tool'
+import type { CodeAccess, GitAccess } from './tools/lib/define-tool'
+import {
+  GitError,
+  gitBranch,
+  gitCommit,
+  gitDiff,
+  gitPush,
+  gitStatus,
+  openPullRequest,
+  projectRootOf
+} from './lib/git'
 import { querySheet, SheetError } from './lib/sheets'
 import { DocumentError } from './lib/documents'
 
@@ -119,6 +135,8 @@ export interface Services {
   localOnlyTasks?: { has(taskId: string): boolean; add(taskId: string): void }
   /** The coding engine (§13, decisions §53). */
   code?: CodeService
+  /** Whether agent commits carry the Titan117 co-author line (decisions §25); on by default. */
+  gitCoAuthor?: () => boolean
 }
 
 interface Waiting {
@@ -371,7 +389,9 @@ export function createPermissionLayer(deps: {
           agent: ctx.agent,
           taskId: ctx.taskId,
           taskTitle: () => store.getTask(ctx.taskId)?.title ?? '',
-          mode: p.memory
+          mode: p.memory,
+          // A project's memory is written only for a folder the user allowed (13.8).
+          projectRoot: async (folder) => projectRootOf(await resolveAllowed(policy, folder))
         })
       : denied<MemoryAccess>('memory')
 
@@ -526,11 +546,32 @@ export function createPermissionLayer(deps: {
         }
       : denied<CodeAccess>('the coding engine')
 
+    const repoToRead = (folder: string): Promise<string> => resolveAllowed(policy, folder)
+    const repoToChange = (folder: string): Promise<string> => {
+      if (p.git !== 'write') throw new PermissionError('This tool may look at git, not change it.')
+      return checkWritable(policy, folder)
+    }
+    const git: GitAccess = p.git
+      ? {
+          status: async (folder) => gitStatus(await repoToRead(folder)),
+          diff: async (folder, options) => gitDiff(await repoToRead(folder), options),
+          branch: async (folder, name) => gitBranch(await repoToChange(folder), name),
+          commit: async (folder, input) =>
+            gitCommit(await repoToChange(folder), {
+              ...input,
+              coAuthor: services.gitCoAuthor?.() ?? true
+            }),
+          push: async (folder) => gitPush(await repoToChange(folder)),
+          pullRequest: async (folder, input) => openPullRequest(await repoToChange(folder), input)
+        }
+      : denied<GitAccess>('git')
+
     return {
       taskId: ctx.taskId,
       agent: ctx.agent,
       files,
       code,
+      git,
       search,
       documents,
       pages,
@@ -603,7 +644,8 @@ export function createPermissionLayer(deps: {
           error instanceof ArtifactError ||
           error instanceof ConvertError ||
           error instanceof DocumentError ||
-          error instanceof SheetError
+          error instanceof SheetError ||
+          error instanceof GitError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }

@@ -16,7 +16,11 @@ const KINDS: { kind: MemoryKind; label: string }[] = [
 ]
 
 function scopeLabel(scope: string): string {
-  return scope === 'shared' ? 'All agents' : `Only ${scope.replace(/^agent:/, '')}`
+  if (scope === 'shared') return 'All agents'
+  // Project memory (13.8): the project's folder name.
+  if (scope.startsWith('project:'))
+    return `Project ${scope.slice('project:'.length).split(/[\\/]/).filter(Boolean).pop() ?? ''}`
+  return `Only ${scope.replace(/^agent:/, '')}`
 }
 
 function day(at: number): string {

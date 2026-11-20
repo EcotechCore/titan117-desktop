@@ -56,6 +56,7 @@ Every decision taken so far, newest at the bottom of the table. Where this file 
 | 20 Nov 2026 | OCR's language files (English and Romanian) ship inside the app; nothing is downloaded for OCR | [51](#51-the-folder-agent) |
 | 16 Nov 2026 | Phase 6, the folder agent (confirmed by the owner on 18 Nov 2026): document folders are allowed folders the user turns on in Documents, read-only for agents by default; documents read in Node page by page (pdf.js, mammoth, ExcelJS, the slides' XML, postal-mime), never a Python program; passages within one page so every answer cites file and page; full-text search with word stems plus search by meaning with multilingual-e5-small on the laptop (MIT, about 120 MB, downloaded once), combined; spreadsheet sums computed from the cells; a task that read a local-models-only folder never reaches a cloud model again; OCR for scans waits for the owner's choice of where its language files come from | [51](#51-phase-6-the-folder-agent) |
 | 20 Nov 2026 | Phase 7, the coding engine (items 1 and 2 decided by the owner on 20 Nov 2026; the rest **to be confirmed**): OpenCode 1.19.6 shipped unchanged as its own program (its Bun runtime contains LGPL-2 JavaScriptCore; notices and a source link; OpenCode's own MIT code may be changed or forked later), downloaded from npm the first time the code builder is used and checked against its hash, with ripgrep from GitHub; one OpenCode server per coding task on 127.0.0.1 with a password; its model steps go through our router via a local bridge; its asks are decided by our permission layer; its own outside calls, plugins, repo and home settings switched off, and our one plugin hides its password from the commands it runs | [53](#53-phase-7-the-coding-engine) |
+| 20 Nov 2026 | Phase 7, git and the code builder screen (**to be confirmed**): git as the user (their own git, name, email and sign-in), a `Co-authored-by: Titan117` line on agent commits; never a force-push, never a push to the main branch, never a commit carrying a key or a `.env` file; pushes and pull requests ask every time; until our GitHub App is registered, a pull request is opened by GitHub's own CLI when it's signed in on the laptop, otherwise the user gets GitHub's page filled in and presses Create; the Code screen shows a project's branch and changes and starts a job to plan or build; every engine change is approved with its diff shown; project memory per repository; a code review that changes nothing; open in VS Code or Cursor | [54](#54-phase-7-git-and-the-code-builder-screen) |
 | 18 Nov 2026 | Production waits: the web app and Convex aren't deployed to production until everything works locally against the development deployment; nothing built so far depends on production | [52](#52-production-waits) |
 | 15 Nov 2026 | Account deletion: 30 days after the user asks, cancellable until then; asking stops the plan renewing; a daily run deletes the Clerk user, the Stripe customer and every row in the data table | [42](#42-deleting-an-account) |
 | 8 Nov 2026 | Remaining open decisions answered: commands with "allow once / always" and a short always-ask list; a full local model catalogue for offline use; best open-source bases compared per phase; SEO free-first with an SEO skill for code; video through OpenRouter credits or Wan 2.2 locally, plus our own video studio; other coding tools as a user option (T3 Code model); keep the name and file an EU trademark; legal pages in phase 2 | [33](#33-the-remaining-open-decisions) |
@@ -669,6 +670,43 @@ Made on 20 Nov 2026 while starting phase 7 (features 5.7, §13). **Items 1 and 2
    - **OpenAI** started a program in September 2026 that lets ChatGPT plans be used in named partner tools. Titan117 isn't a partner, so Codex stays experimental, with an API-key mode (§20).
    - **Cursor:** its CLI and headless mode are its supported ways to run outside the editor. Its terms limit some uses, so it stays experimental too.
    - **Modal:** its terms say the service is for the customer's own internal business, and may not be resold or directed by third parties. A user running their own jobs on their own Modal account, through software they use, looks like their own internal use. Still, we ask Modal in writing before building cloud sandboxes (owner checklist).
+
+## 54. Phase 7: git and the code builder screen
+
+Made on 20 Nov 2026 while building phase 7's second part (features 13.1–13.3, 13.7). **To be confirmed.** It follows §25 (agents act on GitHub as the user, never as a bot of ours).
+
+1. **Git is the user's own.** Commits, branches and pushes run the user's installed git, with their own name, email and sign-in (Git Credential Manager, SSH keys and their agent). The environment is otherwise scrubbed (§43.1), and git never waits on a hidden password prompt. If git doesn't know the user's name and email yet, the user is told the two commands to set them.
+2. **The co-author line.** Agent commits end with `Co-authored-by: Titan117 <noreply@titan117.com>`, so the AI's part shows in the history (§25). The user can turn it off; the setting is in the engine, and its switch in Settings comes with the settings screen.
+3. **Hard rules, whatever is approved:**
+   - never a force-push;
+   - never a push to the main branch (`main`, `master` or the remote's default): work goes on a branch, then a pull request;
+   - never a commit that carries a `.env` file, a key file (`.pem`, `.key`, `id_rsa`…) or anything shaped like a key or token in the added lines. Such a commit is refused and nothing stays staged;
+   - branch names that could be read as options or paths are refused.
+4. **What asks:**
+   - looking at a repository (status, diff) runs at once;
+   - making a branch and committing ask, with "always in this task";
+   - **pushing and opening a pull request ask every time, on the laptop only**: they're outward actions (§25).
+
+   The approval for a pull request shows its full text.
+5. **Pull requests before our GitHub App is registered.** The app's sign-in (§25) needs the app, which is on the owner checklist. Until then:
+   - if **GitHub's own CLI (`gh`) is installed and signed in** on the laptop, it opens the pull request, as the user (GitHub's official tool, unmodified, under the user's own sign-in, which we never read);
+   - otherwise the user gets **GitHub's own "Open a pull request" page with the title and description filled in**, and presses Create.
+
+   Either way the pull request is the user's. Once the app is registered, its sign-in becomes the main way, and these two stay as fallbacks. So the app no longer blocks phase 7's check.
+6. **The Code screen (13.1–13.3).**
+   - **Pick a project** from the allowed folders, and see its branch, its main branch, its GitHub remote and its changes, as a diff.
+   - **Give a job**, "Plan first" (reads and proposes, changes nothing) or "Build". It runs as a task with the coding engine. Build asks Titan to run the project's tests, and not to commit, push or open a pull request unless the user asks.
+   - **The first job** downloads the engine; the screen says how much.
+7. **Every change is reviewed as a diff (13.3).** Each file change from the coding engine waits for approval with its diff shown, lines added in green and removed in tomato, with counts. The coding engine's commands and changes now show as cards in the task's conversation, not only in Approvals. Approving or denying a change is the accept or reject.
+8. **Seen working** (20 Nov 2026, Claude Haiku 5.5 on the development key):
+   - **from the live eval:** a sample repo with three bugs fixed; then a branch, a commit with the co-author line, a push, and the pull request page, in about a cent and a half;
+   - **from the Code screen in the built app:** a Build job, with each card approved in the window, the diff shown before the change, and the tests passing.
+
+9. **Project memory (13.8).** A memory can belong to one project: Titan saves it with `memory_save` and the project's folder (for example "Tests run with pnpm test"). It's kept under the project's real root folder (the git repository's top folder), so any folder inside finds it, and it's saved only for an allowed folder. The coding engine gets the project's memories as instructions on every job there. The user sees them in Memory as "Project <name>", and edits or deletes them like any other memory.
+10. **The code review agent (13.10).** `code_review` has the coding engine review either the uncommitted changes or the whole branch against the main branch. It reads the diff and the code around it, may run read-only commands, and reports each problem with its severity, file and line, what goes wrong, and a fix. **A review changes nothing:** the engine's file changes are refused outright, without asking. It runs from Titan, or from "Review the changes" / "Review the branch" on the Code screen.
+11. **Sub-agents (13.9)** are OpenCode's own: its task tool splits a job between its built-in agents. Their asks come to the same approvals, and their model steps go through the same bridge and budget. Our own agents working together are phase 11.
+12. **Open in your editor (13.12).** The Code screen offers "Open in VS Code" and "Open in Cursor" when they're installed, and "Show the folder" (Explorer or Finder) always. The app opens only a folder the user allowed, checked against the engine's list. It starts the editor's own program directly with the folder as its one argument, never through a command shell. JetBrains editors come later.
+13. **The co-author line can be turned off** with a checkbox on the Code screen (it's on by default, §25).
 
 ## 52. Production waits
 

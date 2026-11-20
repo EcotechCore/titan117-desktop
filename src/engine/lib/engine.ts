@@ -23,7 +23,7 @@ import { createSpeechEngine, type SpeechEngine } from './speech'
 import { createStore, type Store } from '../store'
 import { builtInTools, createRegistry, type AnyTool } from '../tools'
 import { getMeta, openDb, setMeta, type Db } from './db'
-import { realFolder, type FolderPolicy } from './folders'
+import { realFolder, resolveAllowed, type FolderPolicy } from './folders'
 import { createLocalModels, type LocalModels } from './llama'
 import { createLogger, type Logger } from './log'
 import { engineFetch, type Fetch } from './net'
@@ -55,6 +55,7 @@ import { startModelBridge } from './code/bridge'
 import { createComponents } from './code/components'
 import { createOpencodeEngine } from './code/opencode'
 import { createCodeService } from './code/service'
+import { GitError, gitDiff, gitStatus } from './git'
 
 export interface AccountState {
   /** The device token, sent only to our credits proxy. */
@@ -346,6 +347,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       scratchRoot,
       fetch: connectivity.track(options.toolFetch ?? fetch),
       enginePorts: () => [serverPort, codeBridge.port],
+      gitCoAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
       toolApi: (taskId) => {
         const value = scriptToken(taskId)
         return value ? { url: `http://127.0.0.1:${serverPort}`, token: value } : null
@@ -481,7 +483,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     permissions,
     folders: policy,
     online: () => connectivity.online(),
-    log
+    log,
+    memory
   })
   permissions.useServices({ search, pages, artifacts, documents, localOnlyTasks, code })
 
@@ -563,6 +566,22 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     queueMicrotask(() => autoResume(ids, 'Titan117 started again'))
   }
 
+  // The code builder screen: a project's git state, read for the user (only inside allowed folders).
+  const codeView = {
+    async project(folder: string) {
+      const real = await resolveAllowed(policy(), folder)
+      try {
+        const git = await gitStatus(real)
+        return { git, diff: await gitDiff(git.root), problem: null }
+      } catch (error) {
+        if (error instanceof GitError) return { git: null, diff: '', problem: error.message }
+        throw error
+      }
+    },
+    components: () => codeComponents.status(),
+    coAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
+    setCoAuthor: (on: boolean) => setMeta(db, 'gitCoAuthor', on)
+  }
   const handle = createApi({
     appVersion: options.appVersion,
     store,
@@ -591,6 +610,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     shares,
     reports,
     documents,
+    code: codeView,
     notifications: {
       get: () => getMeta<boolean>(db, 'notifications', true),
       set: (on) => setMeta(db, 'notifications', on)

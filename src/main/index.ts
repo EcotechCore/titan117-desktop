@@ -16,6 +16,7 @@ import {
   type UtilityProcess
 } from 'electron'
 import { join, normalize, sep } from 'path'
+import { allowedFolder, findEditors, openInEditor } from './lib/editors'
 import { SANDBOX_HOST, Staged, isSandboxUrl, safeName, writeChosenFile } from './lib/export'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -510,6 +511,28 @@ function registerBridge(): void {
   ipcMain.handle('folders:remove', async (event, path: unknown) => {
     if (!fromOurPage(event) || typeof path !== 'string') throw new Error('Refused.')
     engine?.postMessage({ type: 'removeFolder', path })
+    return true
+  })
+
+  // Open a project in the user's editor (13.12): only folders the user allowed.
+  ipcMain.handle('code:editors', async (event) => {
+    if (!fromOurPage(event)) throw new Error('Refused.')
+    return (await findEditors()).map(({ id, name }) => ({ id, name }))
+  })
+
+  ipcMain.handle('code:open', async (event, folder: unknown, editorId: unknown) => {
+    if (!fromOurPage(event) || typeof folder !== 'string' || typeof editorId !== 'string')
+      throw new Error('Refused.')
+    if (!connection) throw new Error('The engine is not running.')
+    const { url, token } = await connection
+    const state = (await (
+      await fetch(`${url}/v1/state`, { headers: { Authorization: `Bearer ${token}` } })
+    ).json()) as { folders?: string[] }
+    const real = allowedFolder(folder, state.folders ?? [])
+    if (!real) throw new Error('That folder isn’t one you allowed.')
+    const editor = (await findEditors()).find((e) => e.id === editorId)
+    if (editor) openInEditor(editor, real)
+    else await shell.openPath(real)
     return true
   })
 }

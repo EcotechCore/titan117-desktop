@@ -30,6 +30,7 @@ import { SearchView } from './Search'
 import { ReportDialog } from './Reports'
 import { SetupView, SetupWizard, type FixHandler } from './Setup'
 import { DocumentsView } from './Documents'
+import { CodeView } from './Code'
 import type { ReportMode } from '../../shared/protocol'
 
 const PROMPTS = [
@@ -183,6 +184,26 @@ function App(): React.JSX.Element {
         dispatch({ type: 'view', view: { kind: 'task', id: created.id } })
       }
       setText('')
+    } catch (error) {
+      fail(error)
+    }
+  }
+
+  /** A new task from another screen (the code builder), whatever task is open. */
+  async function startNew(message: string): Promise<void> {
+    const api = client.current
+    if (!api) return
+    if (!model) return dispatch({ type: 'view', view: { kind: 'models' } })
+    try {
+      const { task: created } = await api.send<{ task: Task }>('POST', '/v1/tasks', {
+        text: message,
+        model
+      })
+      dispatch({
+        type: 'detail',
+        detail: { task: created, messages: [], approvals: [], activity: [] }
+      })
+      dispatch({ type: 'view', view: { kind: 'task', id: created.id } })
     } catch (error) {
       fail(error)
     }
@@ -370,6 +391,12 @@ function App(): React.JSX.Element {
           <Icon name="plug" /> Connectors
         </button>
         <button
+          className={view.kind === 'code' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'code' } })}
+        >
+          <Icon name="code" /> Code
+        </button>
+        <button
           className={view.kind === 'documents' ? 'nav on' : 'nav'}
           onClick={() => dispatch({ type: 'view', view: { kind: 'documents' } })}
         >
@@ -530,6 +557,18 @@ function App(): React.JSX.Element {
               client={api}
               changed={state.changed.artifacts ?? 0}
               onOpen={(id) => dispatch({ type: 'artifact', id })}
+              onProblem={fail}
+            />
+          )}
+          {view.kind === 'code' && (
+            <CodeView
+              client={api}
+              engine={engine}
+              changed={
+                state.tasks.filter((t) => t.status === 'running').length * 1000 +
+                state.approvals.length
+              }
+              onStart={(message) => void startNew(message)}
               onProblem={fail}
             />
           )}

@@ -58,6 +58,27 @@ export interface ToolPermissions {
   documents?: boolean
   /** The coding engine, in a project folder (§13, decisions §53). */
   code?: boolean
+  /** Git in a repository inside the allowed folders: looking, or also changing (13.7). */
+  git?: 'read' | 'write'
+}
+
+/** Git as the user (13.7, decisions §25), inside the allowed folders. */
+export interface GitAccess {
+  status(folder: string): Promise<import('../../lib/git').GitStatus>
+  diff(
+    folder: string,
+    options?: { staged?: boolean; file?: string; base?: string }
+  ): Promise<string>
+  branch(folder: string, name: string): Promise<{ created: boolean }>
+  commit(
+    folder: string,
+    input: { message: string; files?: string[] }
+  ): Promise<{ sha: string; files: string[] }>
+  push(folder: string): Promise<{ branch: string; remote: string }>
+  pullRequest(
+    folder: string,
+    input: { title: string; body: string; base?: string }
+  ): Promise<import('../../lib/git').PullRequestResult>
 }
 
 /** The code builder's view of the coding engine (§13): every change it makes still asks. */
@@ -101,6 +122,7 @@ export interface ToolContext {
   artifacts: ArtifactAccess
   documents: DocumentsAccess
   code: CodeAccess
+  git: GitAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.

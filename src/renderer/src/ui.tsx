@@ -8,6 +8,7 @@ const PATHS: Record<string, string> = {
   tasks: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
   shield: 'M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z',
   chip: 'M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3M7 7h10v10H7z',
+  code: 'M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16',
   folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   panel: 'M4 5h16v14H4zM15 5v14',
   file: 'M7 3h7l5 5v13H7zM14 3v5h5',

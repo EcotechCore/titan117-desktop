@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('titan117', {
   engine: () => ipcRenderer.invoke('engine:connection'),
   addFolder: () => ipcRenderer.invoke('folders:add'),
   removeFolder: (path: string) => ipcRenderer.invoke('folders:remove', path),
+  code: {
+    editors: () => ipcRenderer.invoke('code:editors'),
+    open: (folder: string, editor: string) => ipcRenderer.invoke('code:open', folder, editor)
+  },
   onEngineRestart: (listener: () => void) => {
     ipcRenderer.on('engine:restarted', () => listener())
   },

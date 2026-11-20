@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 7 has started (20 Nov 2026): the coding engine (OpenCode) runs behind our approvals and model router, and Titan hands it coding jobs with `code_task`. Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro for the portal's error screens. **Next step:** phase 7's code builder screen (diff review), git and pull requests (needs the GitHub App, owner checklist). Production waits (§52).
+**Now:** phase 7's check is met (20 Nov 2026): the code builder fixed four real issues in a sample repo and opened a pull request on GitHub. Phase 7 stays open for the user's own coding tools (13.14), other machines (3.15), Seatbelt on macOS and GitHub sign-in through our app. Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Next step:** phase 7's remaining parts, or phase 8 (the app builder for the web). Production waits (§52).
 
 ## Phases
 
@@ -31,6 +31,74 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 20 Nov 2026 · Phase 7's check is met
+
+**The code builder fixed a set of real issues in a sample repo and opened a pull request** (roadmap phase 7). Run with `TITAN_PR_REPO=ispasdani/titan117-sample-shop pnpm eval:pr`, Claude Haiku 5.5 on the development key, $0.03.
+
+- **The sample repo:** `ispasdani/titan117-sample-shop`, private, made with the owner's OK. It's a small shop library whose tests pass but which has four real bugs, filed as issues #1–#4:
+  - #1, the cart total ignores quantities;
+  - #2, VAT rounding;
+  - #3, slugs keep accents (Romanian ș and ț included) and double dashes;
+  - #4, the shop counts as open on Sundays.
+- **What Titan did:** it read the code and handed the job to the coding engine. The engine fixed `src/shop.js`, added a test for each issue, and ran the tests. Titan then made the branch `fix/shop-issues-1-4`, committed, pushed and opened [pull request #5](https://github.com/ispasdani/titan117-sample-shop/pull/5). Every command, change, commit, push and the pull request went through approvals.
+- **Checked on GitHub, not from the model's word:**
+  - the pull request is open, by `ispasdani` (the user, through GitHub's CLI), with "Fixes #1" to "Fixes #4" (GitHub links all four issues);
+  - the commit is the user's, with `Co-authored-by: Titan117`;
+  - on the pushed branch, 12 of 12 tests pass, and each issue's own example passes a separate check;
+  - only `src/shop.js` and `test/shop.test.js` changed.
+- **Phase 7 stays open** for:
+  - the user's own coding tools (13.14);
+  - other machines (3.15);
+  - Seatbelt around OpenCode on macOS (needs a Mac);
+  - GitHub sign-in through our app (needs its registration);
+  - remote coding tasks (with phase 15).
+
+  The pull request stays open in the sample repo for the owner to look at.
+
+### 20 Nov 2026 · Phase 7: project memory, code review, open in your editor
+
+On `phase-7-git`. Decisions §54, items 9–13 (to be confirmed).
+
+- **Project memory (13.8):**
+  - A new memory scope, `project:<real root folder>`. `memory_save` takes a `project` folder, and saves only for allowed folders.
+  - The coding engine gets the project's memories as instructions on every job there (OpenCode's `system`).
+  - Memory shows them as "Project <name>".
+- **Code review (13.10):**
+  - `code_review` reviews the uncommitted changes or the branch against main, with the engine in plan mode. Its file changes are refused without asking (`readOnly` jobs).
+  - `git_diff` takes a `base` branch.
+  - "Review the changes" / "Review the branch" are on the Code screen.
+- **Open in your editor (13.12):**
+  - VS Code and Cursor are found next to their command-line launchers and started directly, with no command shell. "Show the folder" opens Explorer or Finder.
+  - The main process checks the folder against the engine's allowed folders first (`main/lib/editors.ts`, IPC `code:editors` and `code:open`).
+- **The co-author line** can be switched off on the Code screen (`PUT /v1/code`). It's on by default.
+- **Sub-agents (13.9):** OpenCode's own task tool, already allowed, under the same approvals and budget.
+- **Tests:** 319 pass:
+  - a denial test for `code_review`, covering project memory saved only for allowed folders, the review receiving it, and its edit refused without asking;
+  - tests for the editor folder check and editor discovery.
+
+  Typecheck and lint pass.
+- **Seen in the built app** (Playwright, throwaway profile, Claude Haiku 5.5 on the development key):
+  - the Code screen with "Open in VS Code", "Open in Cursor", "Show the folder", "Review the changes" and the co-author checkbox;
+  - "Review the changes" on the earlier fix: four real findings, each with severity, line and fix. They were a missing quantity giving `NaN`, a timezone bug in the weekday check, Romanian ș and ț surviving the slug, and half-cent rounding. Nothing was changed, and there were no console errors.
+
+  The editor buttons weren't clicked, so no window opened on the owner's desktop.
+- **Left in phase 7:** the check with a real pull request on GitHub (needs a sample repo there); GitHub sign-in (the GitHub App); Seatbelt around OpenCode on macOS (needs a Mac); other machines (3.15); the user's own coding tools (13.14); remote coding tasks (with phase 15).
+
+### 20 Nov 2026 · Phase 7: git, pull requests and the code builder screen
+
+Built on `phase-7-git`. Decisions §54 (to be confirmed).
+
+- **Git (`lib/git.ts`):** status, diff, branch, commit and push with the user's own git and sign-in, and a `Co-authored-by: Titan117` line (it can be turned off). Never a force-push, never a push to the main branch. A commit carrying a `.env` or key file, or a key or token in its added lines, is refused and unstaged. Unusable branch names are refused.
+- **Pull requests:** through GitHub's CLI (`gh`) when it's signed in on the laptop; otherwise GitHub's own compare page with the title and description filled in.
+- **Tools:** `git_status`, `git_diff` (run at once), `git_branch`, `git_commit` (ask, with "always in this task"), `git_push` and `pull_request` (ask every time, laptop only).
+- **The Code screen:** pick a project, see its branch, remote and changes as a coloured diff, and start a "Plan first" or "Build" job. The engine's approval cards now show in the task's conversation (before, only in Approvals), and file changes show their diff with counts. The route is `GET /v1/code`.
+- **Fixed:** the built app's engine didn't start. OpenCode's SDK is ESM-only, and the engine bundle loaded it with `require`; it's now bundled into the engine. The tests didn't catch this, because they run the source; it was found by opening the built app.
+- **Tests:** 6 git tests against real repositories (a bare repository standing in for GitHub), and denial tests for the six git tools. 316 tests pass, plus the 4 OpenCode contract tests; typecheck, lint, licences and build pass.
+- **Seen working:**
+  - **Live eval** (`pnpm eval:code`, Claude Haiku 5.5): three bugs fixed, then branch `fix/cart-slugify-weekend`, a commit with the co-author line, a push to the stand-in remote, and the pull request page link. Only `src/shop.js` changed. $0.015.
+  - **The built app**, driven by Playwright with a throwaway profile: the Code screen with the project's branch and diff, then a Build job from it. Six cards were approved in the window, including the change to `src/shop.js` with its diff (+10 −4) shown before approving, and the tests passed. No console errors.
+- **Not done yet in phase 7:** GitHub sign-in through our app (waits for its registration), project memory, sub-agents and the review agent, open in editor, the co-author switch in Settings, Seatbelt around OpenCode on macOS, other machines (3.15), the user's own coding tools (13.14), and the phase check with a real pull request on GitHub.
 
 ### 20 Nov 2026 · Phase 7 started: the coding engine (OpenCode) and code_task
 

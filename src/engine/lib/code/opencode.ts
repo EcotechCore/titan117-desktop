@@ -40,6 +40,8 @@ export interface CodeRun {
   /** The project folder: an allowed folder, already checked. */
   repo: string
   prompt: string
+  /** Extra instructions for this job (project memory, 13.8). */
+  system?: string
   /** `plan` only reads and proposes; `build` changes files (13.2). */
   agent: CodeAgent
   signal: AbortSignal
@@ -414,6 +416,7 @@ export function createOpencodeEngine(deps: {
           sessionID,
           agent: run.agent,
           model: { providerID: 'titan117', modelID: 'task' },
+          ...(run.system ? { system: run.system } : {}),
           parts: [{ type: 'text', text: run.prompt }]
         })
         if (sent.error) error = 'The coding engine refused the request.'

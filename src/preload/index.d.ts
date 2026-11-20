@@ -20,6 +20,11 @@ declare global {
       /** Opens the folder dialog; true when the user allowed a folder. */
       addFolder(): Promise<boolean>
       removeFolder(path: string): Promise<boolean>
+      /** Open a project in the user's editor (13.12); `folder` opens it in Explorer or Finder. */
+      code: {
+        editors(): Promise<{ id: string; name: string }[]>
+        open(folder: string, editor: string): Promise<boolean>
+      }
       onEngineRestart(listener: () => void): void
       /** Auto-update (1.10): its state, and installing a downloaded update. */
       updates: {
