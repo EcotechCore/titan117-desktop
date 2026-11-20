@@ -347,6 +347,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       scratchRoot,
       fetch: connectivity.track(options.toolFetch ?? fetch),
       enginePorts: () => [serverPort, codeBridge.port],
+      gitCoAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
       toolApi: (taskId) => {
         const value = scriptToken(taskId)
         return value ? { url: `http://127.0.0.1:${serverPort}`, token: value } : null
@@ -482,7 +483,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     permissions,
     folders: policy,
     online: () => connectivity.online(),
-    log
+    log,
+    memory
   })
   permissions.useServices({ search, pages, artifacts, documents, localOnlyTasks, code })
 
@@ -576,7 +578,9 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         throw error
       }
     },
-    components: () => codeComponents.status()
+    components: () => codeComponents.status(),
+    coAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
+    setCoAuthor: (on: boolean) => setMeta(db, 'gitCoAuthor', on)
   }
   const handle = createApi({
     appVersion: options.appVersion,

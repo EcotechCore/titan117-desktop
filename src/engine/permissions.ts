@@ -48,7 +48,8 @@ import {
   gitDiff,
   gitPush,
   gitStatus,
-  openPullRequest
+  openPullRequest,
+  projectRootOf
 } from './lib/git'
 import { querySheet, SheetError } from './lib/sheets'
 import { DocumentError } from './lib/documents'
@@ -388,7 +389,9 @@ export function createPermissionLayer(deps: {
           agent: ctx.agent,
           taskId: ctx.taskId,
           taskTitle: () => store.getTask(ctx.taskId)?.title ?? '',
-          mode: p.memory
+          mode: p.memory,
+          // A project's memory is written only for a folder the user allowed (13.8).
+          projectRoot: async (folder) => projectRootOf(await resolveAllowed(policy, folder))
         })
       : denied<MemoryAccess>('memory')
 

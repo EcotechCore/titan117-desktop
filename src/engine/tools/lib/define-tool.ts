@@ -65,7 +65,10 @@ export interface ToolPermissions {
 /** Git as the user (13.7, decisions §25), inside the allowed folders. */
 export interface GitAccess {
   status(folder: string): Promise<import('../../lib/git').GitStatus>
-  diff(folder: string, options?: { staged?: boolean; file?: string }): Promise<string>
+  diff(
+    folder: string,
+    options?: { staged?: boolean; file?: string; base?: string }
+  ): Promise<string>
   branch(folder: string, name: string): Promise<{ created: boolean }>
   commit(
     folder: string,

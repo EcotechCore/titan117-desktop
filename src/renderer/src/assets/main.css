@@ -1712,3 +1712,8 @@ textarea.edit {
   color: var(--ink);
   font: inherit;
 }
+.code-open {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

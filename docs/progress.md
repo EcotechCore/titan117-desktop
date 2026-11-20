@@ -32,6 +32,35 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 20 Nov 2026 · Phase 7: project memory, code review, open in your editor
+
+On `phase-7-git`. Decisions §54, items 9–13 (to be confirmed).
+
+- **Project memory (13.8):**
+  - A new memory scope, `project:<real root folder>`. `memory_save` takes a `project` folder, and saves only for allowed folders.
+  - The coding engine gets the project's memories as instructions on every job there (OpenCode's `system`).
+  - Memory shows them as "Project <name>".
+- **Code review (13.10):**
+  - `code_review` reviews the uncommitted changes or the branch against main, with the engine in plan mode. Its file changes are refused without asking (`readOnly` jobs).
+  - `git_diff` takes a `base` branch.
+  - "Review the changes" / "Review the branch" are on the Code screen.
+- **Open in your editor (13.12):**
+  - VS Code and Cursor are found next to their command-line launchers and started directly, with no command shell. "Show the folder" opens Explorer or Finder.
+  - The main process checks the folder against the engine's allowed folders first (`main/lib/editors.ts`, IPC `code:editors` and `code:open`).
+- **The co-author line** can be switched off on the Code screen (`PUT /v1/code`). It's on by default.
+- **Sub-agents (13.9):** OpenCode's own task tool, already allowed, under the same approvals and budget.
+- **Tests:** 319 pass:
+  - a denial test for `code_review`, covering project memory saved only for allowed folders, the review receiving it, and its edit refused without asking;
+  - tests for the editor folder check and editor discovery.
+
+  Typecheck and lint pass.
+- **Seen in the built app** (Playwright, throwaway profile, Claude Haiku 5.5 on the development key):
+  - the Code screen with "Open in VS Code", "Open in Cursor", "Show the folder", "Review the changes" and the co-author checkbox;
+  - "Review the changes" on the earlier fix: four real findings, each with severity, line and fix. They were a missing quantity giving `NaN`, a timezone bug in the weekday check, Romanian ș and ț surviving the slug, and half-cent rounding. Nothing was changed, and there were no console errors.
+
+  The editor buttons weren't clicked, so no window opened on the owner's desktop.
+- **Left in phase 7:** the check with a real pull request on GitHub (needs a sample repo there); GitHub sign-in (the GitHub App); Seatbelt around OpenCode on macOS (needs a Mac); other machines (3.15); the user's own coding tools (13.14); remote coding tasks (with phase 15).
+
 ### 20 Nov 2026 · Phase 7: git, pull requests and the code builder screen
 
 Built on `phase-7-git`. Decisions §54 (to be confirmed).

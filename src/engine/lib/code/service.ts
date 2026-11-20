@@ -13,6 +13,8 @@ import type { Logger } from '../log'
 import type { CallContext, PermissionLayer } from '../../permissions'
 import type { Router } from '../../router'
 import type { Store } from '../../store'
+import { projectScope, type MemoryStore } from '../../memory'
+import { projectRootOf } from '../git'
 import { assessAsk } from './assess'
 import type { CodeAgent, CodeEvent, CodeResult, CodingEngine } from './opencode'
 
@@ -33,6 +35,8 @@ export interface CodeJob {
   folder: string
   request: string
   mode: CodeAgent
+  /** A review (13.10): every file change is refused, whatever is approved. */
+  readOnly?: boolean
 }
 
 export interface CodeService {
@@ -53,6 +57,8 @@ export function createCodeService(deps: {
   folders(): FolderPolicy
   online?(): boolean
   log: Logger
+  /** Project memory (13.8). */
+  memory?: MemoryStore
   budget?: Budget
 }): CodeService {
   const { store, permissions } = deps
@@ -71,12 +77,23 @@ export function createCodeService(deps: {
       const policy = deps.folders()
       const localOnlyRepo = (policy.localOnly ?? []).some((f) => isInsideFolder(repo, f))
       const meter = createBudgetMeter(deps.budget ?? CODE_BUDGET)
+      // Project memory (13.8): the conventions and decisions the user keeps for this repository.
+      const root = await projectRootOf(repo)
+      const notes = deps.memory?.list({ scopes: [projectScope(root)], limit: 50 }) ?? []
+      const system = notes.length
+        ? [
+            'Project memory: conventions and decisions the user keeps for this project. Follow them.',
+            ...notes.map((m) => `- ${m.text}`)
+          ].join('\n')
+        : undefined
+      if (system) permissions.sawPrivate(ctx.taskId, system, 'memory', true)
       let seenToolMessages = 0
 
       const result = await deps.engine.run({
         taskId: ctx.taskId,
         repo,
         prompt: job.request,
+        system,
         agent: job.mode,
         signal: ctx.signal,
         onEvent,
@@ -125,6 +142,11 @@ export function createCodeService(deps: {
         },
         async decide(ask) {
           const assessed = await assessAsk(ask, repo, deps.folders())
+          if (job.readOnly && ask.permission === 'edit')
+            assessed.assessment = {
+              ...assessed.assessment,
+              refuse: 'this is a review: it changes nothing.'
+            }
           return permissions.decide(ctx, {
             callId: ask.tool?.callID ?? ask.id,
             tool: assessed.tool,

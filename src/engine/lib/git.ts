@@ -17,6 +17,7 @@ import { execFile } from 'node:child_process'
 import { tmpdir } from 'node:os'
 
 import { looksSecret } from '../redact'
+import { realFolder } from './folders'
 import { cleanEnv } from './shell'
 
 export const CO_AUTHOR = 'Co-authored-by: Titan117 <noreply@titan117.com>'
@@ -113,6 +114,16 @@ function safeUrl(url: string): string {
   return url.replace(/^(https?:\/\/)[^@/]+@/, '$1')
 }
 
+/**
+ * A project's root folder, written one way (the real path), so project
+ * memory (13.8) finds the same project from any folder inside it: the git
+ * repository's top folder, or the folder itself when it isn't a repository.
+ */
+export async function projectRootOf(dir: string): Promise<string> {
+  const top = await run('git', ['rev-parse', '--show-toplevel'], dir).catch(() => null)
+  return realFolder(top && top.code === 0 && top.stdout.trim() ? top.stdout.trim() : dir)
+}
+
 export async function gitStatus(dir: string): Promise<GitStatus> {
   const inside = await run('git', ['rev-parse', '--show-toplevel'], dir)
   if (inside.code !== 0) throw new GitError(`"${dir}" isn’t a git repository.`)
@@ -163,10 +174,16 @@ export async function gitStatus(dir: string): Promise<GitStatus> {
 
 export async function gitDiff(
   dir: string,
-  options: { staged?: boolean; file?: string } = {}
+  options: { staged?: boolean; file?: string; base?: string } = {}
 ): Promise<string> {
   const args = ['diff', '--no-color', '--no-ext-diff']
   if (options.staged) args.push('--staged')
+  // A branch's work since it left `base` (to review the whole branch).
+  if (options.base) {
+    if (!BRANCH_NAME.test(options.base))
+      throw new GitError(`"${options.base}" isn’t a branch name.`)
+    args.push(`${options.base}...HEAD`)
+  }
   if (options.file) args.push('--', options.file)
   const text = await git(dir, ...args)
   return text.length > MAX_DIFF

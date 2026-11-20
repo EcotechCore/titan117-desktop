@@ -11,6 +11,11 @@ export function diffCounts(text: string): { added: number; removed: number } {
   return { added, removed }
 }
 
+/** A review of the uncommitted changes or the whole branch (13.10). */
+export function reviewRequest(folder: string, scope: 'changes' | 'branch'): string {
+  return `Review the ${scope === 'branch' ? 'current branch against the main branch' : 'uncommitted changes'} in the project folder ${folder} for bugs, with the code review tool (code_review, scope "${scope}"). Tell me what it finds; don't change anything.`
+}
+
 /** What Titan is asked to do; the tools and approvals do the rest. */
 export function codeRequest(folder: string, request: string, mode: 'plan' | 'build'): string {
   return mode === 'plan'

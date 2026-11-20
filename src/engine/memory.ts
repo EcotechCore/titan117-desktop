@@ -35,6 +35,11 @@ export function agentScope(agent: string): string {
   return `agent:${agent}`
 }
 
+/** Project memory (13.8): conventions and decisions for one repository, keyed by its real folder. */
+export function projectScope(root: string): string {
+  return `project:${root}`
+}
+
 /** The scopes an agent may read: shared memory and its own. */
 export function visibleScopes(agent: string): string[] {
   return ['shared', agentScope(agent)]
@@ -43,7 +48,8 @@ export function visibleScopes(agent: string): string[] {
 function checkScope(scope: unknown): string {
   if (scope === 'shared') return scope
   if (typeof scope === 'string' && /^agent:[A-Za-z0-9 _-]{1,40}$/.test(scope)) return scope
-  throw new MemoryError('A memory is shared or belongs to one agent.')
+  if (typeof scope === 'string' && /^project:[^\n\r\0]{1,500}$/.test(scope)) return scope
+  throw new MemoryError('A memory is shared, belongs to one agent, or belongs to one project.')
 }
 
 function checkText(text: unknown): string {
@@ -177,6 +183,8 @@ export function createMemoryStore(db: Db, onChange: () => void = () => undefined
 export interface MemoryAccess {
   search(query: string, limit?: number): Memory[]
   save(input: { text: string; kind: string; shared: boolean }): Memory
+  /** A convention or decision for one repository (13.8); every agent working on it sees it. */
+  saveForProject(input: { text: string; kind: string; folder: string }): Promise<Memory>
   forget(id: string): Memory
 }
 
@@ -186,6 +194,8 @@ export function createMemoryAccess(deps: {
   taskId: string
   taskTitle: () => string
   mode: 'read' | 'write'
+  /** The project's real root folder, checked against the allowed folders. */
+  projectRoot?(folder: string): Promise<string>
 }): MemoryAccess {
   const { store, agent } = deps
   const scopes = visibleScopes(agent)
@@ -206,11 +216,24 @@ export function createMemoryAccess(deps: {
         taskId: deps.taskId
       })
     },
+    async saveForProject({ text, kind, folder }) {
+      writable()
+      if (!deps.projectRoot) throw new MemoryError('Project memory isn’t available here.')
+      const root = await deps.projectRoot(folder)
+      return store.add({
+        scope: projectScope(root),
+        kind,
+        text,
+        source: `${agent}, in the task "${deps.taskTitle().slice(0, 80)}"`,
+        taskId: deps.taskId
+      })
+    },
     forget(id) {
       writable()
       const memory = store.get(id)
       // Another agent's memories don't exist, as far as this agent can tell.
-      if (!memory || !scopes.includes(memory.scope)) throw new MemoryError('No such memory.')
+      if (!memory || !(scopes.includes(memory.scope) || memory.scope.startsWith('project:')))
+        throw new MemoryError('No such memory.')
       store.remove(id)
       return memory
     }

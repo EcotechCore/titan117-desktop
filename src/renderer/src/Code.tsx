@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import type { EngineState } from '../../shared/protocol'
-import { codeRequest, diffCounts } from './code-lib'
+import { codeRequest, diffCounts, reviewRequest } from './code-lib'
 import { Diff } from './Diff'
 import type { EngineClient } from './engine'
 import { folderName } from './format'
@@ -27,6 +27,7 @@ interface GitState {
 interface CodeState {
   components: { id: string; name: string; version: string; ready: boolean; bytes: number }[]
   project: { git: GitState | null; diff: string; problem: string | null } | null
+  coAuthor: boolean
 }
 
 const STATUS: Record<string, string> = {
@@ -62,6 +63,18 @@ export function CodeView({
   const [request, setRequest] = useState('')
   const [mode, setMode] = useState<'plan' | 'build'>('plan')
   const [showDiff, setShowDiff] = useState(false)
+  const [editors, setEditors] = useState<{ id: string; name: string }[]>([])
+
+  useEffect(() => {
+    let live = true
+    window.titan117.code
+      .editors()
+      .then((list) => live && setEditors(list))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [])
 
   const load = useCallback(() => {
     if (!client) return () => undefined
@@ -154,6 +167,38 @@ export function CodeView({
               )}
             </div>
           )}
+          {folder && (
+            <div className="code-open">
+              {editors.map((e) => (
+                <button
+                  key={e.id}
+                  className="btn"
+                  onClick={() => void window.titan117.code.open(folder, e.id).catch(onProblem)}
+                >
+                  Open in {e.name}
+                </button>
+              ))}
+              <button
+                className="btn"
+                onClick={() => void window.titan117.code.open(folder, 'folder').catch(onProblem)}
+              >
+                Show the folder
+              </button>
+              {git &&
+                (git.changes.length > 0 || (git.branch && git.branch !== git.defaultBranch)) && (
+                  <button
+                    className="btn"
+                    onClick={() =>
+                      onStart(
+                        reviewRequest(git.root, git.changes.length > 0 ? 'changes' : 'branch')
+                      )
+                    }
+                  >
+                    {git.changes.length > 0 ? 'Review the changes' : 'Review the branch'}
+                  </button>
+                )}
+            </div>
+          )}
           {git && showDiff && (
             <>
               <ul className="code-files">
@@ -212,6 +257,23 @@ export function CodeView({
               {mode === 'plan' ? 'Plan it' : 'Start'}
             </button>
           </div>
+          {state && (
+            <label className="choice muted">
+              <input
+                type="checkbox"
+                checked={state.coAuthor}
+                onChange={(e) => {
+                  const on = e.target.checked
+                  client
+                    ?.send<{ coAuthor: boolean }>('PUT', '/v1/code', { coAuthor: on })
+                    .then((r) => setState((s) => (s ? { ...s, coAuthor: r.coAuthor } : s)))
+                    .catch(onProblem)
+                }}
+              />{' '}
+              Add “Co-authored-by: Titan117” to commits Titan makes, so the AI’s part shows in the
+              history
+            </label>
+          )}
           {missing.length > 0 && (
             <p className="faint">
               The first job downloads the coding engine (

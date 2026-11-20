@@ -113,7 +113,8 @@ function bench(
         store,
         permissions: layer,
         folders: () => ({ allowed: [allowed], core: [] }),
-        log: createLogger(db, null)
+        log: createLogger(db, null),
+        memory
       })
     })
   const task = store.createTask({ title: 't', agent: 'Titan', model: 'm' })
@@ -188,6 +189,15 @@ const fakeCodeEngine: CodingEngine = {
       metadata = {}
     ): ReturnType<typeof run.decide> =>
       run.decide({ id: permission, sessionID: 's', permission, patterns, metadata, always: [] })
+    // A review (plan mode): it tries to change a file inside the project.
+    if (run.agent === 'plan') {
+      const inside = await ask('edit', ['a.txt'], { diff: '+x' })
+      return {
+        status: 'done',
+        text: JSON.stringify({ insideEdit: inside.allowed, system: run.system ?? null }),
+        files: []
+      }
+    }
     const outside = await ask('edit', [join(run.repo, '..', 'elsewhere.txt')])
     const web = await ask('webfetch', ['https://evil.example'])
     const remove = await ask('bash', ['rm -rf build'], { command: 'rm -rf build' })
@@ -217,6 +227,42 @@ function gitRepo(b: Bench): string {
 }
 
 const DENIALS: Record<string, () => Promise<void>> = {
+  async code_review() {
+    const b = bench()
+    expect((await b.run({ name: 'code_review', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    const repo = gitRepo(b)
+    writeFileSync(join(repo, 'a.txt'), 'two\n')
+    // Project memory (13.8): only for an allowed folder; the engine gets it on every job there.
+    expect(
+      (
+        await b.run({
+          name: 'memory_save',
+          input: { text: 'Never use tabs.', kind: 'preference', project: b.outside }
+        })
+      ).status
+    ).toBe('refused')
+    const saved = await b.run({
+      name: 'memory_save',
+      input: { text: 'Tests run with node --test.', kind: 'fact', project: join(repo, 'sub', '..') }
+    })
+    expect(saved.status).toBe('done')
+    // A review changes nothing: the engine's edit is refused without even asking.
+    const review = await b.run({ name: 'code_review', input: { folder: repo } })
+    expect(review.status).toBe('done')
+    expect(review.output).toContain('"insideEdit":false')
+    expect(review.output).toContain('Tests run with node --test.')
+    expect(b.store.listApprovals({ taskId: b.taskId })).toEqual([])
+    // Without the coding engine there is no review.
+    const none = bench({ noServices: true })
+    const noneRepo = gitRepo(none)
+    writeFileSync(join(noneRepo, 'a.txt'), 'two\n')
+    expect((await none.run({ name: 'code_review', input: { folder: noneRepo } })).status).toBe(
+      'refused'
+    )
+  },
+
   async git_status() {
     const b = bench()
     expect((await b.run({ name: 'git_status', input: { folder: b.outside } })).status).toBe(

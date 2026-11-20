@@ -115,6 +115,9 @@ export function createApi(deps: {
       problem: string | null
     }>
     components(): import('./lib/code/components').ComponentStatus[]
+    /** Whether agent commits carry the Titan117 co-author line (decisions §25, §54). */
+    coAuthor(): boolean
+    setCoAuthor(on: boolean): void
   }
   setup?: {
     state(): Promise<SetupState>
@@ -275,12 +278,20 @@ export function createApi(deps: {
     switch (key) {
       case 'GET code': {
         const code = need(deps.code)
-        if (!query.folder) return { components: code.components(), project: null }
+        const base = { components: code.components(), coAuthor: code.coAuthor() }
+        if (!query.folder) return { ...base, project: null }
         try {
-          return { components: code.components(), project: await code.project(query.folder) }
+          return { ...base, project: await code.project(query.folder) }
         } catch (error) {
           throw new ApiError(400, 'BAD_REQUEST', (error as Error).message)
         }
+      }
+      case 'PUT code': {
+        const on = field(body, 'coAuthor')
+        if (typeof on !== 'boolean')
+          throw new ApiError(400, 'BAD_REQUEST', '"coAuthor" is true or false.')
+        need(deps.code).setCoAuthor(on)
+        return { coAuthor: need(deps.code).coAuthor() }
       }
       case 'GET documents':
         return { folders: need(deps.documents).status() }
