@@ -35,6 +35,7 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [x] **Turn off Wi-Fi** with the app open: the Offline banner, a cloud task stopping with "Continue with … (local)" (download a local model first), and both clearing when Wi-Fi is back.
 - [x] **A notification:** start a task, switch to another window, wait for "Titan finished".
 - [x] **Phase 6's check (the folder agent):** turn on a folder of your own real documents (contracts, invoices, offers) in Documents, ask questions whose answers you know, and see that the answers cite the right file and page. Also mark a folder "Local models only" and check that a cloud model task stops and offers a local model.
+- [ ] **Phase 7's check, done on 20 Nov 2026:** look at [the pull request](https://github.com/ispasdani/titan117-sample-shop/pull/5) the code builder opened in the private sample repo `ispasdani/titan117-sample-shop`, then merge or close it as you like. Also try the Code screen yourself on a project of your own: a job with Plan first, then Build, and Review the changes.
 - [ ] Search with your own Exa, Tavily or Brave key, if you have one (optional).
 - [x] The microphone button with your own microphone (phase 3).
 

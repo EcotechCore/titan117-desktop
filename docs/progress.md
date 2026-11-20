@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 7 is in progress (20 Nov 2026). The coding engine runs behind our approvals; git, pull requests (through GitHub's CLI or GitHub's own page) and the Code screen with diff review are built. Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Next step:** phase 7's check (fix real issues in a sample repo on GitHub and open a pull request), then project memory, review and the user's own coding tools. Production waits (§52).
+**Now:** phase 7's check is met (20 Nov 2026): the code builder fixed four real issues in a sample repo and opened a pull request on GitHub. Phase 7 stays open for the user's own coding tools (13.14), other machines (3.15), Seatbelt on macOS and GitHub sign-in through our app. Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Next step:** phase 7's remaining parts, or phase 8 (the app builder for the web). Production waits (§52).
 
 ## Phases
 
@@ -31,6 +31,30 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 20 Nov 2026 · Phase 7's check is met
+
+**The code builder fixed a set of real issues in a sample repo and opened a pull request** (roadmap phase 7). Run with `TITAN_PR_REPO=ispasdani/titan117-sample-shop pnpm eval:pr`, Claude Haiku 5.5 on the development key, $0.03.
+
+- **The sample repo:** `ispasdani/titan117-sample-shop`, private, made with the owner's OK. It's a small shop library whose tests pass but which has four real bugs, filed as issues #1–#4:
+  - #1, the cart total ignores quantities;
+  - #2, VAT rounding;
+  - #3, slugs keep accents (Romanian ș and ț included) and double dashes;
+  - #4, the shop counts as open on Sundays.
+- **What Titan did:** it read the code and handed the job to the coding engine. The engine fixed `src/shop.js`, added a test for each issue, and ran the tests. Titan then made the branch `fix/shop-issues-1-4`, committed, pushed and opened [pull request #5](https://github.com/ispasdani/titan117-sample-shop/pull/5). Every command, change, commit, push and the pull request went through approvals.
+- **Checked on GitHub, not from the model's word:**
+  - the pull request is open, by `ispasdani` (the user, through GitHub's CLI), with "Fixes #1" to "Fixes #4" (GitHub links all four issues);
+  - the commit is the user's, with `Co-authored-by: Titan117`;
+  - on the pushed branch, 12 of 12 tests pass, and each issue's own example passes a separate check;
+  - only `src/shop.js` and `test/shop.test.js` changed.
+- **Phase 7 stays open** for:
+  - the user's own coding tools (13.14);
+  - other machines (3.15);
+  - Seatbelt around OpenCode on macOS (needs a Mac);
+  - GitHub sign-in through our app (needs its registration);
+  - remote coding tasks (with phase 15).
+
+  The pull request stays open in the sample repo for the owner to look at.
 
 ### 20 Nov 2026 · Phase 7: project memory, code review, open in your editor
 
