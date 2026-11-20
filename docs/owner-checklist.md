@@ -20,9 +20,9 @@ All confirmed by the owner on 18 Nov 2026 (decisions §44–§51), with one addi
 - [x] **§49, the Windows installer:** no CUDA back end (Vulkan covers NVIDIA, AMD and Intel); trimmed to 693 MB installed, 211 MB to download (235 MB with Microsoft's runtime); Microsoft's runtime installer run only when needed.
 - [x] **§50, phase 4 leftovers and auto-update:** ZIP downloads; the browser tool never downloads programs or scripts, 200 MB at most; comments on shared pages open to anyone with the link (100 a day per page; you can hide them); auto-update off until signing and an update address exist.
 - [x] **§51, the folder agent (phase 6):** document folders read-only for agents by default; reading in Node only (no Python: Docling and MarkItDown not used); citations by page, or by section heading for Word; search with word stems plus meaning (multilingual-e5-small, MIT, about 120 MB downloaded once); a task that touched a local-models-only folder never goes back to a cloud model.
-- [ ] **OCR for scanned documents:** where Tesseract.js's Romanian and English language files come from (its CDN, our own server, or inside the installer, about 15 MB each). Until you choose, scanned pages are counted and shown as waiting.
+- [x] **OCR for scanned documents:** decided 20 Nov 2026: the language files ship inside the app (decisions §51.8). Built the same day.
 - [x] **Phase 5 started before phase 4's check passed**, at your request on 15 Nov 2026: confirm that stands.
-- [ ] **Whether the repos stay public.**
+- [ ] **The repos go private** (decided 20 Nov 2026; no rush). Your contribution graph keeps counting the commits if "Private contributions" is on in your GitHub profile settings; others see only the counts, not the repos.
 
 ## Step 3 · Try it yourself (an afternoon)
 
@@ -38,8 +38,10 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 
 ## Step 4 · Accounts and services
 
-- [ ] **Clerk Pro, two-factor required for staff, then remove `PORTAL_TWO_FACTOR`** (decisions §37). Unblocks the portal's error-report screens (phase 5) and later remote control (phase 15).
-- [ ] **A Windows code signing certificate.** Needed sooner than planned: Windows' Smart App Control blocks our unsigned installer outright (it did on this laptop on 15 Nov 2026), and auto-update only installs updates signed by the same publisher.
+- [ ] **Phase 5's check needs** (noted 20 Nov 2026), besides the certificate below: a Mac to build and test on; a clean Windows machine (a virtual machine is fine) to run the install from download to first task; and the 14-day offline test (the app works offline, then locks on day 15). Local first: none of it is urgent.
+
+- [ ] **Clerk Pro, two-factor required for staff, then remove `PORTAL_TWO_FACTOR`** (decisions §37). Unblocks the portal's error-report screens (phase 5) and later remote control (phase 15). **Waits** (owner, 20 Nov 2026): nothing is paid for until the app runs locally without issues.
+- [ ] **A Windows code signing certificate: you start on Monday 23 Nov 2026** (a reminder is set for that morning). Needed sooner than planned: Windows' Smart App Control blocks our unsigned installer outright (it did on this laptop on 15 Nov 2026), and auto-update only installs updates signed by the same publisher.
 - [ ] **Where updates are published** (an HTTPS address for signed releases, for example a GitHub release or our own storage); then set `PRODUCTION.updateUrl` in `src/main/index.ts` of the desktop app.
 - [ ] Once signed: **install on a clean Windows** (a virtual machine without the Visual C++ runtime) to see Microsoft's runtime step run.
 - [ ] Mailboxes `support@`, `privacy@` and **`abuse@titan117.com`** (the Digital Services Act contact point for shared pages), or change the addresses in `apps/web/content/legal.ts`.

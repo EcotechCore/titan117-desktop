@@ -437,7 +437,7 @@ export interface DocFolderStatus extends DocFolder {
   files: number
   ok: number
   problems: number
-  /** Pages with no text layer (scans), waiting for OCR. */
+  /** Pages with no readable text, even after OCR (blank pages, faint scans). */
   scannedPages: number
   passages: number
   /** Passages that can also be found by meaning. */

@@ -32,6 +32,13 @@ files:
   - '!**/node_modules/onnxruntime-web/**'
   # Source maps of dependencies.
   - '!**/node_modules/**/*.map'
+  # OCR (7.3): only the LSTM ("best_int") language files are used; the larger
+  # legacy ones are left out. Of Tesseract's engines, Node loads the LSTM builds.
+  - '!**/node_modules/@tesseract.js-data/*/4.0.0/**'
+  - '!**/node_modules/tesseract.js/dist/**'
+  - '!**/node_modules/tesseract.js-core/tesseract-core.*'
+  - '!**/node_modules/tesseract.js-core/tesseract-core-simd.*'
+  - '!**/node_modules/tesseract.js-core/tesseract-core-relaxedsimd.*'
 asarUnpack:
   - resources/**
   # llama.cpp's binaries are loaded from disk, so they can't sit inside the archive.
@@ -43,6 +50,12 @@ asarUnpack:
   - node_modules/sharp/**
   - node_modules/@img/**
   - node_modules/playwright-core/**
+  # OCR runs Tesseract in a worker thread that loads its script, its WebAssembly
+  # and the language files from disk (7.3).
+  - node_modules/tesseract.js/**
+  - node_modules/tesseract.js-core/**
+  - node_modules/@tesseract.js-data/**
+  - node_modules/@napi-rs/**
 win:
   executableName: Titan117
   target:

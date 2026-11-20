@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 4 is done (19 Nov 2026). Phase 6's check is met; phase 6 waits for OCR. Phase 5 waits for signing, a Mac and the portal's error screens. **Next step:** the owner's open choices (OCR's language files, Gmail's route, code signing), then the rest of phase 5. Production waits (§52).
+**Now:** phase 6 is done (20 Nov 2026). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro for the portal's error screens. **Next step:** phase 7, the coding engine and code builder. Production waits (§52).
 
 ## Phases
 
@@ -14,7 +14,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 3 | Titan and memory | Done | 15 Nov 2026 | 15 Nov 2026 |
 | 4 | Web search and artifacts | Done | 15 Nov 2026 | 19 Nov 2026 |
 | 5 | Install and setup | In progress | 15 Nov 2026 | |
-| 6 | Folder agent | In progress | 16 Nov 2026 | |
+| 6 | Folder agent | Done | 16 Nov 2026 | 20 Nov 2026 |
 | 7 | Coding engine and code builder | Not started | | |
 | 8 | App builder: web | Not started | | |
 | 9 | App builder: mobile and desktop | Not started | | |
@@ -31,6 +31,16 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 20 Nov 2026 · Phase 6 done: OCR for scans and photos (7.3)
+
+Scanned PDF pages and PNG or JPEG photos are read with OCR in English and Romanian, on the laptop (decisions §51.8):
+
+- **How:** pdf.js draws a page with no text layer on a Node canvas (@napi-rs/canvas, MIT); Tesseract.js (Apache 2.0) reads it in a worker thread, stopped after a minute idle. The language files (@tesseract.js-data, MIT, LSTM models, 4.6 MB) ship in the app and are handed over as bytes, so nothing is downloaded. Up to 100 scanned pages per document; pages still without text are counted ("pages without readable text"). Files read before OCR that had scanned pages are read again (a migration).
+- **Electron's utility process:** pdf.js doesn't treat it as Node, so it would draw on a web page's canvas. It now gets the Node canvas and its drawing helpers explicitly; a test makes Node look like that process.
+- **Two Tesseract.js 7 bugs, patched** (`patches/tesseract.js@7.0.0.patch`, in `SOURCES.md`): language data given as bytes was joined by its data instead of its code; and in Node the "LSTM only" flag never picked the LSTM builds.
+- **Packaging:** Tesseract, its WebAssembly, the language files and the canvas sit outside the app archive; only the LSTM builds and language files ship (about 63 MB unpacked in all). Checked in the packaged app: a utility process reads a Romanian line with the shipped files.
+- **Checked:** 292 tests (5 new); in the built app a folder with a two-page scanned lease and a phone photo of an invoice is read, and "monthly rent" finds the lease's page 2. Not checked: the packaged app end to end, which opens at sign-in (production waits, §52).
 
 ### 19 Nov 2026 · Dependencies updated
 

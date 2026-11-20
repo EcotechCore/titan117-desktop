@@ -50,6 +50,7 @@ import { findBrowserChannel } from './browser'
 import type { SetupInterest } from '../../shared/protocol'
 import type { SearchSettings } from '../../shared/protocol'
 import { KEY_PROVIDERS } from '../../shared/protocol'
+import { stopOcr } from './ocr'
 
 export interface AccountState {
   /** The device token, sent only to our credits proxy. */
@@ -665,6 +666,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       reports.close()
       connectivity.close()
       documents.close()
+      await stopOcr(true)
       await server.close()
       await browser.close()
       await connectors.close()

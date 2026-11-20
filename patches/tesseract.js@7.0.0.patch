@@ -1,0 +1,48 @@
+diff --git a/src/worker-script/index.js b/src/worker-script/index.js
+index 4321a8ff08a393d5b341a9cb4183511ace719b8c..353029e1ea104e99fc560f05b9e0f468bf289987 100644
+--- a/src/worker-script/index.js
++++ b/src/worker-script/index.js
+@@ -235,7 +235,7 @@ const initialize = async ({
+ }, res) => {
+   const langs = (typeof _langs === 'string')
+     ? _langs
+-    : _langs.map((l) => ((typeof l === 'string') ? l : l.data)).join('+');
++    : _langs.map((l) => ((typeof l === 'string') ? l : l.code)).join('+');
+ 
+   const statusText = 'initializing api';
+ 
+diff --git a/src/worker-script/node/getCore.js b/src/worker-script/node/getCore.js
+index 3c1d4cb1055040078ae53d7bdee6fde7abe4d702..af1a34c479ab9b68590c48347a8051be71e713b3 100644
+--- a/src/worker-script/node/getCore.js
++++ b/src/worker-script/node/getCore.js
+@@ -9,6 +9,8 @@ let TesseractCore = null;
+  * TesseractCore.
+  */
+ module.exports = async (oem, _, res) => {
++  // The worker passes `lstmOnly` (true or false) here, not an OEM number.
++  const lstm = oem === true || [OEM.DEFAULT, OEM.LSTM_ONLY].includes(oem);
+   if (TesseractCore === null) {
+     const statusText = 'loading tesseract core';
+ 
+@@ -16,18 +18,18 @@ module.exports = async (oem, _, res) => {
+     const relaxedSimdSupport = await relaxedSimd();
+     res.progress({ status: statusText, progress: 0 });
+     if (relaxedSimdSupport) {
+-      if ([OEM.DEFAULT, OEM.LSTM_ONLY].includes(oem)) {
++      if (lstm) {
+         TesseractCore = require('tesseract.js-core/tesseract-core-relaxedsimd-lstm');
+       } else {
+         TesseractCore = require('tesseract.js-core/tesseract-core-relaxedsimd');
+       }
+     } else if (simdSupport) {
+-      if ([OEM.DEFAULT, OEM.LSTM_ONLY].includes(oem)) {
++      if (lstm) {
+         TesseractCore = require('tesseract.js-core/tesseract-core-simd-lstm');
+       } else {
+         TesseractCore = require('tesseract.js-core/tesseract-core-simd');
+       }
+-    } else if ([OEM.DEFAULT, OEM.LSTM_ONLY].includes(oem)) {
++    } else if (lstm) {
+       TesseractCore = require('tesseract.js-core/tesseract-core-lstm');
+     } else {
+       TesseractCore = require('tesseract.js-core/tesseract-core');

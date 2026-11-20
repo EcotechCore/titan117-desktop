@@ -92,7 +92,7 @@ export function DocumentsView({
                     : ''}
                   {f.problems ? ` · ${f.problems} could not be read` : ''}
                   {f.scannedPages
-                    ? ` · ${f.scannedPages} scanned pages without text (OCR comes later)`
+                    ? ` · ${f.scannedPages} pages without readable text (blank, or a scan too faint to read)`
                     : ''}
                 </p>
               )}
