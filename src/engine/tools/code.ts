@@ -8,21 +8,35 @@ import { defineTool } from './lib/define-tool'
 
 const MAX_TEXT = 6_000
 
-export const codeTask = defineTool<{ folder: string; request: string; mode?: 'build' | 'plan' }>({
+const TOOLS = ['titan117', 'claude-code', 'codex', 'cursor', 'grok'] as const
+
+export const codeTask = defineTool<{
+  folder: string
+  request: string
+  mode?: 'build' | 'plan'
+  tool?: (typeof TOOLS)[number]
+}>({
   name: 'code_task',
   description: [
     'Hand a coding job in a project folder (a code repository the user allowed) to the coding engine:',
     'fix bugs, add features, write tests, refactor, explain code. It reads the code, runs commands and edits files;',
     'each command and each change asks the user first. Use mode "plan" to only read and propose a plan (13.2),',
     '"build" (default) to make the changes. Calling it again in the same task continues the same coding session.',
-    'Describe the job fully: the engine sees only this request and the code.'
+    'Describe the job fully: the engine sees only this request and the code.',
+    'Only when the user asks for one of their own coding tools, set "tool" (claude-code, codex, cursor or grok): it runs',
+    'on their own plan; if it is missing or signed out, Titan117’s engine does the job instead.'
   ].join(' '),
   params: {
     type: 'object',
     properties: {
       folder: { type: 'string', description: 'The project folder, inside the allowed folders.' },
       request: { type: 'string', description: 'What to do, in full.' },
-      mode: { type: 'string', enum: ['build', 'plan'], description: 'build (default) or plan.' }
+      mode: { type: 'string', enum: ['build', 'plan'], description: 'build (default) or plan.' },
+      tool: {
+        type: 'string',
+        enum: [...TOOLS],
+        description: 'titan117 (default), or the user’s own tool when they ask for it.'
+      }
     },
     required: ['folder', 'request']
   },
@@ -35,7 +49,8 @@ export const codeTask = defineTool<{ folder: string; request: string; mode?: 'bu
     const result = await ctx.code.run({
       folder: input.folder,
       request: input.request,
-      mode: input.mode === 'plan' ? 'plan' : 'build'
+      mode: input.mode === 'plan' ? 'plan' : 'build',
+      ...(input.tool && input.tool !== 'titan117' ? { tool: input.tool } : {})
     })
     const files = result.files.length
       ? result.files.map((f) => `- ${f.file} (+${f.additions} −${f.deletions})`).join('\n')

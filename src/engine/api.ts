@@ -118,6 +118,12 @@ export function createApi(deps: {
     /** Whether agent commits carry the Titan117 co-author line (decisions §25, §54). */
     coAuthor(): boolean
     setCoAuthor(on: boolean): void
+    /** The user's own coding tools (13.14): installed, signed in, turned on. */
+    tools(): Promise<{
+      tools: import('./lib/code/own-tools').OwnToolStatus[]
+      notOffered: { name: string; why: string }[]
+    }>
+    setToolEnabled(id: string, on: boolean): void
   }
   setup?: {
     state(): Promise<SetupState>
@@ -287,12 +293,23 @@ export function createApi(deps: {
         }
       }
       case 'PUT code': {
+        const tool = field(body, 'tool')
+        const enabled = field(body, 'enabled')
+        if (tool !== undefined) {
+          if (!['codex', 'cursor', 'grok'].includes(tool as string) || typeof enabled !== 'boolean')
+            throw new ApiError(400, 'BAD_REQUEST', 'Which experimental tool, on or off?')
+          need(deps.code).setToolEnabled(tool as string, enabled)
+          return need(deps.code).tools()
+        }
         const on = field(body, 'coAuthor')
         if (typeof on !== 'boolean')
           throw new ApiError(400, 'BAD_REQUEST', '"coAuthor" is true or false.')
         need(deps.code).setCoAuthor(on)
         return { coAuthor: need(deps.code).coAuthor() }
       }
+      case 'GET code/:id':
+        if (id !== 'tools') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        return need(deps.code).tools()
       case 'GET documents':
         return { folders: need(deps.documents).status() }
       case 'PUT documents': {

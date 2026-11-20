@@ -17,8 +17,16 @@ export function reviewRequest(folder: string, scope: 'changes' | 'branch'): stri
 }
 
 /** What Titan is asked to do; the tools and approvals do the rest. */
-export function codeRequest(folder: string, request: string, mode: 'plan' | 'build'): string {
+export function codeRequest(
+  folder: string,
+  request: string,
+  mode: 'plan' | 'build',
+  tool: { id: string; name: string } | null = null
+): string {
+  const engine = tool
+    ? `my own ${tool.name} (code_task with tool "${tool.id}")`
+    : 'the coding engine (code_task)'
   return mode === 'plan'
-    ? `In the project folder ${folder}: ${request.trim()}\n\nUse the coding engine (code_task) in plan mode: read the code and propose a plan, listing the files it would change. Don't change anything yet.`
-    : `In the project folder ${folder}: ${request.trim()}\n\nUse the coding engine (code_task) in build mode, and run the project's tests if it has them. When it's done, tell me what changed. Don't commit, push or open a pull request unless I ask.`
+    ? `In the project folder ${folder}: ${request.trim()}\n\nUse ${engine} in plan mode: read the code and propose a plan, listing the files it would change. Don't change anything yet.`
+    : `In the project folder ${folder}: ${request.trim()}\n\nUse ${engine} in build mode, and run the project's tests if it has them. When it's done, tell me what changed. Don't commit, push or open a pull request unless I ask.`
 }

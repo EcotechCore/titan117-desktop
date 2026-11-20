@@ -64,6 +64,30 @@ export function CodeView({
   const [mode, setMode] = useState<'plan' | 'build'>('plan')
   const [showDiff, setShowDiff] = useState(false)
   const [editors, setEditors] = useState<{ id: string; name: string }[]>([])
+  // The user's own coding tools (13.14) that can run now: installed, signed in, turned on.
+  const [tools, setTools] = useState<{ id: string; name: string }[]>([])
+  const [engineId, setEngineId] = useState('titan117')
+  useEffect(() => {
+    let live = true
+    client
+      ?.get<{
+        tools: {
+          id: string
+          name: string
+          installed: boolean
+          signedIn: boolean | null
+          enabled: boolean
+        }[]
+      }>('/v1/code/tools')
+      .then(
+        (r) =>
+          live && setTools(r.tools.filter((t) => t.installed && t.signedIn !== false && t.enabled))
+      )
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [client])
 
   useEffect(() => {
     let live = true
@@ -219,6 +243,20 @@ export function CodeView({
           )}
 
           <label className="field">
+            {tools.length > 0 && (
+              <select
+                value={engineId}
+                onChange={(e) => setEngineId(e.target.value)}
+                aria-label="Which coding engine"
+              >
+                <option value="titan117">Titan117’s coding engine</option>
+                {tools.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} (your own plan)
+                  </option>
+                ))}
+              </select>
+            )}
             The job
             <textarea
               rows={5}
@@ -250,7 +288,14 @@ export function CodeView({
               className="btn btn-primary"
               disabled={!folder || !request.trim()}
               onClick={() => {
-                onStart(codeRequest(git?.root ?? folder, request, mode))
+                onStart(
+                  codeRequest(
+                    git?.root ?? folder,
+                    request,
+                    mode,
+                    tools.find((t) => t.id === engineId) ?? null
+                  )
+                )
                 setRequest('')
               }}
             >

@@ -191,6 +191,27 @@ export async function gitDiff(
     : text
 }
 
+/** Lines added and removed per changed file since the last commit (new files counted whole). */
+export async function gitChangedFiles(
+  dir: string
+): Promise<Map<string, { file: string; additions: number; deletions: number }>> {
+  const out = new Map<string, { file: string; additions: number; deletions: number }>()
+  const numstat = await run('git', ['diff', 'HEAD', '--numstat'], dir)
+  if (numstat.code === 0)
+    for (const line of numstat.stdout.split('\n')) {
+      const [a, d, file] = line.split('\t')
+      if (file) out.set(file, { file, additions: Number(a) || 0, deletions: Number(d) || 0 })
+    }
+  const untracked = await run('git', ['ls-files', '--others', '--exclude-standard'], dir)
+  if (untracked.code === 0)
+    for (const file of untracked.stdout
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean))
+      if (!out.has(file)) out.set(file, { file, additions: 0, deletions: 0 })
+  return out
+}
+
 const BRANCH_NAME = /^(?!-)(?!.*\.\.)(?!.*\/\/)(?!.*@\{)[A-Za-z0-9._/-]{1,100}(?<![./])$/
 
 export async function gitBranch(dir: string, name: string): Promise<{ created: boolean }> {

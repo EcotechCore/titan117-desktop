@@ -55,7 +55,9 @@ import { startModelBridge } from './code/bridge'
 import { createComponents } from './code/components'
 import { createOpencodeEngine } from './code/opencode'
 import { createCodeService } from './code/service'
-import { GitError, gitDiff, gitStatus } from './git'
+import { GitError, gitChangedFiles, gitDiff, gitStatus } from './git'
+import { startApprovalServer } from './code/approval-mcp'
+import { createOwnTools, NOT_OFFERED, type OwnToolId } from './code/own-tools'
 
 export interface AccountState {
   /** The device token, sent only to our credits proxy. */
@@ -302,6 +304,14 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   let serverPort = 0
   // The coding engine's model bridge (decisions §53): on 127.0.0.1, never reachable by a tool.
   const codeBridge = await startModelBridge()
+  // The user's own coding tools (13.14): their approvals come to us here.
+  const toolApprovals = await startApprovalServer()
+  const ownTools = createOwnTools({
+    approvals: toolApprovals,
+    scratch: join(options.dataDir ?? tmpdir(), 'scratch', 'own-tools'),
+    enabled: (id) => getMeta<string[]>(db, 'ownToolsEnabled', []).includes(id),
+    changes: (repo) => gitChangedFiles(repo)
+  })
   const scriptToken = (taskId: string): string | null => {
     if (!runtimeRef?.isRunning(taskId)) return null
     let value = scriptTokens.get(taskId)
@@ -346,7 +356,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       speech: (files) => speech.access(files),
       scratchRoot,
       fetch: connectivity.track(options.toolFetch ?? fetch),
-      enginePorts: () => [serverPort, codeBridge.port],
+      enginePorts: () => [serverPort, codeBridge.port, toolApprovals.port],
       gitCoAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
       toolApi: (taskId) => {
         const value = scriptToken(taskId)
@@ -484,7 +494,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     folders: policy,
     online: () => connectivity.online(),
     log,
-    memory
+    memory,
+    ownTools
   })
   permissions.useServices({ search, pages, artifacts, documents, localOnlyTasks, code })
 
@@ -580,7 +591,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     components: () => codeComponents.status(),
     coAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
-    setCoAuthor: (on: boolean) => setMeta(db, 'gitCoAuthor', on)
+    setCoAuthor: (on: boolean) => setMeta(db, 'gitCoAuthor', on),
+    tools: async () => ({ tools: await ownTools.status(), notOffered: NOT_OFFERED }),
+    setToolEnabled(id: string, on: boolean) {
+      const list = getMeta<string[]>(db, 'ownToolsEnabled', []).filter((t) => t !== id)
+      setMeta(db, 'ownToolsEnabled', on ? [...list, id as OwnToolId] : list)
+    }
   }
   const handle = createApi({
     appVersion: options.appVersion,
@@ -718,6 +734,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       await connectors.close()
       await codeEngine.shutdown()
       await codeBridge.stop()
+      await toolApprovals.stop()
       await local.dispose()
       db.close()
     },
