@@ -3,6 +3,8 @@
 import { useEffect, useRef } from 'react'
 
 import type { Approval, ApprovalAnswer, TaskDetail, ToolCall } from '../../shared/protocol'
+import { diffCounts } from './code-lib'
+import { Diff } from './Diff'
 import { modelName } from './format'
 import { Eyes, Icon } from './ui'
 import type { EngineState } from '../../shared/protocol'
@@ -31,14 +33,30 @@ const TOOL_LABEL: Record<string, string> = {
   skill_save: 'Save skill',
   past_tasks: 'Past tasks',
   speak: 'Read aloud',
-  transcribe: 'Transcribe'
+  transcribe: 'Transcribe',
+  code_task: 'Coding engine',
+  git_status: 'Git status',
+  git_diff: 'Git diff',
+  git_branch: 'Branch',
+  git_commit: 'Commit',
+  git_push: 'Push',
+  pull_request: 'Pull request'
 }
 
 function stepLabel(call: ToolCall): string {
   const what = TOOL_LABEL[call.name] ?? call.name.replace(/_/g, ' ')
-  const detail = ['path', 'command', 'url', 'query', 'name', 'text', 'from'].map(
-    (k) => call.input[k]
-  )
+  const detail = [
+    'path',
+    'command',
+    'url',
+    'query',
+    'name',
+    'text',
+    'from',
+    'request',
+    'message',
+    'title'
+  ].map((k) => call.input[k])
   const first = detail.find((d) => typeof d === 'string' && d) as string | undefined
   return first ? `${what} · ${first.length > 90 ? `${first.slice(0, 90)}…` : first}` : what
 }
@@ -54,12 +72,32 @@ export function ApprovalCard({
   const code = typeof approval.input.code === 'string' ? approval.input.code : null
   const steps = typeof approval.input.steps === 'string' ? approval.input.steps : null
   const review = content ?? code ?? steps
+  // A change from the coding engine: its diff, to review before saying yes (13.3).
+  const diff =
+    typeof approval.input.diff === 'string' && approval.input.diff ? approval.input.diff : null
+  const body = typeof approval.input.body === 'string' ? approval.input.body : null
+  const counts = diff ? diffCounts(diff) : null
   return (
     <div className="approval" role="group" aria-label="Approval needed">
       <p className="approval-q">
         {approval.risk === 'external' ? 'This always needs your OK:' : 'Allow Titan to do this?'}
       </p>
       <p className="approval-what">{approval.summary}</p>
+      {diff !== null && counts && (
+        <details className="approval-review" open>
+          <summary>
+            Review the change · <span className="diff-add-n">+{counts.added}</span>{' '}
+            <span className="diff-del-n">−{counts.removed}</span>
+          </summary>
+          <Diff text={diff} max={400} />
+        </details>
+      )}
+      {body !== null && (
+        <details className="approval-review" open>
+          <summary>Review the pull request</summary>
+          <pre className="cmd">{body.length > 4000 ? `${body.slice(0, 4000)}\n…` : body}</pre>
+        </details>
+      )}
       {review !== null && (
         <details className="approval-review" open={code !== null}>
           <summary>
@@ -136,6 +174,10 @@ export function TaskView({
     if (message.role === 'tool') results.set(message.callId, { isError: !!message.isError })
   const pending = new Map(approvals.filter((a) => a.status === 'pending').map((a) => [a.callId, a]))
   const active = task.status === 'running' || task.status === 'waiting'
+  const toolCallIds = new Set<string>()
+  for (const { message } of messages)
+    if (message.role === 'assistant')
+      for (const call of message.toolCalls ?? []) toolCallIds.add(call.id)
 
   return (
     <div className="thread">
@@ -188,6 +230,13 @@ export function TaskView({
           </div>
         )
       })}
+
+      {/* Asks that aren't one of Titan's own steps: the coding engine's commands and changes. */}
+      {approvals
+        .filter((a) => a.status === 'pending' && !toolCallIds.has(a.callId))
+        .map((approval) => (
+          <ApprovalCard key={approval.id} approval={approval} onAnswer={onAnswer} />
+        ))}
 
       {active && (
         <div className="reply">

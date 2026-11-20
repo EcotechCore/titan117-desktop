@@ -23,6 +23,7 @@ export type View =
   | { kind: 'search' }
   | { kind: 'setup' }
   | { kind: 'documents' }
+  | { kind: 'code' }
 
 export interface AppState {
   status: 'connecting' | 'ready' | 'lost'

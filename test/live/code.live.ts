@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { execFileSync, spawnSync } from 'child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { delimiter, join } from 'path'
 
 import { startEngine, type Engine } from '../../src/engine/lib/engine'
 import { createBrowserHost } from '../../src/engine/lib/browser'
@@ -62,6 +62,7 @@ export function isWorkingDay(date) {
 const key = devKey()
 let engine: Engine
 let repo: string
+let remote: string
 const report: string[] = []
 
 function git(...args: string[]): string {
@@ -83,10 +84,22 @@ describe.runIf(key)('the code builder with a real model', () => {
     )
     writeFileSync(join(repo, 'src', 'shop.js'), SOURCE)
     writeFileSync(join(repo, 'test', 'shop.test.js'), TESTS)
-    git('init', '-q')
+    git('init', '-q', '-b', 'main')
     git('-c', 'user.name=Eval', '-c', 'user.email=eval@example.com', 'add', '.')
     git('-c', 'user.name=Eval', '-c', 'user.email=eval@example.com', 'commit', '-qm', 'Start')
     expect(testsPass()).toBe(false)
+    // "GitHub" for this run: a made-up GitHub address to read, a local bare repository to push to.
+    remote = tempFolder('titan117-code-remote-')
+    execFileSync('git', ['init', '-q', '--bare'], { cwd: remote })
+    git('remote', 'add', 'origin', 'https://github.com/titan117-eval/shop.git')
+    git('config', 'remote.origin.pushurl', remote)
+    git('config', 'user.name', 'Eval User')
+    git('config', 'user.email', 'eval@example.com')
+    // GitHub's CLI stays out of this run, so nothing reaches GitHub: the pull request comes as a link.
+    process.env.PATH = (process.env.PATH ?? '')
+      .split(delimiter)
+      .filter((d) => !/github cli/i.test(d))
+      .join(delimiter)
 
     const dataDir = tempFolder('titan117-code-data-')
     engine = await startEngine({
@@ -116,7 +129,8 @@ describe.runIf(key)('the code builder with a real model', () => {
     const asked: string[] = []
     const created = engine.parts.runtime.start(
       `The project in ${repo} has failing tests (run them with \`node --test\`). ` +
-        'Use the coding engine to fix the bugs in src/ so all tests pass. Don’t change the tests.',
+        'Use the coding engine to fix the bugs in src/ so all tests pass. Don’t change the tests. ' +
+        'Then put the fix on a new branch, commit it, push it, and open a pull request.',
       MODEL
     )
     const end = Date.now() + 9 * 60_000
@@ -159,7 +173,32 @@ describe.runIf(key)('the code builder with a real model', () => {
     console.log(report.join('\n'))
     expect(activity.some((a) => a.tool === 'code_task')).toBe(true)
     expect(testsPass()).toBe(true)
-    expect(changed).not.toMatch(/test\//)
-    expect(changed).toMatch(/src\/shop\.js/)
+    const pushed = execFileSync('git', ['branch', '--format=%(refname:short)'], {
+      cwd: remote,
+      encoding: 'utf8'
+    })
+      .split('\n')
+      .filter(Boolean)
+    report.push('', '## Pushed branches', ...pushed.map((b) => `- ${b}`))
+    console.log(report.slice(-3).join('\n'))
+    expect(changed).toBe('')
+    expect(pushed.length).toBe(1)
+    const branch = pushed[0]
+    expect(branch).not.toBe('main')
+    const files = execFileSync('git', ['diff', '--name-only', `main...${branch}`], {
+      cwd: repo,
+      encoding: 'utf8'
+    })
+    expect(files.trim()).toBe('src/shop.js')
+    const body = execFileSync('git', ['log', '-1', '--format=%B', branch], {
+      cwd: repo,
+      encoding: 'utf8'
+    })
+    expect(body).toContain('Co-authored-by: Titan117')
+    const final = engine.parts.store
+      .listMessages(created.id)
+      .map((m) => (m.message.role === 'assistant' ? m.message.text : ''))
+      .join('\n')
+    expect(final).toContain('https://github.com/titan117-eval/shop/compare/')
   }, 600_000)
 })

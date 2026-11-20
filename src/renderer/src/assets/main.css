@@ -1562,7 +1562,9 @@ textarea.edit {
   justify-content: space-between;
   margin-top: 6px;
 }
-.facts.hw { grid-template-columns: 90px 1fr; }
+.facts.hw {
+  grid-template-columns: 90px 1fr;
+}
 
 /* ---------- offline (1.22) ---------- */
 .offline-bar {
@@ -1644,4 +1646,69 @@ textarea.edit {
   border-radius: 6px;
   background: var(--white);
   height: 26px;
+}
+
+/* ---------- code builder (13.3): diffs ---------- */
+.diff {
+  font: 12px/1.5 var(--mono);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 0;
+  overflow: auto;
+  max-height: 420px;
+  white-space: pre;
+}
+.diff > span {
+  display: block;
+  padding: 0 10px;
+}
+.diff > .diff-add {
+  background: #ecfdf3;
+  color: #067647;
+}
+.diff > .diff-del {
+  background: var(--tint);
+  color: var(--accent-deep);
+  text-decoration: none;
+}
+.diff > .diff-hunk {
+  color: var(--muted);
+}
+.diff > .diff-file {
+  color: var(--soft);
+  font-weight: 600;
+}
+.diff > .diff-ctx {
+  color: var(--soft);
+}
+.diff-add-n {
+  color: #067647;
+  font-weight: 500;
+}
+.diff-del-n {
+  color: var(--accent-deep);
+  font-weight: 500;
+}
+.code-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.code-files {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font: 12px/1.6 var(--mono);
+  color: var(--soft);
+}
+.field select {
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
 }

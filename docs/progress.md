@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 7 has started (20 Nov 2026): the coding engine (OpenCode) runs behind our approvals and model router, and Titan hands it coding jobs with `code_task`. Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro for the portal's error screens. **Next step:** phase 7's code builder screen (diff review), git and pull requests (needs the GitHub App, owner checklist). Production waits (§52).
+**Now:** phase 7 is in progress (20 Nov 2026). The coding engine runs behind our approvals; git, pull requests (through GitHub's CLI or GitHub's own page) and the Code screen with diff review are built. Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Next step:** phase 7's check (fix real issues in a sample repo on GitHub and open a pull request), then project memory, review and the user's own coding tools. Production waits (§52).
 
 ## Phases
 
@@ -31,6 +31,21 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 20 Nov 2026 · Phase 7: git, pull requests and the code builder screen
+
+Built on `phase-7-git`. Decisions §54 (to be confirmed).
+
+- **Git (`lib/git.ts`):** status, diff, branch, commit and push with the user's own git and sign-in, and a `Co-authored-by: Titan117` line (it can be turned off). Never a force-push, never a push to the main branch. A commit carrying a `.env` or key file, or a key or token in its added lines, is refused and unstaged. Unusable branch names are refused.
+- **Pull requests:** through GitHub's CLI (`gh`) when it's signed in on the laptop; otherwise GitHub's own compare page with the title and description filled in.
+- **Tools:** `git_status`, `git_diff` (run at once), `git_branch`, `git_commit` (ask, with "always in this task"), `git_push` and `pull_request` (ask every time, laptop only).
+- **The Code screen:** pick a project, see its branch, remote and changes as a coloured diff, and start a "Plan first" or "Build" job. The engine's approval cards now show in the task's conversation (before, only in Approvals), and file changes show their diff with counts. The route is `GET /v1/code`.
+- **Fixed:** the built app's engine didn't start. OpenCode's SDK is ESM-only, and the engine bundle loaded it with `require`; it's now bundled into the engine. The tests didn't catch this, because they run the source; it was found by opening the built app.
+- **Tests:** 6 git tests against real repositories (a bare repository standing in for GitHub), and denial tests for the six git tools. 316 tests pass, plus the 4 OpenCode contract tests; typecheck, lint, licences and build pass.
+- **Seen working:**
+  - **Live eval** (`pnpm eval:code`, Claude Haiku 5.5): three bugs fixed, then branch `fix/cart-slugify-weekend`, a commit with the co-author line, a push to the stand-in remote, and the pull request page link. Only `src/shop.js` changed. $0.015.
+  - **The built app**, driven by Playwright with a throwaway profile: the Code screen with the project's branch and diff, then a Build job from it. Six cards were approved in the window, including the change to `src/shop.js` with its diff (+10 −4) shown before approving, and the tests passed. No console errors.
+- **Not done yet in phase 7:** GitHub sign-in through our app (waits for its registration), project memory, sub-agents and the review agent, open in editor, the co-author switch in Settings, Seatbelt around OpenCode on macOS, other machines (3.15), the user's own coding tools (13.14), and the phase check with a real pull request on GitHub.
 
 ### 20 Nov 2026 · Phase 7 started: the coding engine (OpenCode) and code_task
 

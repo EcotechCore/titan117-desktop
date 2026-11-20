@@ -24,6 +24,9 @@ export default defineConfig({
   // Two bundles: the shell (index) and the engine process it starts (engine).
   main: {
     build: {
+      // OpenCode's SDK is ESM only: bundled into the engine, since the main bundle loads
+      // its other dependencies with require (decisions §53).
+      externalizeDeps: { exclude: ['@opencode-ai/sdk'] },
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),

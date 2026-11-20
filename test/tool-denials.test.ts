@@ -3,6 +3,7 @@
 // has no entry here, so a new tool can't ship without one.
 import { describe, expect, it } from 'vitest'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { execFileSync } from 'child_process'
 import { join } from 'path'
 
 import type { ToolCall } from '../src/shared/protocol'
@@ -200,7 +201,102 @@ const fakeCodeEngine: CodingEngine = {
   shutdown: async () => {}
 }
 
+/** A git repository inside the bench's allowed folder, with one commit on main. */
+function gitRepo(b: Bench): string {
+  const repo = join(b.allowed, 'repo')
+  mkdirSync(repo)
+  const git = (...args: string[]): string =>
+    execFileSync('git', args, { cwd: repo, encoding: 'utf8' })
+  git('init', '-q', '-b', 'main')
+  git('config', 'user.name', 'Test User')
+  git('config', 'user.email', 'test@example.com')
+  writeFileSync(join(repo, 'a.txt'), 'one\n')
+  git('add', '.')
+  git('commit', '-qm', 'Start')
+  return repo
+}
+
 const DENIALS: Record<string, () => Promise<void>> = {
+  async git_status() {
+    const b = bench()
+    expect((await b.run({ name: 'git_status', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    const none = bench({ noFolders: true })
+    expect((await none.run({ name: 'git_status', input: { folder: '.' } })).status).toBe('refused')
+  },
+
+  async git_diff() {
+    const b = bench()
+    expect((await b.run({ name: 'git_diff', input: { folder: b.outside } })).status).toBe('refused')
+  },
+
+  async git_branch() {
+    const b = bench()
+    const repo = gitRepo(b)
+    const denied = await b.run(
+      { name: 'git_branch', input: { folder: repo, name: 'work' } },
+      'deny'
+    )
+    expect(denied.status).toBe('refused')
+    expect(execFileSync('git', ['branch', '--list', 'work'], { cwd: repo, encoding: 'utf8' })).toBe(
+      ''
+    )
+    expect(
+      (await b.run({ name: 'git_branch', input: { folder: b.outside, name: 'work' } }, 'approve'))
+        .status
+    ).toBe('refused')
+  },
+
+  async git_commit() {
+    const b = bench()
+    const repo = gitRepo(b)
+    writeFileSync(join(repo, 'a.txt'), 'two\n')
+    const denied = await b.run(
+      { name: 'git_commit', input: { folder: repo, message: 'x' } },
+      'deny'
+    )
+    expect(denied.status).toBe('refused')
+    expect(
+      execFileSync('git', ['log', '--format=%s'], { cwd: repo, encoding: 'utf8' }).trim()
+    ).toBe('Start')
+    // Approved, but the change holds a key: refused by git's own rule.
+    writeFileSync(join(repo, 'key.js'), `const k = 'sk-or-v1-${'b'.repeat(40)}'\n`)
+    const secret = await b.run(
+      { name: 'git_commit', input: { folder: repo, message: 'x' } },
+      'approve'
+    )
+    expect(secret.status).toBe('failed')
+    expect(
+      execFileSync('git', ['log', '--format=%s'], { cwd: repo, encoding: 'utf8' }).trim()
+    ).toBe('Start')
+  },
+
+  async git_push() {
+    const b = bench()
+    const repo = gitRepo(b)
+    // Outward: asks every time, never "always", only on the laptop.
+    const approval = await b.approvalOf({ name: 'git_push', input: { folder: repo } })
+    expect(approval.canAlways).toBe(false)
+    expect((await b.run({ name: 'git_push', input: { folder: repo } }, 'deny')).status).toBe(
+      'refused'
+    )
+    // Approved, but on main with no remote: refused by git's own rules.
+    expect((await b.run({ name: 'git_push', input: { folder: repo } }, 'approve')).status).toBe(
+      'failed'
+    )
+  },
+
+  async pull_request() {
+    const b = bench()
+    const repo = gitRepo(b)
+    const input = { folder: repo, title: 'T', body: 'B' }
+    const approval = await b.approvalOf({ name: 'pull_request', input })
+    expect(approval.canAlways).toBe(false)
+    expect((await b.run({ name: 'pull_request', input }, 'deny')).status).toBe('refused')
+    // Not a GitHub repository: refused even when approved.
+    expect((await b.run({ name: 'pull_request', input }, 'approve')).status).toBe('failed')
+  },
   async code_task() {
     const b = bench()
     // A project folder outside the allowed folders: refused before anything starts.

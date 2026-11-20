@@ -107,6 +107,15 @@ export function createApi(deps: {
   reports?: ReportService
   notifications?: { get(): boolean; set(on: boolean): void }
   documents?: import('./lib/doc-index').DocIndex
+  /** The code builder's view of a project folder (§13): its git state and changes, for the user. */
+  code?: {
+    project(folder: string): Promise<{
+      git: import('./lib/git').GitStatus | null
+      diff: string
+      problem: string | null
+    }>
+    components(): import('./lib/code/components').ComponentStatus[]
+  }
   setup?: {
     state(): Promise<SetupState>
     runHealth(): Promise<SetupState>
@@ -264,6 +273,15 @@ export function createApi(deps: {
     query: Record<string, string>
   ): Promise<unknown | null> {
     switch (key) {
+      case 'GET code': {
+        const code = need(deps.code)
+        if (!query.folder) return { components: code.components(), project: null }
+        try {
+          return { components: code.components(), project: await code.project(query.folder) }
+        } catch (error) {
+          throw new ApiError(400, 'BAD_REQUEST', (error as Error).message)
+        }
+      }
       case 'GET documents':
         return { folders: need(deps.documents).status() }
       case 'PUT documents': {
