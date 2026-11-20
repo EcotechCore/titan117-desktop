@@ -1,0 +1,2 @@
+# pnpm applies these to files with Unix line endings; keep them as they are.
+patches/*.patch text eol=lf

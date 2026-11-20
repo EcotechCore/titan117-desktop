@@ -246,6 +246,10 @@ const MIGRATIONS: string[] = [
   create trigger doc_chunks_ad after delete on doc_chunks begin
     insert into doc_chunks_fts(doc_chunks_fts, rowid, text) values ('delete', old.id, old.text);
   end;
+  `,
+  // Phase 6, OCR (7.3): files read before OCR that had scanned pages are read again.
+  `
+  update doc_files set mtime = -1 where empty_pages > 0;
   `
 ]
 

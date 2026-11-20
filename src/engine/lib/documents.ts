@@ -10,15 +10,19 @@
  *   PowerPoint   the slides' own XML (fflate, MIT), one page per slide
  *   email        postal-mime (MIT-0)
  *   text         Markdown, CSV and plain text as they are
+ *   images       PNG and JPEG photos and scans, through OCR
  *
- * Scanned pages (no text layer) come back empty and are counted, so OCR can
- * be added for them (7.3).
+ * Scanned PDF pages (no text layer) are drawn as images (@napi-rs/canvas,
+ * MIT) and read with OCR (7.3, ./ocr.ts). Pages still without text after
+ * that are counted.
  */
 import ExcelJS from 'exceljs'
 import { strFromU8, unzipSync } from 'fflate'
 import mammoth from 'mammoth'
 import PostalMime from 'postal-mime'
 import { pathToFileURL } from 'node:url'
+
+import { recognize } from './ocr'
 
 export interface DocPage {
   /** 1-based position: the PDF page, slide or sheet number. */
@@ -31,9 +35,21 @@ export interface DocPage {
 export interface ParsedDoc {
   title: string
   pages: DocPage[]
-  /** Pages with no text at all (scans without a text layer). */
+  /** Pages with no text at all, even after OCR. */
   emptyPages: number
+  /** Pages whose text came from OCR. */
+  ocrPages?: number
 }
+
+export interface ParseOptions {
+  /** Read scanned pages and images with OCR (default true). */
+  ocr?: boolean
+}
+
+/** At most this many scanned pages are read with OCR per document; the rest are counted. */
+export const OCR_PAGE_LIMIT = 100
+/** Scanned pages are drawn at this scale (2 is about 144 dots per inch). */
+const OCR_SCALE = 2
 
 export const DOC_TYPES = [
   'pdf',
@@ -46,7 +62,10 @@ export const DOC_TYPES = [
   'csv',
   'json',
   'html',
-  'htm'
+  'htm',
+  'png',
+  'jpg',
+  'jpeg'
 ] as const
 
 export class DocumentError extends Error {
@@ -72,8 +91,70 @@ function tidy(text: string): string {
     .trim()
 }
 
-async function pdfPages(data: Buffer): Promise<ParsedDoc> {
+/** OCR text, tidied, or '' when the image holds none. */
+async function ocrText(image: Buffer): Promise<string> {
+  return tidy(await recognize(image))
+}
+
+async function imagePages(data: Buffer, options: ParseOptions): Promise<ParsedDoc> {
+  const text = options.ocr === false ? '' : await ocrText(data)
+  return {
+    title: '',
+    pages: [{ n: 1, label: 'image', text }],
+    emptyPages: text ? 0 : 1,
+    ocrPages: text ? 1 : 0
+  }
+}
+
+type NapiCanvas = typeof import('@napi-rs/canvas')
+
+/**
+ * pdf.js draws scanned pages on a canvas. It only sets up a Node canvas when
+ * it thinks it runs in Node, and Electron's utility process (where the engine
+ * runs) doesn't count, so it would reach for a web page's canvas. Here it gets
+ * @napi-rs/canvas, and the two drawing helpers it expects (DOMMatrix, Path2D),
+ * as it does in Node.
+ */
+async function nodeCanvas(): Promise<NapiCanvas> {
+  const napi = await import('@napi-rs/canvas')
+  const g = globalThis as Record<string, unknown>
+  g.DOMMatrix ??= napi.DOMMatrix
+  g.Path2D ??= napi.Path2D
+  return napi
+}
+
+/** The same four methods as pdf.js's own Node canvas factory. */
+function canvasFactory(napi: NapiCanvas): unknown {
+  type Canvas = import('@napi-rs/canvas').Canvas
+  type Pair = { canvas: Canvas | null; context: unknown }
+  return class {
+    create(width: number, height: number): Pair {
+      if (width <= 0 || height <= 0) throw new Error('Invalid canvas size')
+      const canvas = napi.createCanvas(width, height)
+      return { canvas, context: canvas.getContext('2d') }
+    }
+    reset(pair: Pair, width: number, height: number): void {
+      if (!pair.canvas) throw new Error('Canvas is not specified')
+      if (width <= 0 || height <= 0) throw new Error('Invalid canvas size')
+      pair.canvas.width = width
+      pair.canvas.height = height
+    }
+    destroy(pair: Pair): void {
+      if (!pair.canvas) throw new Error('Canvas is not specified')
+      pair.canvas.width = 0
+      pair.canvas.height = 0
+      pair.canvas = null
+      pair.context = null
+    }
+    getNoAlphaContext(canvas: Canvas): unknown {
+      return canvas.getContext('2d', { alpha: false })
+    }
+  }
+}
+
+async function pdfPages(data: Buffer, options: ParseOptions): Promise<ParsedDoc> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const napi = options.ocr === false ? null : await nodeCanvas()
   // Bundled, pdf.js can't find its worker by itself; it runs in this process (Node's "fake worker").
   if (!pdfjs.GlobalWorkerOptions.workerSrc)
     pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(
@@ -84,11 +165,19 @@ async function pdfPages(data: Buffer): Promise<ParsedDoc> {
     // No fonts from anywhere: text only.
     disableFontFace: true,
     useSystemFonts: false,
-    verbosity: 0
+    verbosity: 0,
+    // Drawing scanned pages for OCR, the same in Node and in Electron's utility process.
+    ...(napi && {
+      CanvasFactory: canvasFactory(napi) as never,
+      isOffscreenCanvasSupported: false,
+      isImageDecoderSupported: false
+    })
   })
   const doc = await task.promise
   const pages: DocPage[] = []
   let emptyPages = 0
+  let ocrPages = 0
+  let ocrTried = 0
   let title: string
   try {
     const meta = await doc.getMetadata().catch(() => null)
@@ -102,6 +191,22 @@ async function pdfPages(data: Buffer): Promise<ParsedDoc> {
         text += item.hasEOL ? '\n' : ' '
       }
       text = tidy(text)
+      if (!text && napi && ocrTried < OCR_PAGE_LIMIT) {
+        // A scan: draw the page and read it.
+        ocrTried++
+        const viewport = page.getViewport({ scale: OCR_SCALE })
+        const canvas = napi.createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height))
+        const context = canvas.getContext('2d')
+        context.fillStyle = '#ffffff'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        await page.render({
+          canvas: canvas as unknown as HTMLCanvasElement,
+          canvasContext: context as unknown as CanvasRenderingContext2D,
+          viewport
+        }).promise
+        text = await ocrText(canvas.toBuffer('image/png'))
+        if (text) ocrPages++
+      }
       if (!text) emptyPages++
       pages.push({ n, label: `page ${n}`, text })
       page.cleanup()
@@ -109,7 +214,7 @@ async function pdfPages(data: Buffer): Promise<ParsedDoc> {
   } finally {
     await task.destroy()
   }
-  return { title, pages, emptyPages }
+  return { title, pages, emptyPages, ocrPages }
 }
 
 async function wordPages(data: Buffer): Promise<ParsedDoc> {
@@ -253,12 +358,20 @@ function textPages(data: Buffer, ext: string): ParsedDoc {
 }
 
 /** A document as labelled pages. Throws DocumentError for a type it can't read. */
-export async function parseDocument(path: string, data: Buffer): Promise<ParsedDoc> {
+export async function parseDocument(
+  path: string,
+  data: Buffer,
+  options: ParseOptions = {}
+): Promise<ParsedDoc> {
   const ext = extensionOf(path)
   try {
     switch (ext) {
       case 'pdf':
-        return await pdfPages(data)
+        return await pdfPages(data, options)
+      case 'png':
+      case 'jpg':
+      case 'jpeg':
+        return await imagePages(data, options)
       case 'docx':
         return await wordPages(data)
       case 'xlsx':

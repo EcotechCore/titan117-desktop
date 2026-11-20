@@ -12,6 +12,7 @@ import { speechTools } from './speech'
 import { webTools } from './web'
 import { artifactTools } from './artifacts'
 import { documentTools } from './documents'
+import { codeTask } from './code'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyTool = ToolDefinition<any>
@@ -24,6 +25,7 @@ export const builtInTools: AnyTool[] = [
   ...browserTools,
   ...artifactTools,
   ...documentTools,
+  codeTask,
   ...memoryTools,
   ...speechTools
 ]

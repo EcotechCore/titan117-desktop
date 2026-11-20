@@ -6,6 +6,8 @@ allowBuilds:
   onnxruntime-node: false
   # Its script only prints a version notice.
   protobufjs: false
+  # OCR (7.3): its script only asks for donations.
+  tesseract.js: false
 # Fixed versions of packages inside our dependencies, for known advisories
 # (CI fails on high ones, guardrails §11):
 overrides:
@@ -15,3 +17,5 @@ overrides:
   uuid: 11.1.1
   # GHSA-w74x-v6f9-j3xg and three more (moderate and low), inside the MCP SDK's ajv.
   fast-uri: 3.1.9
+patchedDependencies:
+  tesseract.js@7.0.0: patches/tesseract.js@7.0.0.patch

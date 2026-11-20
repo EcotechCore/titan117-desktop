@@ -50,6 +50,11 @@ import { findBrowserChannel } from './browser'
 import type { SetupInterest } from '../../shared/protocol'
 import type { SearchSettings } from '../../shared/protocol'
 import { KEY_PROVIDERS } from '../../shared/protocol'
+import { stopOcr } from './ocr'
+import { startModelBridge } from './code/bridge'
+import { createComponents } from './code/components'
+import { createOpencodeEngine } from './code/opencode'
+import { createCodeService } from './code/service'
 
 export interface AccountState {
   /** The device token, sent only to our credits proxy. */
@@ -294,6 +299,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   // Scripts a task writes call its tools with a token of their own (feature 4.10).
   const scriptTokens = new Map<string, string>()
   let serverPort = 0
+  // The coding engine's model bridge (decisions §53): on 127.0.0.1, never reachable by a tool.
+  const codeBridge = await startModelBridge()
   const scriptToken = (taskId: string): string | null => {
     if (!runtimeRef?.isRunning(taskId)) return null
     let value = scriptTokens.get(taskId)
@@ -338,7 +345,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       speech: (files) => speech.access(files),
       scratchRoot,
       fetch: connectivity.track(options.toolFetch ?? fetch),
-      enginePorts: () => [serverPort],
+      enginePorts: () => [serverPort, codeBridge.port],
       toolApi: (taskId) => {
         const value = scriptToken(taskId)
         return value ? { url: `http://127.0.0.1:${serverPort}`, token: value } : null
@@ -456,7 +463,27 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       )
     }
   })
-  permissions.useServices({ search, pages, artifacts, documents, localOnlyTasks })
+  // The coding engine (§13, decisions §53): OpenCode, downloaded the first time it's used.
+  const codeComponents = createComponents({
+    dir: join(options.dataDir ?? tmpdir(), 'components', 'code')
+  })
+  const codeEngine = createOpencodeEngine({
+    programs: () => codeComponents.ensure(),
+    bridge: codeBridge,
+    home: join(options.dataDir ?? tmpdir(), 'code-engine'),
+    scratch: join(scratchRoot, 'code-engine'),
+    onError: (error) => void log.capture('code', error, {})
+  })
+  const code = createCodeService({
+    engine: codeEngine,
+    router,
+    store,
+    permissions,
+    folders: policy,
+    online: () => connectivity.online(),
+    log
+  })
+  permissions.useServices({ search, pages, artifacts, documents, localOnlyTasks, code })
 
   // Setup and health (1.12, 1.20, 1.21): facts from every part of the engine.
   const setup = createSetupService({
@@ -665,9 +692,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       reports.close()
       connectivity.close()
       documents.close()
+      await stopOcr(true)
       await server.close()
       await browser.close()
       await connectors.close()
+      await codeEngine.shutdown()
+      await codeBridge.stop()
       await local.dispose()
       db.close()
     },

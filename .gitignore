@@ -9,3 +9,4 @@ out
 
 # Microsoft's redistributable, fetched before a Windows build (decisions §49).
 build/vendor/*.exe
+.cache/

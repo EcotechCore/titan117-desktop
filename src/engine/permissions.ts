@@ -33,6 +33,8 @@ import { SearchError, type SearchAccess, type SearchService } from './lib/search
 import { isNetworkFailure } from './lib/online'
 import type { DocumentsAccess, PageAccess } from './tools/lib/define-tool'
 import type { DocIndex } from './lib/doc-index'
+import type { CodeService } from './lib/code/service'
+import type { CodeAccess } from './tools/lib/define-tool'
 import { querySheet, SheetError } from './lib/sheets'
 import { DocumentError } from './lib/documents'
 
@@ -68,7 +70,25 @@ export interface PermissionLayer {
   useServices(more: Partial<Services>): void
   /** The task read from a local-models-only folder: cloud models may not see it (7.7). */
   isLocalOnly(taskId: string): boolean
+  /**
+   * Decide on an action another program wants to take for a task (the coding
+   * engine's permission prompts, decisions §53): the same rules, approvals,
+   * "always" answers and activity log as our own tools, without running anything.
+   */
+  decide(ctx: CallContext, request: OutsideAction): Promise<Decision>
 }
+
+/** An action asked about by a program we run (OpenCode), already assessed by its adapter. */
+export interface OutsideAction {
+  callId: string
+  /** The name shown and remembered for "always in this task", e.g. `code_edit`. */
+  tool: string
+  input: Record<string, unknown>
+  assessment: Assessment
+}
+
+export type Decision =
+  { allowed: true; approvedBy: string | null } | { allowed: false; why: string }
 
 /** Optional services; a tool that needs a missing one is refused. */
 export interface Services {
@@ -97,6 +117,8 @@ export interface Services {
   documents?: DocIndex
   /** Tasks that read from a local-models-only folder (7.7), kept across runs. */
   localOnlyTasks?: { has(taskId: string): boolean; add(taskId: string): void }
+  /** The coding engine (§13, decisions §53). */
+  code?: CodeService
 }
 
 interface Waiting {
@@ -214,6 +236,69 @@ export function createPermissionLayer(deps: {
     if (answer === 'cancelled') store.answerApproval(approval.id, 'expired', 'task cancelled')
     else store.updateTask(ctx.taskId, { status: 'running' })
     return answer
+  }
+
+  /**
+   * The rules every action passes, ours or another program's: refusals,
+   * private content leaving, then asking the user unless they already said
+   * "always" (in this task, or for a command in this folder).
+   */
+  async function gate(
+    ctx: CallContext,
+    callId: string,
+    name: string,
+    input: Record<string, unknown>,
+    assessment: Assessment,
+    laptopOnlyTool: boolean
+  ): Promise<Decision> {
+    if (assessment.refuse) return { allowed: false, why: assessment.refuse }
+    // Private content on its way out is blocked before the user is even asked (security.md A3).
+    const leak = assessment.outgoing ? stateOf(ctx.taskId).privacy.leak(assessment.outgoing) : null
+    if (leak)
+      return {
+        allowed: false,
+        why: `this would send private content (from ${leak.source}) over the internet. Nothing ran.`
+      }
+
+    const standing = assessment.standing
+    const risk = assessment.risk
+    const allowedBefore =
+      !assessment.alwaysAsks &&
+      risk === 'write' &&
+      (store.isAlwaysAllowed(ctx.taskId, name) ||
+        (standing ? store.hasStanding(standing.folder, standing.command) : false))
+
+    if (risk === 'external' || (risk === 'write' && !allowedBefore)) {
+      const canAlways = risk === 'write' && !assessment.alwaysAsks
+      const answer = await waitFor(ctx, {
+        callId,
+        tool: name,
+        risk,
+        summary: assessment.summary,
+        args: input,
+        // "Always" is never offered for external actions or the always-ask list.
+        canAlways,
+        alwaysLabel: canAlways && standing ? standing.label : null,
+        laptopOnly: laptopOnlyTool || risk === 'external' || !!assessment.alwaysAsks
+      })
+      if (answer === 'cancelled')
+        return { allowed: false, why: 'the task was cancelled before you answered.' }
+      if (answer === 'deny') return { allowed: false, why: 'you denied it.' }
+      if (answer === 'always' && canAlways) {
+        if (standing) store.addStanding(standing.folder, standing.command)
+        else store.allowAlways(ctx.taskId, name)
+      }
+      return { allowed: true, approvedBy: 'you' }
+    }
+    if (risk === 'write')
+      return {
+        allowed: true,
+        approvedBy:
+          standing && store.hasStanding(standing.folder, standing.command)
+            ? 'you (always, in this folder)'
+            : 'you (always, this task)'
+      }
+    return { allowed: true, approvedBy: null }
   }
 
   function toolContext(tool: AnyTool, ctx: CallContext, callId: string): ToolContext {
@@ -431,10 +516,21 @@ export function createPermissionLayer(deps: {
         }
       : denied<DocumentsAccess>('documents')
 
+    const code: CodeAccess = p.code
+      ? {
+          run: (job) =>
+            needService(services.code, 'The coding engine').run(ctx, job, (event) => {
+              if (event.type === 'tool' && event.status === 'completed' && event.title)
+                activity(ctx, 'tool', 'code_task', `Coding engine: ${event.title}`.slice(0, 200))
+            })
+        }
+      : denied<CodeAccess>('the coding engine')
+
     return {
       taskId: ctx.taskId,
       agent: ctx.agent,
       files,
+      code,
       search,
       documents,
       pages,
@@ -473,52 +569,9 @@ export function createPermissionLayer(deps: {
       } catch {
         assessment = { risk: tool.risk, summary: `Run ${tool.name}` }
       }
-      if (assessment.refuse) return refuse(call, ctx, assessment.refuse)
-      // Private content on its way out is blocked before the user is even asked (security.md A3).
-      const leak = assessment.outgoing ? state.privacy.leak(assessment.outgoing) : null
-      if (leak)
-        return refuse(
-          call,
-          ctx,
-          `this would send private content (from ${leak.source}) over the internet. Nothing ran.`
-        )
-
-      let approvedBy: string | null = null
-      const standing = assessment.standing
-      const risk = assessment.risk
-      const allowedBefore =
-        !assessment.alwaysAsks &&
-        risk === 'write' &&
-        (store.isAlwaysAllowed(ctx.taskId, tool.name) ||
-          (standing ? store.hasStanding(standing.folder, standing.command) : false))
-
-      if (risk === 'external' || (risk === 'write' && !allowedBefore)) {
-        const canAlways = risk === 'write' && !assessment.alwaysAsks
-        const answer = await waitFor(ctx, {
-          callId: call.id,
-          tool: tool.name,
-          risk,
-          summary: assessment.summary,
-          args: call.input,
-          // "Always" is never offered for external actions or the always-ask list.
-          canAlways,
-          alwaysLabel: canAlways && standing ? standing.label : null,
-          laptopOnly: tool.laptopOnly || risk === 'external' || !!assessment.alwaysAsks
-        })
-        if (answer === 'cancelled')
-          return refuse(call, ctx, 'the task was cancelled before you answered.')
-        if (answer === 'deny') return refuse(call, ctx, 'you denied it.')
-        if (answer === 'always' && canAlways) {
-          if (standing) store.addStanding(standing.folder, standing.command)
-          else store.allowAlways(ctx.taskId, tool.name)
-        }
-        approvedBy = 'you'
-      } else if (risk === 'write') {
-        approvedBy =
-          standing && store.hasStanding(standing.folder, standing.command)
-            ? 'you (always, in this folder)'
-            : 'you (always, this task)'
-      }
+      const gated = await gate(ctx, call.id, tool.name, call.input, assessment, !!tool.laptopOnly)
+      if (!gated.allowed) return refuse(call, ctx, gated.why)
+      const approvedBy = gated.approvedBy
 
       try {
         const result = await tool.run(call.input, toolContext(tool, ctx, call.id))
@@ -607,7 +660,22 @@ export function createPermissionLayer(deps: {
       Object.assign(services, more)
     },
 
-    isLocalOnly: (taskId) => services.localOnlyTasks?.has(taskId) ?? false
+    isLocalOnly: (taskId) => services.localOnlyTasks?.has(taskId) ?? false,
+
+    async decide(ctx, request) {
+      const decision = await gate(
+        ctx,
+        request.callId,
+        request.tool,
+        request.input,
+        request.assessment,
+        false
+      )
+      if (!decision.allowed)
+        activity(ctx, 'refused', request.tool, `Refused ${request.tool}: ${decision.why}`)
+      else activity(ctx, 'tool', request.tool, request.assessment.summary, decision.approvedBy)
+      return decision
+    }
   }
 }
 

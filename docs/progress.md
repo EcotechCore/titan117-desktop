@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 4 is done (19 Nov 2026). Phase 6's check is met; phase 6 waits for OCR. Phase 5 waits for signing, a Mac and the portal's error screens. **Next step:** the owner's open choices (OCR's language files, Gmail's route, code signing), then the rest of phase 5. Production waits (§52).
+**Now:** phase 7 has started (20 Nov 2026): the coding engine (OpenCode) runs behind our approvals and model router, and Titan hands it coding jobs with `code_task`. Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro for the portal's error screens. **Next step:** phase 7's code builder screen (diff review), git and pull requests (needs the GitHub App, owner checklist). Production waits (§52).
 
 ## Phases
 
@@ -14,8 +14,8 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 3 | Titan and memory | Done | 15 Nov 2026 | 15 Nov 2026 |
 | 4 | Web search and artifacts | Done | 15 Nov 2026 | 19 Nov 2026 |
 | 5 | Install and setup | In progress | 15 Nov 2026 | |
-| 6 | Folder agent | In progress | 16 Nov 2026 | |
-| 7 | Coding engine and code builder | Not started | | |
+| 6 | Folder agent | Done | 16 Nov 2026 | 20 Nov 2026 |
+| 7 | Coding engine and code builder | In progress | 20 Nov 2026 | |
 | 8 | App builder: web | Not started | | |
 | 9 | App builder: mobile and desktop | Not started | | |
 | 10 | Sidebar apps | Not started | | |
@@ -31,6 +31,29 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 20 Nov 2026 · Phase 7 started: the coding engine (OpenCode) and code_task
+
+Built on `phase-7-coding-engine` (from `phase-6-ocr`). Decisions §53; the owner chose to ship OpenCode unchanged despite its LGPL runtime, and to download it on first use.
+
+- **Download (`lib/code/components.ts`):** OpenCode 1.19.6 from npm and ripgrep 15.1.0 from GitHub, the first time the code builder is used, each checked against a hash in the code before unpacking (a tar reader of our own for npm's `.tgz`, fflate for ripgrep's zip). About 80 MB.
+- **The adapter (`lib/code/opencode.ts`):** one OpenCode server per coding task on 127.0.0.1 with a password, its own config, data, cache and home folders, a scrubbed environment with ripgrep on its PATH, and every outside call switched off. Repo and home `.opencode` settings are ignored. Its config folder is prepared so it doesn't install its plugin helper from npm on start. Our one plugin blanks `OPENCODE_` variables (its password, the bridge token) in the commands it runs. It stops 15 minutes after the task's last message.
+- **The model bridge (`lib/code/bridge.ts`):** an OpenAI-compatible server on 127.0.0.1 with a token per task; each step goes through our router (credits, own keys, local models), with a coding budget (150 steps, $3), local-only folders and the offline note.
+- **Asks (`lib/code/assess.ts`, `permissions.decide`):** OpenCode's permission prompts are decided by our layer. Commands go through the shell rules, edits only inside the project (not credentials, not read-only folders), and web, other folders and anything unknown are refused. Approvals show as `code_command` and `code_edit`, and OpenCode is always answered "once". The approval code was split out of `execute` into `gate`, shared by both.
+- **The tool:** `code_task` (build or plan mode) for Titan; changed files come from the edits we approved.
+- **Tests:** 11 unit tests (asks, settings, bridge, downloads, changed files) and a denial test for `code_task`; **contract tests against the real program** (`OPENCODE_CONTRACT=1 pnpm test:opencode`, 4): ask then run, a denied edit, settings in the repo and home ignored, commands can't see the password, follow-ups keep the session, and a recording proxy shows nothing reaches the internet. Two of them were checked to fail with the protection removed (npm calls; the password visible). 304 tests pass; typecheck, lint, licences and build pass.
+- **Seen working with a real model** (`pnpm eval:code`, Claude Haiku 5.5 through the development key): a sample repo with three bugs and failing tests; Titan handed it to the coding engine, which ran the tests, read the code, changed `src/shop.js` after approval, and all tests passed with the tests untouched. 4 engine steps, under one cent.
+- **Not done yet in phase 7:** the code builder's own screen (diff review, 13.3), git and pull requests with GitHub sign-in (§25, needs the GitHub App), project memory, sub-agents and the review agent, open in editor, remote tasks, Seatbelt around OpenCode on macOS, other machines (3.15) and the user's own coding tools (13.14). Not checked: the desktop window itself (the tool runs inside the engine the window uses; no new screen yet).
+
+### 20 Nov 2026 · Phase 6 done: OCR for scans and photos (7.3)
+
+Scanned PDF pages and PNG or JPEG photos are read with OCR in English and Romanian, on the laptop (decisions §51.8):
+
+- **How:** pdf.js draws a page with no text layer on a Node canvas (@napi-rs/canvas, MIT); Tesseract.js (Apache 2.0) reads it in a worker thread, stopped after a minute idle. The language files (@tesseract.js-data, MIT, LSTM models, 4.6 MB) ship in the app and are handed over as bytes, so nothing is downloaded. Up to 100 scanned pages per document; pages still without text are counted ("pages without readable text"). Files read before OCR that had scanned pages are read again (a migration).
+- **Electron's utility process:** pdf.js doesn't treat it as Node, so it would draw on a web page's canvas. It now gets the Node canvas and its drawing helpers explicitly; a test makes Node look like that process.
+- **Two Tesseract.js 7 bugs, patched** (`patches/tesseract.js@7.0.0.patch`, in `SOURCES.md`): language data given as bytes was joined by its data instead of its code; and in Node the "LSTM only" flag never picked the LSTM builds.
+- **Packaging:** Tesseract, its WebAssembly, the language files and the canvas sit outside the app archive; only the LSTM builds and language files ship (about 63 MB unpacked in all). Checked in the packaged app: a utility process reads a Romanian line with the shipped files.
+- **Checked:** 292 tests (5 new); in the built app a folder with a two-page scanned lease and a phone photo of an invoice is read, and "monthly rent" finds the lease's page 2. Not checked: the packaged app end to end, which opens at sign-in (production waits, §52).
 
 ### 19 Nov 2026 · Dependencies updated
 

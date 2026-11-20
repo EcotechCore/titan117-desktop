@@ -11,7 +11,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
     "test": "vitest run",
-    "eval:titan": "vitest run -c vitest.live.config.mts",
+    "eval:titan": "vitest run -c vitest.live.config.mts test/live/titan.live.ts",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "pnpm typecheck && electron-vite build",
@@ -20,7 +20,9 @@
     "postinstall": "install-electron && electron-builder install-app-deps",
     "build:unpack": "pnpm build && electron-builder --dir",
     "build:win": "pnpm build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac"
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "test:opencode": "vitest run test/code-engine.contract.test.ts",
+    "eval:code": "vitest run -c vitest.live.config.mts test/live/code.live.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.8.0",
@@ -28,6 +30,10 @@
     "@huggingface/transformers": "4.3.2",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@mozilla/readability": "^0.6.0",
+    "@napi-rs/canvas": "^1.1.1",
+    "@opencode-ai/sdk": "1.19.6",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/ron": "^1.0.0",
     "docx": "^9.15.4",
     "electron-updater": "6.8.11",
     "exceljs": "^4.4.0",
@@ -39,7 +45,8 @@
     "pdfjs-dist": "^6.5.438",
     "playwright-core": "1.65.1",
     "postal-mime": "^4.2.1",
-    "pptxgenjs": "^4.0.1"
+    "pptxgenjs": "^4.0.1",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.1",
