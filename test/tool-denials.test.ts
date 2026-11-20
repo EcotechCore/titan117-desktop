@@ -21,6 +21,9 @@ import { createPageReader } from '../src/engine/lib/read'
 import { createSearchService } from '../src/engine/lib/search'
 import { createDocIndex } from '../src/engine/lib/doc-index'
 import { tempFolder, until } from './helpers'
+import { createCodeService } from '../src/engine/lib/code/service'
+import type { CodingEngine } from '../src/engine/lib/code/opencode'
+import type { Router } from '../src/engine/router'
 
 interface Bench {
   allowed: string
@@ -101,6 +104,17 @@ function bench(
     folders: () => ({ allowed: options.noFolders ? [] : [allowed], core: [] }),
     services
   })
+  if (!options.noServices)
+    layer.useServices({
+      code: createCodeService({
+        engine: fakeCodeEngine,
+        router: { route: () => ({ source: 'local' }) } as unknown as Router,
+        store,
+        permissions: layer,
+        folders: () => ({ allowed: [allowed], core: [] }),
+        log: createLogger(db, null)
+      })
+    })
   const task = store.createTask({ title: 't', agent: 'Titan', model: 'm' })
   let n = 0
 
@@ -161,7 +175,55 @@ const SECRET_TEXT =
   'Client Ionescu owes 48,250 EUR for the Brasov warehouse lease, due on the 30th of November.'
 
 // tool name → its denial tests.
+/**
+ * Stands in for OpenCode: asks to change a file outside the project, then to
+ * delete a folder, and reports what it was told.
+ */
+const fakeCodeEngine: CodingEngine = {
+  async run(run) {
+    const ask = (
+      permission: string,
+      patterns: string[],
+      metadata = {}
+    ): ReturnType<typeof run.decide> =>
+      run.decide({ id: permission, sessionID: 's', permission, patterns, metadata, always: [] })
+    const outside = await ask('edit', [join(run.repo, '..', 'elsewhere.txt')])
+    const web = await ask('webfetch', ['https://evil.example'])
+    const remove = await ask('bash', ['rm -rf build'], { command: 'rm -rf build' })
+    return {
+      status: 'done',
+      text: JSON.stringify({ outside: outside.allowed, web: web.allowed, remove: remove.allowed }),
+      files: []
+    }
+  },
+  release: async () => {},
+  shutdown: async () => {}
+}
+
 const DENIALS: Record<string, () => Promise<void>> = {
+  async code_task() {
+    const b = bench()
+    // A project folder outside the allowed folders: refused before anything starts.
+    expect(
+      (await b.run({ name: 'code_task', input: { folder: b.outside, request: 'fix it' } })).status
+    ).toBe('refused')
+    // Inside: the engine's edit outside the project and its web request are refused
+    // without asking; deleting asks (always-ask list) and the user says no.
+    const done = await b.run(
+      { name: 'code_task', input: { folder: join(b.allowed, 'docs'), request: 'clean up' } },
+      'deny'
+    )
+    expect(done.status).toBe('done')
+    expect(done.output).toContain('{"outside":false,"web":false,"remove":false}')
+    expect(b.store.listApprovals({ taskId: b.taskId }).map((a) => a.tool)).toEqual(['code_command'])
+    expect(existsSync(join(b.allowed, 'elsewhere.txt'))).toBe(false)
+    // Without the coding engine's permission a tool gets nothing.
+    const none = bench({ noServices: true })
+    expect(
+      (await none.run({ name: 'code_task', input: { folder: none.allowed, request: 'x' } })).status
+    ).toBe('refused')
+  },
+
   async list_folder() {
     const b = bench()
     expect((await b.run({ name: 'list_folder', input: { path: b.outside } })).status).toBe(

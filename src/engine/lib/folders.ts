@@ -135,6 +135,22 @@ export async function resolveAllowed(policy: FolderPolicy, path: string): Promis
   return resolveAllowedPath(policy, path)
 }
 
+/**
+ * The checks a write gets, for a program we run (the coding engine): inside
+ * an allowed folder, not the app's own, not credentials, not read-only.
+ * Throws PermissionError; returns the real path.
+ */
+export async function checkWritable(policy: FolderPolicy, path: string): Promise<string> {
+  const real = await resolveAllowedPath(policy, path)
+  folderRules(policy, real, true)
+  return real
+}
+
+/** Whether `child` is `parent` or inside it (both real paths). */
+export function isInsideFolder(child: string, parent: string): boolean {
+  return isInside(comparable(child), comparable(parent))
+}
+
 async function resolveAllowedPath(policy: FolderPolicy, path: string): Promise<string> {
   if (typeof path !== 'string' || path.length === 0 || path.includes('\0'))
     throw new PermissionError('That is not a valid path.')

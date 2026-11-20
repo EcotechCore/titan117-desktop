@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 6 is done (20 Nov 2026). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro for the portal's error screens. **Next step:** phase 7, the coding engine and code builder. Production waits (§52).
+**Now:** phase 7 has started (20 Nov 2026): the coding engine (OpenCode) runs behind our approvals and model router, and Titan hands it coding jobs with `code_task`. Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro for the portal's error screens. **Next step:** phase 7's code builder screen (diff review), git and pull requests (needs the GitHub App, owner checklist). Production waits (§52).
 
 ## Phases
 
@@ -15,7 +15,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 4 | Web search and artifacts | Done | 15 Nov 2026 | 19 Nov 2026 |
 | 5 | Install and setup | In progress | 15 Nov 2026 | |
 | 6 | Folder agent | Done | 16 Nov 2026 | 20 Nov 2026 |
-| 7 | Coding engine and code builder | Not started | | |
+| 7 | Coding engine and code builder | In progress | 20 Nov 2026 | |
 | 8 | App builder: web | Not started | | |
 | 9 | App builder: mobile and desktop | Not started | | |
 | 10 | Sidebar apps | Not started | | |
@@ -31,6 +31,19 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 20 Nov 2026 · Phase 7 started: the coding engine (OpenCode) and code_task
+
+Built on `phase-7-coding-engine` (from `phase-6-ocr`). Decisions §53; the owner chose to ship OpenCode unchanged despite its LGPL runtime, and to download it on first use.
+
+- **Download (`lib/code/components.ts`):** OpenCode 1.19.6 from npm and ripgrep 15.1.0 from GitHub, the first time the code builder is used, each checked against a hash in the code before unpacking (a tar reader of our own for npm's `.tgz`, fflate for ripgrep's zip). About 80 MB.
+- **The adapter (`lib/code/opencode.ts`):** one OpenCode server per coding task on 127.0.0.1 with a password, its own config, data, cache and home folders, a scrubbed environment with ripgrep on its PATH, and every outside call switched off. Repo and home `.opencode` settings are ignored. Its config folder is prepared so it doesn't install its plugin helper from npm on start. Our one plugin blanks `OPENCODE_` variables (its password, the bridge token) in the commands it runs. It stops 15 minutes after the task's last message.
+- **The model bridge (`lib/code/bridge.ts`):** an OpenAI-compatible server on 127.0.0.1 with a token per task; each step goes through our router (credits, own keys, local models), with a coding budget (150 steps, $3), local-only folders and the offline note.
+- **Asks (`lib/code/assess.ts`, `permissions.decide`):** OpenCode's permission prompts are decided by our layer. Commands go through the shell rules, edits only inside the project (not credentials, not read-only folders), and web, other folders and anything unknown are refused. Approvals show as `code_command` and `code_edit`, and OpenCode is always answered "once". The approval code was split out of `execute` into `gate`, shared by both.
+- **The tool:** `code_task` (build or plan mode) for Titan; changed files come from the edits we approved.
+- **Tests:** 11 unit tests (asks, settings, bridge, downloads, changed files) and a denial test for `code_task`; **contract tests against the real program** (`OPENCODE_CONTRACT=1 pnpm test:opencode`, 4): ask then run, a denied edit, settings in the repo and home ignored, commands can't see the password, follow-ups keep the session, and a recording proxy shows nothing reaches the internet. Two of them were checked to fail with the protection removed (npm calls; the password visible). 304 tests pass; typecheck, lint, licences and build pass.
+- **Seen working with a real model** (`pnpm eval:code`, Claude Haiku 5.5 through the development key): a sample repo with three bugs and failing tests; Titan handed it to the coding engine, which ran the tests, read the code, changed `src/shop.js` after approval, and all tests passed with the tests untouched. 4 engine steps, under one cent.
+- **Not done yet in phase 7:** the code builder's own screen (diff review, 13.3), git and pull requests with GitHub sign-in (§25, needs the GitHub App), project memory, sub-agents and the review agent, open in editor, remote tasks, Seatbelt around OpenCode on macOS, other machines (3.15) and the user's own coding tools (13.14). Not checked: the desktop window itself (the tool runs inside the engine the window uses; no new screen yet).
 
 ### 20 Nov 2026 · Phase 6 done: OCR for scans and photos (7.3)
 

@@ -56,6 +56,15 @@ export interface ToolPermissions {
   artifacts?: 'read' | 'write'
   /** The document folders' index (§7). */
   documents?: boolean
+  /** The coding engine, in a project folder (§13, decisions §53). */
+  code?: boolean
+}
+
+/** The code builder's view of the coding engine (§13): every change it makes still asks. */
+export interface CodeAccess {
+  run(
+    job: import('../../lib/code/service').CodeJob
+  ): Promise<import('../../lib/code/opencode').CodeResult & { costUsd: number; steps: number }>
 }
 
 /** The folder agent's view of the document folders (§7, decisions §51). */
@@ -91,6 +100,7 @@ export interface ToolContext {
   pages: PageAccess
   artifacts: ArtifactAccess
   documents: DocumentsAccess
+  code: CodeAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.

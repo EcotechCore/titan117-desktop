@@ -192,6 +192,9 @@ importers:
       '@napi-rs/canvas':
         specifier: ^1.1.1
         version: 1.1.1
+      '@opencode-ai/sdk':
+        specifier: 1.19.6
+        version: 1.19.6
       '@tesseract.js-data/eng':
         specifier: ^1.0.0
         version: 1.0.0
@@ -994,6 +997,9 @@ packages:
     engines: {node: '>=20.0.0'}
     cpu: [x64]
     os: [win32]
+
+  '@opencode-ai/sdk@1.19.6':
+    resolution: {integrity: sha512-jYV7s+Tlc5jDILOyWFIgISkPlfk7z3ByqeC8/T9aESZBgSZosQR784U2UoM3ZrJ8S0LJ2cB+IA9xZN7Jj8tnhQ==}
 
   '@opentelemetry/api@1.10.0':
     resolution: {integrity: sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ==}
@@ -5274,6 +5280,10 @@ snapshots:
 
   '@node-llama-cpp/win-x64@3.22.3':
     optional: true
+
+  '@opencode-ai/sdk@1.19.6':
+    dependencies:
+      cross-spawn: 7.0.6
 
   '@opentelemetry/api@1.10.0': {}
 

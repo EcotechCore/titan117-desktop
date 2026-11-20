@@ -22,6 +22,7 @@ All confirmed by the owner on 18 Nov 2026 (decisions §44–§51), with one addi
 - [x] **§51, the folder agent (phase 6):** document folders read-only for agents by default; reading in Node only (no Python: Docling and MarkItDown not used); citations by page, or by section heading for Word; search with word stems plus meaning (multilingual-e5-small, MIT, about 120 MB downloaded once); a task that touched a local-models-only folder never goes back to a cloud model.
 - [x] **OCR for scanned documents:** decided 20 Nov 2026: the language files ship inside the app (decisions §51.8). Built the same day.
 - [x] **Phase 5 started before phase 4's check passed**, at your request on 15 Nov 2026: confirm that stands.
+- [ ] **§53, the coding engine (phase 7), items 3–9:** one OpenCode server per coding task with a password; its model steps through our router (a coding job's budget: 150 steps, $3); our approvals decide every command and change it makes, and it never remembers an "always" of its own; its own internet calls, plugins and repo or home settings switched off; Codex and Cursor stay experimental. (Items 1 and 2, shipping OpenCode unchanged and downloading it on first use, you decided on 20 Nov 2026.)
 - [ ] **The repos go private** (decided 20 Nov 2026; no rush). Your contribution graph keeps counting the commits if "Private contributions" is on in your GitHub profile settings; others see only the counts, not the repos.
 
 ## Step 3 · Try it yourself (an afternoon)
@@ -44,6 +45,7 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [ ] **A Windows code signing certificate: you start on Monday 23 Nov 2026** (a reminder is set for that morning). Needed sooner than planned: Windows' Smart App Control blocks our unsigned installer outright (it did on this laptop on 15 Nov 2026), and auto-update only installs updates signed by the same publisher.
 - [ ] **Where updates are published** (an HTTPS address for signed releases, for example a GitHub release or our own storage); then set `PRODUCTION.updateUrl` in `src/main/index.ts` of the desktop app.
 - [ ] Once signed: **install on a clean Windows** (a virtual machine without the Visual C++ runtime) to see Microsoft's runtime step run.
+- [ ] **Register our GitHub App** under the EcotechCore organisation (needed for pull requests in phase 7, decisions §25): Settings → Developer settings → GitHub Apps → New. Turn on **device flow**; no webhook; no client secret needed; "Expire user authorization tokens" on. Permissions (repository): Contents read and write, Pull requests read and write, Metadata read. Then send me the app's **client ID** (it isn't secret).
 - [ ] Mailboxes `support@`, `privacy@` and **`abuse@titan117.com`** (the Digital Services Act contact point for shared pages), or change the addresses in `apps/web/content/legal.ts`.
 - [ ] Stripe: the terms address in public details and "Successful payments" customer emails on, then switch on `STRIPE_REQUIRE_TERMS`.
 - [ ] Hard spending caps on our OpenRouter account and every paid provider, alerts at 50% and 80% (guardrails §3).
@@ -53,11 +55,13 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 ## Step 5 · Legal and business (before launch)
 
 - [ ] Company details on the legal pages: registered name, registration number, VAT number, address (`apps/web/content/legal.ts`).
+- [ ] **Ask Modal in writing** whether Titan117 users may run jobs on their own Modal accounts through our app (their terms limit use to the customer's own internal business; decisions §53.9). Needed before cloud sandboxes (3.15) are built, later in phase 7.
 - [ ] The Romanian lawyer's review of the legal pages, now including the content rules, takedown process and **comments** for shared pages.
 - [ ] **Stripe's written OK** that our credits are allowed (before live mode).
 - [ ] The trademark lawyer's short opinion, then file the EU trademark "TITAN117" in classes 9 and 42 (decisions §33.7).
 - [ ] One resale rule for every paid service other than OpenRouter (open decision 5; the default today is the user's own account, §31).
 - [ ] **Videos for the website's home page and Learn lessons** (placeholders since phase 2), or say who makes them.
+- [ ] **The licence review before launch includes OpenCode's program:** OpenCode is MIT, and its Bun runtime contains JavaScriptCore (LGPL-2), shipped unchanged with its notices (decisions §53.1).
 - [ ] Visual C++ redistributable: shipping it is allowed under a Visual Studio licence (Community is free for small companies); confirm one is in place. Already fetched with your OK: 14.44.35211, signed by Microsoft.
 
 ## Step 6 · Waiting on vendors

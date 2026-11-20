@@ -121,7 +121,7 @@ injathons` (next to the repos, not in the references folder) | ours | `f9d719e` 
 
 | Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
 |---|---|---|---|---|---|---|
-| [anomalyco/opencode](https://github.com/anomalyco/opencode) | **The coding engine** (headless server, TypeScript SDK) | MIT | Lib | `code/opencode` | MIT | `22e771f5893e` |
+| [anomalyco/opencode](https://github.com/anomalyco/opencode) | **The coding engine** (headless server, TypeScript SDK) | MIT | Lib (the program, unchanged; its Bun runtime contains LGPL-2 JavaScriptCore, decisions §53) | `code/opencode` | MIT (checked again 20 Nov 2026 at v1.19.6) | `f4e363c` (tag `v1.19.6`) |
 | [cline/cline](https://github.com/cline/cline) | Approval flow, diff review UX | Apache 2.0 | Code | `code/cline` | Apache 2.0 | `a42df8c8d5fd` |
 | [Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode) | Orchestrator and sub-agent modes | Apache 2.0 | Code | `code/kilocode` | MIT | `1552877e82ce` |
 | [Aider-AI/aider](https://github.com/Aider-AI/aider) | Repo map, git-first edits | Apache 2.0 | Ideas | `code/aider` | Apache 2.0 | `5dc9490bb35f` |
