@@ -37,7 +37,39 @@ describe('open in your editor', () => {
         { id: 'vscode', name: 'VS Code', program: 'C:\\Apps\\VS Code\\Code.exe' },
         { id: 'cursor', name: 'Cursor', program: 'C:\\Apps\\Cursor\\Cursor.exe' }
       ])
-      expect(await findEditors(async () => null)).toEqual([])
+      expect(
+        await findEditors(
+          async () => null,
+          () => false
+        )
+      ).toEqual([])
+    }
+  )
+
+  it.runIf(process.platform === 'win32')(
+    'finds the newest JetBrains IDE in Program Files or the Toolbox folder',
+    async () => {
+      const pf = join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'JetBrains')
+      const lad = join(process.env['LOCALAPPDATA'] ?? '', 'Programs')
+      const present = new Set([
+        join(pf, 'IntelliJ IDEA 2025.3', 'bin', 'idea64.exe'),
+        join(pf, 'IntelliJ IDEA 2026.2', 'bin', 'idea64.exe'),
+        join(lad, 'WebStorm', 'bin', 'webstorm64.exe')
+      ])
+      const editors = await findEditors(
+        async () => null,
+        (path) => present.has(path),
+        (dir) =>
+          dir === pf
+            ? ['IntelliJ IDEA 2025.3', 'IntelliJ IDEA 2026.2', 'Other']
+            : dir === lad
+              ? ['WebStorm']
+              : []
+      )
+      expect(editors.map((e) => [e.id, e.program])).toEqual([
+        ['intellij', join(pf, 'IntelliJ IDEA 2026.2', 'bin', 'idea64.exe')],
+        ['webstorm', join(lad, 'WebStorm', 'bin', 'webstorm64.exe')]
+      ])
     }
   )
 })

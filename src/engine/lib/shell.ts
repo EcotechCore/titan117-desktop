@@ -207,8 +207,11 @@ export function seatbeltProfile(options: {
   network: boolean
   /** Scripts may reach the local tool API on this laptop. */
   localTools?: boolean
+  /** Folders inside the hidden ones that may still be read (the coding engine's own home). */
+  readable?: string[]
 }): string {
   const hidden = [...credentialFolders(), ...options.core]
+  const readable = options.readable ?? []
   return [
     '(version 1)',
     '(deny default)',
@@ -224,7 +227,11 @@ export function seatbeltProfile(options: {
     `(allow file-read* (require-all (subpath "/") ${hidden
       .map((p) => `(require-not (subpath ${sbString(p)}))`)
       .join(' ')}))`,
-    `(allow file-write* (literal "/dev/null") (literal "/dev/tty") ${options.writable
+    // Later rules win in Seatbelt: these few folders stay readable even inside a hidden one.
+    ...(readable.length
+      ? [`(allow file-read* ${readable.map((p) => `(subpath ${sbString(p)})`).join(' ')})`]
+      : []),
+    `(allow file-write*(literal "/dev/null") (literal "/dev/tty") ${options.writable
       .map((p) => `(subpath ${sbString(p)})`)
       .join(' ')})`,
     ...(options.network

@@ -14,6 +14,7 @@ import { artifactTools } from './artifacts'
 import { documentTools } from './documents'
 import { codeReview, codeTask } from './code'
 import { gitTools } from './git'
+import { serverTools } from './servers'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyTool = ToolDefinition<any>
@@ -29,6 +30,7 @@ export const builtInTools: AnyTool[] = [
   codeTask,
   codeReview,
   ...gitTools,
+  ...serverTools,
   ...memoryTools,
   ...speechTools
 ]

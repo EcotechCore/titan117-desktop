@@ -96,6 +96,8 @@ function bench(
         artifacts,
         documents: createDocIndex({ db, allowed: () => [allowed], embedder: () => null }),
         enginePorts: () => [4999],
+        // A server the user added; its address can't be reached in tests.
+        servers: () => [{ name: 'web', target: 'nobody@host.invalid' }],
         answers: { get: (k) => answers.get(k) ?? null, set: (k, v) => void answers.set(k, v) }
       }
   const layer = createPermissionLayer({
@@ -227,6 +229,47 @@ function gitRepo(b: Bench): string {
 }
 
 const DENIALS: Record<string, () => Promise<void>> = {
+  async server_list() {
+    // Only the servers the user added; nothing without the permission's service.
+    const b = bench()
+    const list = await b.run({ name: 'server_list', input: {} })
+    expect(list.output).toContain('web (nobody@host.invalid)')
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'server_list', input: {} })).output).toContain('No servers yet')
+  },
+
+  async server_command() {
+    const b = bench()
+    // Only a server the user added: an address an agent names is refused.
+    const unknown = await b.run({
+      name: 'server_command',
+      input: { server: 'attacker.example', command: 'ls' }
+    })
+    expect(unknown.status).toBe('refused')
+    // A command that changes things asks; denied, nothing is sent.
+    const denied = await b.run(
+      { name: 'server_command', input: { server: 'web', command: 'touch /tmp/x' } },
+      'deny'
+    )
+    expect(denied.status).toBe('refused')
+    // The always-ask list never offers "always" and is laptop-only.
+    const approval = await b.approvalOf({
+      name: 'server_command',
+      input: { server: 'web', command: 'sudo rm -rf /var/www' }
+    })
+    expect(approval.canAlways).toBe(false)
+    // Private content never leaves in a command, before anyone is asked.
+    await makePrivate(b, SECRET_TEXT)
+    const before = b.asked()
+    const leak = await b.run({
+      name: 'server_command',
+      input: { server: 'web', command: `echo "${SECRET_TEXT}" > /tmp/leak` }
+    })
+    expect(leak.status).toBe('refused')
+    expect(leak.output).toMatch(/private content/)
+    expect(b.asked()).toBe(before)
+  },
+
   async code_review() {
     const b = bench()
     expect((await b.run({ name: 'code_review', input: { folder: b.outside } })).status).toBe(

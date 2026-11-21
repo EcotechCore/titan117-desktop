@@ -1717,3 +1717,8 @@ textarea.edit {
   flex-wrap: wrap;
   gap: 8px;
 }
+.code-user {
+  font: 600 15px/1.4 var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--accent-deep);
+}

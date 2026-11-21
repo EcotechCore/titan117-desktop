@@ -11,6 +11,14 @@ export interface AccountView {
   enforced: boolean
 }
 
+interface GitHubSignInStatus {
+  configured: boolean
+  signedIn: boolean
+  login: string | null
+  pending: { userCode: string; verificationUri: string; expiresAt: number } | null
+  problem: string | null
+}
+
 declare global {
   interface Window {
     titan117: {
@@ -20,6 +28,14 @@ declare global {
       /** Opens the folder dialog; true when the user allowed a folder. */
       addFolder(): Promise<boolean>
       removeFolder(path: string): Promise<boolean>
+      /** Sign in with GitHub through our GitHub App (decisions §25); the token stays in the keychain. */
+      github: {
+        status(): Promise<GitHubSignInStatus>
+        signIn(): Promise<GitHubSignInStatus>
+        cancel(): Promise<GitHubSignInStatus>
+        signOut(): Promise<GitHubSignInStatus>
+        onChange(listener: () => void): void
+      }
       /** Open a project in the user's editor (13.12); `folder` opens it in Explorer or Finder. */
       code: {
         editors(): Promise<{ id: string; name: string }[]>

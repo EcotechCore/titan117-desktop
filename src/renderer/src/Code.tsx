@@ -10,6 +10,8 @@ import { useCallback, useEffect, useState } from 'react'
 import type { EngineState } from '../../shared/protocol'
 import { codeRequest, diffCounts, reviewRequest } from './code-lib'
 import { Diff } from './Diff'
+import { ServersSection } from './Servers'
+import { GitHubSection } from './GitHub'
 import type { EngineClient } from './engine'
 import { folderName } from './format'
 import { Icon } from './ui'
@@ -22,6 +24,20 @@ interface GitState {
   ahead: number
   behind: number
   changes: { path: string; status: string }[]
+}
+
+interface ToolsState {
+  tools: {
+    id: string
+    name: string
+    installed: boolean
+    signedIn: boolean | null
+    experimental: boolean
+    enabled: boolean
+    killed: boolean
+    signIn: string
+  }[]
+  notOffered: { name: string; why: string }[]
 }
 
 interface CodeState {
@@ -64,6 +80,29 @@ export function CodeView({
   const [mode, setMode] = useState<'plan' | 'build'>('plan')
   const [showDiff, setShowDiff] = useState(false)
   const [editors, setEditors] = useState<{ id: string; name: string }[]>([])
+  // The user's own coding tools (13.14): what's on this laptop, signed in and turned on.
+  const [toolState, setToolState] = useState<ToolsState | null>(null)
+  const tools = (toolState?.tools ?? []).filter(
+    (t) => t.installed && t.signedIn !== false && t.enabled
+  )
+  const [engineId, setEngineId] = useState('titan117')
+  useEffect(() => {
+    let live = true
+    client
+      ?.get<ToolsState>('/v1/code/tools')
+      .then((r) => live && setToolState(r))
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [client])
+
+  function setToolOn(id: string, on: boolean): void {
+    client
+      ?.send<ToolsState>('PUT', '/v1/code', { tool: id, enabled: on })
+      .then(setToolState)
+      .catch(onProblem)
+  }
 
   useEffect(() => {
     let live = true
@@ -219,6 +258,20 @@ export function CodeView({
           )}
 
           <label className="field">
+            {tools.length > 0 && (
+              <select
+                value={engineId}
+                onChange={(e) => setEngineId(e.target.value)}
+                aria-label="Which coding engine"
+              >
+                <option value="titan117">Titan117’s coding engine</option>
+                {tools.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} (your own plan)
+                  </option>
+                ))}
+              </select>
+            )}
             The job
             <textarea
               rows={5}
@@ -250,7 +303,14 @@ export function CodeView({
               className="btn btn-primary"
               disabled={!folder || !request.trim()}
               onClick={() => {
-                onStart(codeRequest(git?.root ?? folder, request, mode))
+                onStart(
+                  codeRequest(
+                    git?.root ?? folder,
+                    request,
+                    mode,
+                    tools.find((t) => t.id === engineId) ?? null
+                  )
+                )
                 setRequest('')
               }}
             >
@@ -282,6 +342,57 @@ export function CodeView({
               works offline with local models.
             </p>
           )}
+
+          {toolState && (
+            <>
+              <h2 className="section">Your own coding tools</h2>
+              <p className="muted">
+                A coding tool you already use can do the job instead, on your own plan: Titan117
+                starts the tool’s own program, and you sign in to it yourself in the tool’s own way.
+                Its changes still wait for your OK here.
+              </p>
+              {toolState.tools.map((t) => (
+                <div key={t.id} className="row">
+                  <div className="row-main">
+                    <p className="row-title">
+                      {t.name}
+                      {t.experimental && <span className="tag">experimental</span>}
+                    </p>
+                    <p className="muted">
+                      {t.killed
+                        ? 'Switched off by Titan117 for now: its maker’s terms changed or are being checked. Titan117’s own engine does the job instead.'
+                        : !t.installed
+                          ? 'Not installed on this laptop.'
+                          : t.signedIn === false
+                            ? `Installed, not signed in. In a terminal: ${t.signIn}`
+                            : t.signedIn === null
+                              ? 'Installed. Its sign-in is checked when a job starts.'
+                              : 'Installed and signed in.'}
+                      {t.experimental &&
+                        ' Its maker’s terms don’t yet say whether another app may run it, so it asks once before each job and works in its own restricted mode.'}
+                    </p>
+                  </div>
+                  {t.experimental && (
+                    <label className="choice">
+                      <input
+                        type="checkbox"
+                        checked={t.enabled}
+                        onChange={(e) => setToolOn(t.id, e.target.checked)}
+                      />{' '}
+                      On
+                    </label>
+                  )}
+                </div>
+              ))}
+              {toolState.notOffered.map((n) => (
+                <p key={n.name} className="faint">
+                  Not offered: {n.name}. {n.why}
+                </p>
+              ))}
+            </>
+          )}
+          <GitHubSection onProblem={onProblem} />
+          <ServersSection client={client} onProblem={onProblem} />
         </>
       )}
     </div>

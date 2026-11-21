@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 7's check is met (20 Nov 2026): the code builder fixed four real issues in a sample repo and opened a pull request on GitHub. Phase 7 stays open for the user's own coding tools (13.14), other machines (3.15), Seatbelt on macOS and GitHub sign-in through our app. Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Next step:** phase 7's remaining parts, or phase 8 (the app builder for the web). Production waits (§52).
+**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Next step:** phase 8, the app builder for the web. Production waits (§52).
 
 ## Phases
 
@@ -15,7 +15,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 4 | Web search and artifacts | Done | 15 Nov 2026 | 19 Nov 2026 |
 | 5 | Install and setup | In progress | 15 Nov 2026 | |
 | 6 | Folder agent | Done | 16 Nov 2026 | 20 Nov 2026 |
-| 7 | Coding engine and code builder | In progress | 20 Nov 2026 | |
+| 7 | Coding engine and code builder | Done (except what waits outside the code) | 20 Nov 2026 | 21 Nov 2026 |
 | 8 | App builder: web | Not started | | |
 | 9 | App builder: mobile and desktop | Not started | | |
 | 10 | Sidebar apps | Not started | | |
@@ -31,6 +31,40 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 21 Nov 2026 · Phase 7: your own coding tools, servers over SSH, GitHub sign-in, Seatbelt, JetBrains
+
+On `phase-7-own-tools`. Decisions §55 (to be confirmed).
+
+- **Your own coding tools (13.14)** (`lib/code/own-tools.ts`, `lib/code/approval-mcp.ts`):
+  - **Claude Code:** its permission prompts go through a tiny MCP endpoint of ours to the permission layer; its web tools are off.
+  - **Codex, Cursor's agent, Grok:** experimental and off by default; one approval per job, in their own restricted mode.
+  - **Antigravity and Gemini CLI:** not offered.
+  - **Sign-in:** read only from each tool's status exit code.
+  - **Fallback:** our engine, with a note.
+  - **On the Code screen:** the engine choice, each tool's status, and the on/off switches.
+  - **Kill switch:** the engine reads `/api/v1/kill-switches` from the web app (decisions §20).
+- **Servers over SSH (3.15)** (`lib/ssh.ts`, `tools/servers.ts`):
+  - `server_list` and `server_command`, only for servers added on the Code screen (Your servers).
+  - The user's own SSH setup: no prompts, no unknown hosts, no forwarding.
+  - The shell rules and approvals as on the laptop, with "always" per server; private content never leaves in a command.
+- **Sign in with GitHub** (`main/lib/github.ts`):
+  - The device flow with the client ID only; tokens encrypted with the OS keychain, refreshed in the background without a secret, sent to the engine only.
+  - Pull requests try the sign-in (GitHub's API) first, then GitHub's CLI, then GitHub's page.
+  - The GitHub section on the Code screen says it's waiting for the app's client ID.
+- **macOS:** OpenCode under `sandbox-exec` (`opencodeSeatbelt`), writing only in the project and its own folders. Not run on a Mac yet.
+- **Open in:** IntelliJ IDEA, WebStorm and PyCharm.
+- **Tests:** 340 pass, plus the 4 OpenCode contract tests:
+  - the coding tools, including a stand-in Claude Code whose command reaches our approvals and gets our "no";
+  - SSH arguments and checks;
+  - denial tests for `server_list` and `server_command`;
+  - the GitHub device flow, refresh and API pull requests against a stand-in GitHub;
+  - JetBrains discovery and the Seatbelt profile.
+
+  Typecheck, lint, licences, build and build contents pass.
+- **Seen in the built app** (Playwright, throwaway profile): the Code screen's tools, GitHub and servers sections, and adding a server. No console errors.
+- **Not tested for real:** a real Claude Code, Codex, Cursor's agent or Grok (none is installed on this laptop); a real SSH server; GitHub sign-in (needs the app's client ID); Seatbelt (needs a Mac).
+- **Phase 7 is done** except what waits on the owner or another phase: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac, and remote coding tasks (phase 15).
 
 ### 20 Nov 2026 · Phase 7's check is met
 

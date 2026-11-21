@@ -7,7 +7,13 @@
 import { stat } from 'node:fs/promises'
 
 import { createBudgetMeter, type Budget } from '../../budgets'
-import { checkWritable, isInsideFolder, PermissionError, type FolderPolicy } from '../folders'
+import {
+  checkWritable,
+  isInsideFolder,
+  PermissionError,
+  resolveAllowed,
+  type FolderPolicy
+} from '../folders'
 import { OFFLINE_NOTE } from '../online'
 import type { Logger } from '../log'
 import type { CallContext, PermissionLayer } from '../../permissions'
@@ -15,7 +21,8 @@ import type { Router } from '../../router'
 import type { Store } from '../../store'
 import { projectScope, type MemoryStore } from '../../memory'
 import { projectRootOf } from '../git'
-import { assessAsk } from './assess'
+import { assessAsk, type EngineAsk } from './assess'
+import { OWN_TOOLS, type OwnToolId, type OwnTools } from './own-tools'
 import type { CodeAgent, CodeEvent, CodeResult, CodingEngine } from './opencode'
 
 /** A coding job takes many small steps: more than a chat task, still capped. */
@@ -37,6 +44,8 @@ export interface CodeJob {
   mode: CodeAgent
   /** A review (13.10): every file change is refused, whatever is approved. */
   readOnly?: boolean
+  /** The user's own coding tool to use instead of our engine (13.14). */
+  tool?: OwnToolId
 }
 
 export interface CodeService {
@@ -59,6 +68,8 @@ export function createCodeService(deps: {
   log: Logger
   /** Project memory (13.8). */
   memory?: MemoryStore
+  /** The user's own coding tools (13.14). */
+  ownTools?: OwnTools
   budget?: Budget
 }): CodeService {
   const { store, permissions } = deps
@@ -88,6 +99,73 @@ export function createCodeService(deps: {
         : undefined
       if (system) permissions.sawPrivate(ctx.taskId, system, 'memory', true)
       let seenToolMessages = 0
+
+      // Every ask, from our engine or the user's own tool, is decided by the same rules.
+      const decide = async (ask: EngineAsk): Promise<{ allowed: boolean; why?: string }> => {
+        const assessed = await assessAsk(ask, repo, deps.folders())
+        if (job.readOnly && ask.permission === 'edit')
+          assessed.assessment = {
+            ...assessed.assessment,
+            refuse: 'this is a review: it changes nothing.'
+          }
+        return permissions.decide(ctx, {
+          callId: ask.tool?.callID ?? ask.id,
+          tool: assessed.tool,
+          input: assessed.input,
+          assessment: assessed.assessment
+        })
+      }
+
+      // The user's own coding tool (13.14), on their own plan; our engine is the fallback.
+      let note: string | undefined
+      if (job.tool && deps.ownTools) {
+        const own = await deps.ownTools.run({
+          tool: job.tool,
+          repo,
+          prompt: system ? `${system}\n\n${job.request}` : job.request,
+          mode: job.readOnly ? 'plan' : job.mode,
+          signal: ctx.signal,
+          decide,
+          async readAllowed(path) {
+            try {
+              const real = await resolveAllowed(deps.folders(), path)
+              return isInsideFolder(real, repo)
+            } catch {
+              return false
+            }
+          },
+          approveJob: (summary) =>
+            permissions.decide(ctx, {
+              callId: `own-tool-${job.tool}`,
+              tool: `code_tool_${job.tool}`,
+              input: { tool: job.tool, folder: repo },
+              assessment: { risk: 'external', summary }
+            }),
+          onEvent: (text) => onEvent?.({ type: 'note', text })
+        })
+        if (own.usedTool) {
+          store.log({
+            taskId: ctx.taskId,
+            kind: 'tool',
+            agent: ctx.agent,
+            model: null,
+            tool: 'code_task',
+            summary: `Ran ${OWN_TOOLS.find((t) => t.id === job.tool)?.name ?? job.tool} on your own plan: ${own.status}`,
+            costUsd: 0,
+            approvedBy: null
+          })
+          // Their usage is on the user's own plan: no credits, no steps of ours.
+          return {
+            status: own.status,
+            text: own.text,
+            error: own.error,
+            files: own.files,
+            costUsd: 0,
+            steps: 0
+          }
+        }
+        note = `${own.note ?? 'That coding tool isn’t available.'} Titan117’s own coding engine did the job instead.`
+      }
 
       const result = await deps.engine.run({
         taskId: ctx.taskId,
@@ -140,22 +218,14 @@ export function createCodeService(deps: {
           }
           return turn
         },
-        async decide(ask) {
-          const assessed = await assessAsk(ask, repo, deps.folders())
-          if (job.readOnly && ask.permission === 'edit')
-            assessed.assessment = {
-              ...assessed.assessment,
-              refuse: 'this is a review: it changes nothing.'
-            }
-          return permissions.decide(ctx, {
-            callId: ask.tool?.callID ?? ask.id,
-            tool: assessed.tool,
-            input: assessed.input,
-            assessment: assessed.assessment
-          })
-        }
+        decide
       })
-      return { ...result, costUsd: meter.costUsd, steps: meter.steps }
+      return {
+        ...result,
+        text: note ? `${note}\n\n${result.text}` : result.text,
+        costUsd: meter.costUsd,
+        steps: meter.steps
+      }
     },
 
     release: (taskId) => deps.engine.release(taskId)

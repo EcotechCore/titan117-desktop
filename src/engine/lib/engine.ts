@@ -55,7 +55,10 @@ import { startModelBridge } from './code/bridge'
 import { createComponents } from './code/components'
 import { createOpencodeEngine } from './code/opencode'
 import { createCodeService } from './code/service'
-import { GitError, gitDiff, gitStatus } from './git'
+import { GitError, gitChangedFiles, gitDiff, gitStatus } from './git'
+import { startApprovalServer } from './code/approval-mcp'
+import { checkServer, type Server } from './ssh'
+import { createOwnTools, NOT_OFFERED, type OwnToolId } from './code/own-tools'
 
 export interface AccountState {
   /** The device token, sent only to our credits proxy. */
@@ -118,6 +121,8 @@ export interface Engine {
   setKeys(keys: OwnKeys): void
   /** Connector secrets from the keychain, per connector id (feature 3.6). */
   setConnectorSecrets(secrets: Record<string, Record<string, string>>): void
+  /** The user's GitHub sign-in (decisions §25): kept in memory only, scrubbed from every log. */
+  setGitHubToken(token: string | null): void
   close(): Promise<void>
   /** For tests. */
   parts: {
@@ -302,6 +307,35 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   let serverPort = 0
   // The coding engine's model bridge (decisions §53): on 127.0.0.1, never reachable by a tool.
   const codeBridge = await startModelBridge()
+  let githubToken: string | null = null
+  // The user's own coding tools (13.14): their approvals come to us here.
+  const toolApprovals = await startApprovalServer()
+  /** Kill switches for the coding-tool adapters (decisions §20), from our web app; kept when offline. */
+  async function checkKillSwitches(): Promise<void> {
+    if (!account.proxyUrl) return
+    try {
+      const response = await fetch(`${account.proxyUrl.replace(/\/$/, '')}/kill-switches`)
+      if (!response.ok) return
+      const body = (await response.json()) as { disabled?: unknown }
+      if (Array.isArray(body.disabled))
+        setMeta(
+          db,
+          'killSwitches',
+          body.disabled.filter((d): d is string => typeof d === 'string').slice(0, 20)
+        )
+    } catch {
+      // Offline: the last list stays.
+    }
+  }
+  setInterval(() => void checkKillSwitches(), 60 * 60_000).unref()
+  const ownTools = createOwnTools({
+    approvals: toolApprovals,
+    scratch: join(options.dataDir ?? tmpdir(), 'scratch', 'own-tools'),
+    enabled: (id) => getMeta<string[]>(db, 'ownToolsEnabled', []).includes(id),
+    // The last kill switches heard from our cloud, kept for when the laptop is offline.
+    killed: (id) => getMeta<string[]>(db, 'killSwitches', []).includes(id),
+    changes: (repo) => gitChangedFiles(repo)
+  })
   const scriptToken = (taskId: string): string | null => {
     if (!runtimeRef?.isRunning(taskId)) return null
     let value = scriptTokens.get(taskId)
@@ -346,8 +380,10 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       speech: (files) => speech.access(files),
       scratchRoot,
       fetch: connectivity.track(options.toolFetch ?? fetch),
-      enginePorts: () => [serverPort, codeBridge.port],
+      enginePorts: () => [serverPort, codeBridge.port, toolApprovals.port],
       gitCoAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
+      servers: () => getMeta<Server[]>(db, 'servers', []),
+      githubToken: () => githubToken,
       toolApi: (taskId) => {
         const value = scriptToken(taskId)
         return value ? { url: `http://127.0.0.1:${serverPort}`, token: value } : null
@@ -474,7 +510,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     bridge: codeBridge,
     home: join(options.dataDir ?? tmpdir(), 'code-engine'),
     scratch: join(scratchRoot, 'code-engine'),
-    onError: (error) => void log.capture('code', error, {})
+    onError: (error) => void log.capture('code', error, {}),
+    core
   })
   const code = createCodeService({
     engine: codeEngine,
@@ -484,7 +521,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     folders: policy,
     online: () => connectivity.online(),
     log,
-    memory
+    memory,
+    ownTools
   })
   permissions.useServices({ search, pages, artifacts, documents, localOnlyTasks, code })
 
@@ -580,7 +618,25 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     components: () => codeComponents.status(),
     coAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
-    setCoAuthor: (on: boolean) => setMeta(db, 'gitCoAuthor', on)
+    setCoAuthor: (on: boolean) => setMeta(db, 'gitCoAuthor', on),
+    tools: async () => ({ tools: await ownTools.status(), notOffered: NOT_OFFERED }),
+    servers: () => getMeta<Server[]>(db, 'servers', []),
+    addServer(input: { name?: unknown; target?: unknown; port?: unknown }) {
+      const server = checkServer(input)
+      const list = getMeta<Server[]>(db, 'servers', []).filter((s) => s.name !== server.name)
+      setMeta(db, 'servers', [...list, server].slice(-50))
+    },
+    removeServer(name: string) {
+      setMeta(
+        db,
+        'servers',
+        getMeta<Server[]>(db, 'servers', []).filter((s) => s.name !== name)
+      )
+    },
+    setToolEnabled(id: string, on: boolean) {
+      const list = getMeta<string[]>(db, 'ownToolsEnabled', []).filter((t) => t !== id)
+      setMeta(db, 'ownToolsEnabled', on ? [...list, id as OwnToolId] : list)
+    }
   }
   const handle = createApi({
     appVersion: options.appVersion,
@@ -689,6 +745,10 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       ownKeys = next
       emit({ type: 'settings', defaultModel: getMeta<string | null>(db, 'defaultModel', null) })
     },
+    setGitHubToken(next) {
+      registerSecret(next)
+      githubToken = next
+    },
     setConnectorSecrets(next) {
       for (const values of Object.values(next))
         for (const value of Object.values(values)) registerSecret(value)
@@ -705,6 +765,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       }
       // Signed in again: reports waiting in the queue go, and fixes are checked (19.5, 19.8).
       void reports.flush().then(() => reports.checkFixed())
+      void checkKillSwitches()
       // The window re-reads the state (cloud models on or off) on a settings event.
       emit({ type: 'settings', defaultModel: getMeta<string | null>(db, 'defaultModel', null) })
     },
@@ -718,6 +779,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       await connectors.close()
       await codeEngine.shutdown()
       await codeBridge.stop()
+      await toolApprovals.stop()
       await local.dispose()
       db.close()
     },
