@@ -490,7 +490,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     bridge: codeBridge,
     home: join(options.dataDir ?? tmpdir(), 'code-engine'),
     scratch: join(scratchRoot, 'code-engine'),
-    onError: (error) => void log.capture('code', error, {})
+    onError: (error) => void log.capture('code', error, {}),
+    core
   })
   const code = createCodeService({
     engine: codeEngine,

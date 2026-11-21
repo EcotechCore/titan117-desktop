@@ -19,11 +19,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { delimiter, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk/v2/client'
 
-import { cleanEnv } from '../shell'
+import { cleanEnv, seatbeltProfile } from '../shell'
 import type { EngineAsk } from './assess'
 import type { BridgeTask, ModelBridge } from './bridge'
 import { OPENCODE_VERSION } from './components'
@@ -200,6 +200,29 @@ export function editedFiles(ask: EngineAsk): ChangedFile[] {
   return ask.patterns.map((file) => ({ file: file.replace(/\\/g, '/'), additions, deletions }))
 }
 
+/**
+ * OpenCode's Seatbelt profile on macOS (exported for tests): it may write
+ * only in the project, its own folders and its temp folder; credential
+ * folders and the app's own data are unreadable, except OpenCode's own
+ * home and program; the network stays on, because the commands the user
+ * approves may need it (installing packages, running tests against a server).
+ */
+export function opencodeSeatbelt(
+  repo: string,
+  home: string,
+  scratch: string,
+  core: string[],
+  program: string
+): string {
+  return seatbeltProfile({
+    writable: [repo, home, scratch],
+    core,
+    network: true,
+    // OpenCode's program and ripgrep: <data>/components/code/<name>/<version>/<file>.
+    readable: [home, scratch, dirname(dirname(dirname(program)))]
+  })
+}
+
 interface Running {
   proc: ChildProcess
   client: OpencodeClient
@@ -229,6 +252,8 @@ export function createOpencodeEngine(deps: {
   onError?(error: unknown): void
   /** Tests only: extra variables (a recording proxy that proves nothing calls out). */
   testEnv?: Record<string, string>
+  /** The app's own folders (its data and program): hidden from OpenCode on macOS. */
+  core?: string[]
 }): CodingEngine {
   const running = new Map<string, Running>()
 
@@ -259,7 +284,21 @@ export function createOpencodeEngine(deps: {
       ...OPENCODE_FLAGS,
       ...deps.testEnv
     }
-    const proc = spawn(opencode, ['serve', '--hostname=127.0.0.1', '--port=0'], {
+    const serveArgs = ['serve', '--hostname=127.0.0.1', '--port=0']
+    // macOS: OpenCode and every command it runs inside Seatbelt (decisions §55).
+    const [program, args] =
+      process.platform === 'darwin' && deps.core
+        ? [
+            '/usr/bin/sandbox-exec',
+            [
+              '-p',
+              opencodeSeatbelt(run.repo, deps.home, deps.scratch, deps.core, opencode),
+              opencode,
+              ...serveArgs
+            ]
+          ]
+        : [opencode, serveArgs]
+    const proc = spawn(program, args, {
       cwd: run.repo,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
