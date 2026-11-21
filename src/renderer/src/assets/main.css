@@ -1722,3 +1722,20 @@ textarea.edit {
   letter-spacing: 0.08em;
   color: var(--accent-deep);
 }
+.reply-link,
+.step-link {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+.reply-link:hover,
+.step-link:hover {
+  color: var(--accent);
+}
+.step-link {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  margin-left: 8px;
+}
