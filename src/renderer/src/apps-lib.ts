@@ -11,11 +11,16 @@ export function appCreateRequest(
   name: string,
   description: string,
   request: string,
-  kind = 'blank'
+  kind = 'blank',
+  target: 'web' | 'mobile' = 'web'
 ): string {
   const first = request.trim()
+  const how =
+    target === 'mobile'
+      ? 'app_create, target "mobile"'
+      : `app_create${kind !== 'blank' ? `, kind "${kind}"` : ''}`
   return [
-    `Make a new web app called "${name.trim()}" in the folder ${folder}, with the description "${description.trim()}" (app_create${kind !== 'blank' ? `, kind "${kind}"` : ''}).`,
+    `Make a new ${target === 'mobile' ? 'mobile' : 'web'} app called "${name.trim()}" in the folder ${folder}, with the description "${description.trim()}" (${how}).`,
     first
       ? `Then build it with the app builder (app_build): ${first}`
       : 'Then stop: I will say what to build.'

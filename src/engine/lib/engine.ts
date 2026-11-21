@@ -65,6 +65,7 @@ import { createBrowserTests } from './apps/browsers'
 import { AppError, createAppService, type GitHubLink, type Published } from './apps/service'
 import { PublishError } from './apps/cloudflare'
 import { cleanBrand, STARTERS, type BrandKit } from './apps/starters'
+import { assess, probeDevice, type DeviceCheck } from './apps/devices'
 import type { AppModels } from '../tools/lib/define-tool'
 
 export interface AccountState {
@@ -690,6 +691,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   const appChecks = new Map<string, string>()
   /** The last background run's problem per app (publishing), shown on the screen. */
   const appProblems = new Map<string, string>()
+  /** What this laptop can do for mobile and desktop apps (decisions §57), checked when asked, kept 5 minutes. */
+  let deviceChecks: { at: number; checks: DeviceCheck[] } | null = null
   const appView = {
     async list() {
       const allowed = policy().allowed
@@ -711,12 +714,14 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       description: string
       lang?: string
       starter?: string
+      kind?: string
     }) {
       const parent = await realWritable(input.folder)
       const brand = brandKit()
       const logo = brand?.logo ? await resolveAllowed(policy(), brand.logo) : ''
       return apps.create(parent, {
         ...input,
+        kind: input.kind === 'mobile' ? 'mobile' : 'web',
         starter: STARTERS.find((s) => s.id === input.starter)?.id,
         ...(brand ? { brand: { ...brand, logo } } : {})
       })
@@ -738,6 +743,19 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         return { url: null }
       }
       return apps.startPreview(real)
+    },
+    /** The user's click: open a mobile app to phones on this Wi-Fi for Expo Go (6.24). */
+    async phone(folder: string) {
+      return apps.startPhone(await realWritable(folder))
+    },
+    /** What this laptop can do (6.28): read-only checks; `fresh` checks again. */
+    async devices(fresh: boolean) {
+      if (fresh || !deviceChecks || Date.now() - deviceChecks.at > 5 * 60_000)
+        deviceChecks = {
+          at: Date.now(),
+          checks: assess(await probeDevice(options.dataDir ?? tmpdir()))
+        }
+      return deviceChecks
     },
     /** Runs in the background; the screen hears "changed apps" as it moves on. */
     async check(folder: string) {

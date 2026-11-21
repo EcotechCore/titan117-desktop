@@ -142,12 +142,15 @@ export function createApi(deps: {
       description: string
       lang?: string
       starter?: string
+      kind?: string
     }): Promise<unknown>
     setBrand(next: unknown): void
     report(folder: string): Promise<unknown>
     versions(folder: string): Promise<unknown>
     screenshot(folder: string, id: string, file: string): Promise<string>
     preview(folder: string, action: 'start' | 'stop'): Promise<{ url: string | null }>
+    phone(folder: string): Promise<{ url: string; phone: string }>
+    devices(fresh: boolean): Promise<unknown>
     check(folder: string): Promise<{ started: boolean }>
     restore(folder: string, sha: string): Promise<{ sha: string }>
     github(folder: string, action: 'save' | 'stop', isPrivate: boolean): Promise<unknown>
@@ -329,7 +332,8 @@ export function createApi(deps: {
             title: text('title', 120),
             description: text('description', 300),
             ...(typeof lang === 'string' ? { lang } : {}),
-            ...(typeof starter === 'string' ? { starter } : {})
+            ...(typeof starter === 'string' ? { starter } : {}),
+            ...(field(body, 'kind') === 'mobile' ? { kind: 'mobile' } : {})
           })
         }
       }
@@ -353,6 +357,7 @@ export function createApi(deps: {
       }
       case 'GET apps/:id': {
         // `/v1/apps/report?folder=…`, `versions?folder=…`, `screenshot?folder=…&report=…&file=…`
+        if (id === 'devices') return need(deps.apps).devices(query.fresh === '1')
         if (!query.folder) throw new ApiError(400, 'BAD_REQUEST', 'Which app?')
         const a = need(deps.apps)
         if (id === 'report') return { report: await a.report(query.folder) }
@@ -368,6 +373,7 @@ export function createApi(deps: {
         const a = need(deps.apps)
         if (id === 'preview')
           return a.preview(folder, field(body, 'action') === 'stop' ? 'stop' : 'start')
+        if (id === 'phone') return a.phone(folder)
         if (id === 'check') return a.check(folder)
         if (id === 'publish') return a.publish(folder)
         if (id === 'github')

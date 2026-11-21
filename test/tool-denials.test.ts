@@ -197,11 +197,11 @@ const SECRET_TEXT =
  * delete a folder, and reports what it was told.
  */
 /** A folder that looks like an app made with the builder. */
-function fakeApp(dir: string): void {
+function fakeApp(dir: string, kind: 'web' | 'mobile' = 'web'): void {
   mkdirSync(join(dir, '.titan117'), { recursive: true })
   writeFileSync(
     join(dir, '.titan117', 'app.json'),
-    JSON.stringify({ kind: 'web', title: 'Test', template: 'web@1', createdAt: 1 })
+    JSON.stringify({ kind, title: 'Test', template: `${kind}@1`, createdAt: 1 })
   )
 }
 
@@ -495,6 +495,32 @@ const DENIALS: Record<string, () => Promise<void>> = {
     ).toBe('refused')
     const none = bench({ noServices: true })
     expect((await none.run({ name: 'app_preview', input: { folder: none.allowed } })).status).toBe(
+      'refused'
+    )
+  },
+
+  async app_phone() {
+    const b = bench()
+    expect((await b.run({ name: 'app_phone', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    // A website never opens to the network.
+    fakeApp(b.allowed)
+    expect((await b.run({ name: 'app_phone', input: { folder: b.allowed } })).status).toBe(
+      'refused'
+    )
+    // A mobile app: it opens the app to the local network, so it asks every time, laptop only.
+    const m = bench()
+    fakeApp(m.allowed, 'mobile')
+    const card = await m.approvalOf({ name: 'app_phone', input: { folder: m.allowed } })
+    expect(card.tool).toBe('app_phone')
+    expect(card.risk).toBe('external')
+    expect(card.canAlways).toBe(false)
+    expect((await m.run({ name: 'app_phone', input: { folder: m.allowed } }, 'deny')).status).toBe(
+      'refused'
+    )
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'app_phone', input: { folder: none.allowed } })).status).toBe(
       'refused'
     )
   },

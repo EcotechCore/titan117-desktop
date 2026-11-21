@@ -144,11 +144,13 @@ injathons` (next to the repos, not in the references folder) | ours | `f9d719e` 
 
 | Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
 |---|---|---|---|---|---|---|
-| [expo/expo](https://github.com/expo/expo) | Mobile apps, Expo Go, EAS | MIT | Lib | `mobile/expo` | | |
-| [mobile-dev-inc/maestro](https://github.com/mobile-dev-inc/maestro) | Automated taps and checks on emulators | Apache 2.0 | Lib | `mobile/maestro` | | |
+| [expo/expo](https://github.com/expo/expo) | Mobile apps, Expo Go, EAS | MIT | Lib | `mobile/expo` | MIT; `THIRD-PARTY-LICENSES` lists no GPL. Our template starts from `expo-template-blank-typescript` (0BSD) | `aa82194f82a8` |
+| [mobile-dev-inc/maestro](https://github.com/mobile-dev-inc/maestro) | Automated taps and checks on emulators | Apache 2.0 | Lib | `mobile/maestro` | Apache 2.0 | `d9561331af38` |
 | [appium/appium](https://github.com/appium/appium) | Alternative mobile automation | Apache 2.0 | Ideas | `mobile/appium` | Apache 2.0 | `8f57e0492cc8` |
-| [tauri-apps/tauri](https://github.com/tauri-apps/tauri) | Desktop apps users build | MIT or Apache 2.0 | Lib | `mobile/tauri` | | |
-| [containers/podman](https://github.com/containers/podman) | Backends in containers (separate program) | Apache 2.0 | Lib | `mobile/podman` | | |
+| [tauri-apps/tauri](https://github.com/tauri-apps/tauri) | Desktop apps users build | MIT or Apache 2.0 | Lib | `mobile/tauri` | MIT or Apache 2.0 (`LICENSE-MIT`, `LICENSE-APACHE-2.0`); the logo is CC BY-NC-ND, not used | `c51c182d8d58` |
+| [containers/podman](https://github.com/containers/podman) | Backends in containers (separate program) | Apache 2.0 | Lib | `mobile/podman` | Apache 2.0 | `06bc48f48672` |
+
+Cloned on 21 Nov 2026 (shallow and sparse: the top folder and licences; check out more of a project when its part is built). Not used: **Tart** (Functional Source License, fair source) and **WiX** (MS-RL, with a maintenance fee for organisations); see decisions §57.
 
 ## Phase 10 · Sidebar apps
 

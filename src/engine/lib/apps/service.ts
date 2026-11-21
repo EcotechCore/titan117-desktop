@@ -21,13 +21,22 @@ import {
 } from '../git'
 import type { BrowserReport, BrowserTests, EngineName } from './browsers'
 import type { CheckResult, Runner } from './runner'
-import { slugOf, TEMPLATE_VERSION, webTemplate } from './template'
+import {
+  APP_KINDS,
+  mobileTemplate,
+  slugOf,
+  TEMPLATE_VERSIONS,
+  webTemplate,
+  type AppKind
+} from './template'
 import { findOrMakeRepo, pushApp, type GitHubRepo } from './github'
 import { publishToCloudflare } from './cloudflare'
 import {
   agentNotes,
   cleanBrand,
   LOGO_TYPES,
+  mobileAgentNotes,
+  mobileTheme,
   STARTERS,
   themeCss,
   type BrandKit,
@@ -42,6 +51,8 @@ export class AppError extends Error {
 }
 
 export interface NewApp {
+  /** What it's built for (decisions §7): a website (default) or a mobile app (Expo). */
+  kind?: AppKind
   title: string
   description: string
   lang?: string
@@ -52,7 +63,7 @@ export interface NewApp {
 }
 
 export interface AppMeta {
-  kind: 'web'
+  kind: AppKind
   title: string
   template: string
   createdAt: number
@@ -62,6 +73,8 @@ export interface AppInfo extends AppMeta {
   folder: string
   name: string
   preview: string | null
+  /** A mobile app open to phones on this Wi-Fi: the `exp://` address Expo Go opens. */
+  phone: string | null
   /** The app's repository on the user's GitHub (6.18), when saved there. */
   github: GitHubLink | null
   /** Where it was last published (6.15). */
@@ -103,7 +116,7 @@ const KEEP_REPORTS = 10
 export function readMeta(dir: string): AppMeta | null {
   try {
     const meta = JSON.parse(readFileSync(join(dir, META), 'utf8')) as AppMeta
-    return meta.kind === 'web' ? meta : null
+    return APP_KINDS.includes(meta.kind) ? meta : null
   } catch {
     return null
   }
@@ -157,6 +170,8 @@ export interface AppService {
   latestReport(dir: string): Promise<AppReport | null>
   screenshot(dir: string, id: string, file: string): Promise<Buffer>
   startPreview(dir: string): Promise<{ url: string }>
+  /** Open a mobile app to phones on this Wi-Fi, for Expo Go (6.24). */
+  startPhone(dir: string): Promise<{ url: string; phone: string }>
   stopPreview(dir: string): boolean
   saveVersion(
     dir: string,
@@ -207,6 +222,7 @@ export function createAppService(deps: {
       folder: dir,
       name: basename(dir),
       preview: runner.preview(dir)?.url ?? null,
+      phone: runner.preview(dir)?.phone ?? null,
       github: deps.github?.links()[dir] ?? null,
       published: deps.hosting?.published()[dir] ?? null
     }
@@ -278,8 +294,9 @@ export function createAppService(deps: {
       return [...found.values()].sort((a, b) => b.createdAt - a.createdAt)
     },
 
-    /** A new web app in its own folder inside `parent`, saved as its first version. */
+    /** A new web or mobile app in its own folder inside `parent`, saved as its first version. */
     async create(parent: string, input: NewApp): Promise<AppInfo> {
+      const kind: AppKind = input.kind === 'mobile' ? 'mobile' : 'web'
       const title = input.title.trim()
       if (!title) throw new AppError('A new app needs a name.')
       const dir = join(parent, slugOf(title))
@@ -287,14 +304,15 @@ export function createAppService(deps: {
         throw new AppError(
           `"${dir}" already exists and isn't empty. Choose another name or folder.`
         )
-      const files = webTemplate({
+      const files = (kind === 'mobile' ? mobileTemplate : webTemplate)({
         name: title,
         title,
         description: input.description.trim() || title,
         lang: input.lang ?? 'en'
       })
-      // The starter's pages and the brand kit (6.8).
-      const starter = STARTERS.find((s) => s.id === input.starter) ?? STARTERS[0]
+      // The starter's pages and the brand kit (6.8). Starters are kinds of website; a mobile app starts blank.
+      const starter =
+        (kind === 'web' && STARTERS.find((s) => s.id === input.starter)) || STARTERS[0]
       const brand = cleanBrand(input.brand)
       let logoFile: string | null = null
       if (brand.logo) {
@@ -304,16 +322,22 @@ export function createAppService(deps: {
         if (data.length > 2_000_000)
           throw new AppError('The logo is over 2 MB; use a smaller file.')
         logoFile = `logo.${type}`
-        await mkdir(join(dir, 'public'), { recursive: true })
-        await writeFile(join(dir, 'public', logoFile), data)
+        const assets = kind === 'mobile' ? 'assets' : 'public'
+        await mkdir(join(dir, assets), { recursive: true })
+        await writeFile(join(dir, assets, logoFile), data)
       }
-      const css = files.get('src/index.css')
-      if (css) files.set('src/index.css', css.replace(/@theme \{[^}]*\}/, themeCss(brand)))
-      files.set(
-        'AGENTS.md',
-        (files.get('AGENTS.md') ?? '') + agentNotes(starter.id, brand, logoFile)
-      )
-      if (starter.pages.length > 1) {
+      if (kind === 'mobile') {
+        files.set('src/theme.ts', mobileTheme(brand))
+        files.set('AGENTS.md', (files.get('AGENTS.md') ?? '') + mobileAgentNotes(brand, logoFile))
+      } else {
+        const css = files.get('src/index.css')
+        if (css) files.set('src/index.css', css.replace(/@theme \{[^}]*\}/, themeCss(brand)))
+        files.set(
+          'AGENTS.md',
+          (files.get('AGENTS.md') ?? '') + agentNotes(starter.id, brand, logoFile)
+        )
+      }
+      if (kind === 'web' && starter.pages.length > 1) {
         const site = JSON.parse(files.get('site.config.json') ?? '{}') as {
           pages: { path: string; title: string; description: string }[]
         }
@@ -332,16 +356,19 @@ export function createAppService(deps: {
         await writeFile(target, content)
       }
       const meta: AppMeta = {
-        kind: 'web',
+        kind,
         title,
-        template: starter.id === 'blank' ? TEMPLATE_VERSION : `${TEMPLATE_VERSION}/${starter.id}`,
+        template:
+          starter.id === 'blank'
+            ? TEMPLATE_VERSIONS[kind]
+            : `${TEMPLATE_VERSIONS[kind]}/${starter.id}`,
         createdAt: Date.now()
       }
       await mkdir(join(dir, '.titan117'), { recursive: true })
       await writeFile(join(dir, META), JSON.stringify(meta, null, 2) + '\n')
       await gitInit(dir)
       await gitCommit(dir, {
-        message: `Version 1: a new web app, "${title}", from the template`,
+        message: `Version 1: a new ${kind} app, "${title}", from the template`,
         coAuthor: deps.coAuthor()
       })
       deps.onChange?.()
@@ -358,7 +385,7 @@ export function createAppService(deps: {
         onProgress?: (note: string) => void
       } = {}
     ): Promise<AppReport> {
-      info(dir)
+      const mobile = info(dir).kind === 'mobile'
       const id = `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomBytes(2).toString('hex')}`
       const outDir = join(dir, REPORTS, id)
       await mkdir(outDir, { recursive: true })
@@ -374,12 +401,20 @@ export function createAppService(deps: {
       if (options.browsers !== false && install.ok && (!built || built.ok)) {
         await browsers.ensure(options.onProgress)
         const wasRunning = !!runner.preview(dir)
-        options.onProgress?.('Opening the preview in Chromium, Firefox and WebKit…')
+        options.onProgress?.(
+          mobile
+            ? 'Opening the app at phone sizes in Chromium and WebKit…'
+            : 'Opening the preview in Chromium, Firefox and WebKit…'
+        )
         const { url } = await runner.startPreview(dir)
         try {
+          // A mobile app's first bundle is made on request: make it once before the browsers time it.
+          if (mobile) await warmUp(url)
           browserReport = await browsers.run(url, outDir, {
             engines: options.engines,
-            signal: options.signal
+            signal: options.signal,
+            profile: mobile ? 'mobile' : 'web',
+            ...(mobile ? { loadTimeoutMs: 90_000 } : {})
           })
         } finally {
           if (!wasRunning) runner.stopPreview(dir)
@@ -431,6 +466,26 @@ export function createAppService(deps: {
           `The packages didn't install:\n${install.output.trim().split('\n').slice(-15).join('\n')}`
         )
       const started = await runner.startPreview(dir)
+      deps.onChange?.()
+      return started
+    },
+
+    async startPhone(dir: string): Promise<{ url: string; phone: string }> {
+      if (info(dir).kind !== 'mobile')
+        throw new AppError(
+          'Only a mobile app opens on a phone; preview a website on the Apps screen.'
+        )
+      const install = await runner.install(dir)
+      if (!install.ok)
+        throw new AppError(
+          `The packages didn't install:\n${install.output.trim().split('\n').slice(-15).join('\n')}`
+        )
+      let started: { url: string; phone: string }
+      try {
+        started = await runner.startPhone(dir)
+      } catch (error) {
+        throw new AppError(error instanceof Error ? error.message : String(error))
+      }
       deps.onChange?.()
       return started
     },
@@ -497,6 +552,10 @@ export function createAppService(deps: {
 
     async publish(dir, onProgress) {
       const app = info(dir)
+      if (app.kind === 'mobile')
+        throw new AppError(
+          'A mobile app is published to the App Store and Google Play, not to a website host. That comes later in phase 9.'
+        )
       const token = deps.hosting?.token('cloudflare') ?? null
       if (!deps.hosting || !token)
         throw new AppError(
@@ -560,5 +619,16 @@ function readFileSafe(dir: string): string | null {
     return typeof site.description === 'string' ? site.description : null
   } catch {
     return null
+  }
+}
+
+/** Ask the dev server for the page and its scripts once, so the first bundle is built before the browsers time it. */
+async function warmUp(url: string): Promise<void> {
+  try {
+    const html = await (await fetch(url, { signal: AbortSignal.timeout(30_000) })).text()
+    for (const [, src] of html.matchAll(/<script[^>]+src="([^"]+)"/g))
+      await fetch(new URL(src, url), { signal: AbortSignal.timeout(180_000) }).then((r) => r.text())
+  } catch {
+    /* the browsers report it */
   }
 }

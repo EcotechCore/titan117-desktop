@@ -1,11 +1,13 @@
 /**
- * The app builder for the web (§6, phase 8; decisions §56): make a web app
- * from the template, ask Titan to build it (a plan you approve, then code,
- * checks, fixes and a new version), see it live on this laptop at phone,
- * tablet and desktop sizes, read its test report with a screenshot per
- * browser and size, and go back to any earlier version.
+ * The app builder (§6; phase 8, decisions §56; phase 9, decisions §57): make
+ * a website or a mobile app from a template, ask Titan to build it (a plan
+ * you approve, then code, checks, fixes and a new version), see it live on
+ * this laptop (and a mobile app on your phone, with Expo Go), read its test
+ * report with a screenshot per browser and size, and go back to any earlier
+ * version.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { renderSVG } from 'uqr'
 
 import { CLOUD_MODEL_PREFIX, type CloudModel, type EngineState } from '../../shared/protocol'
 import {
@@ -29,9 +31,11 @@ interface AppInfo {
   folder: string
   name: string
   title: string
-  kind: 'web'
+  kind: 'web' | 'mobile'
   createdAt: number
   preview: string | null
+  /** A mobile app open to phones on this Wi-Fi: the address Expo Go opens. */
+  phone: string | null
   checking: string | null
   problem: string | null
   published: { host: 'cloudflare'; url: string; at: number } | null
@@ -74,6 +78,71 @@ interface AppsState {
     node: { version: string; ready: boolean; bytes: number }
     browsers: { firefox: boolean; webkit: boolean }
   }
+}
+
+interface DeviceCheck {
+  id: string
+  label: string
+  ok: boolean | null
+  detail: string
+  fix?: string
+  built: boolean
+}
+
+/** The `exp://` address as a QR code for Expo Go; only this laptop's own address is drawn. */
+function PhoneCode({ address }: { address: string }): React.JSX.Element | null {
+  if (!/^exp:\/\/(10|172|192)\.[\d.]+:\d{2,5}$/.test(address)) return null
+  return (
+    <div
+      className="app-qr"
+      role="img"
+      aria-label={`QR code for ${address}`}
+      // uqr draws only squares from the address checked above.
+      dangerouslySetInnerHTML={{ __html: renderSVG(address, { border: 2 }) }}
+    />
+  )
+}
+
+/** What this laptop can do for mobile and desktop apps (6.28). */
+function ThisLaptop({ client }: { client: EngineClient }): React.JSX.Element {
+  const [checks, setChecks] = useState<DeviceCheck[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  function check(fresh: boolean): void {
+    setBusy(true)
+    client
+      .get<{ checks: DeviceCheck[] }>(`/v1/apps/devices${fresh ? '?fresh=1' : ''}`)
+      .then((r) => setChecks(r.checks))
+      .catch(() => setChecks(null))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <>
+      <h2 className="section">This laptop</h2>
+      <p className="muted">
+        What it can do for mobile and desktop apps. Titan117 only looks; it changes nothing.
+      </p>
+      {checks && (
+        <ul className="app-checks app-devices">
+          {checks.map((c) => (
+            <li key={c.id}>
+              <span className={c.ok ? 'app-good' : c.ok === false ? 'app-bad' : 'faint'}>
+                {c.ok ? '✓' : c.ok === false ? '✗' : '?'}
+              </span>{' '}
+              <strong>{c.label}</strong>
+              {!c.built && <span className="faint"> (coming in phase 9)</span>}{' '}
+              <span className="faint">{c.detail}</span>
+              {c.fix && <p className="app-fix">{c.fix}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="code-actions">
+        <button className="btn" disabled={busy} onClick={() => check(!!checks)}>
+          {busy ? 'Checking…' : checks ? 'Check again' : 'Check this laptop'}
+        </button>
+      </div>
+    </>
+  )
 }
 
 interface CheckResult {
@@ -156,7 +225,7 @@ function Screenshot({
         <div className="app-shot-empty" />
       )}
       <figcaption>
-        {shot.size.replace('-', ', ')}{' '}
+        {shot.size.replace('phone-small', 'small phone').replace('-', ', ')}{' '}
         {problems ? (
           <span className="app-bad">
             {problems} problem{problems === 1 ? '' : 's'}
@@ -198,6 +267,7 @@ export function AppsView({
   const [newDescription, setNewDescription] = useState('')
   const [newRequest, setNewRequest] = useState('')
   const [newKind, setNewKind] = useState('blank')
+  const [newTarget, setNewTarget] = useState<'web' | 'mobile'>('web')
   const [busy, setBusy] = useState(false)
   // Visual edit (6.9): pick an element in the preview, then say what to change.
   const frame = useRef<HTMLIFrameElement | null>(null)
@@ -350,9 +420,10 @@ export function AppsView({
     <div className="list-view apps-view">
       <h1 className="view-title">Apps</h1>
       <p className="muted">
-        Websites and web apps, built on this laptop. Titan plans each build for your OK, writes the
-        code, tests it in three browsers at phone, tablet and desktop sizes, fixes what fails and
-        saves a version you can go back to.
+        Websites, web apps and mobile apps, built on this laptop. Titan plans each build for your
+        OK, writes the code, tests it in local browsers at phone, tablet and desktop sizes, fixes
+        what fails and saves a version you can go back to. Mobile apps also open on your own phone
+        with Expo Go.
       </p>
 
       {engine.folders.length === 0 ? (
@@ -388,7 +459,25 @@ export function AppsView({
 
           {(creating || apps.length === 0) && (
             <div className="apps-new">
-              <h2 className="section">A new web app</h2>
+              <h2 className="section">A new app</h2>
+              <div className="segmented" role="radiogroup" aria-label="What to build">
+                {(
+                  [
+                    ['web', 'Website or web app'],
+                    ['mobile', 'Mobile app (iPhone and Android)']
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    role="radio"
+                    aria-checked={newTarget === id}
+                    className={newTarget === id ? 'seg on' : 'seg'}
+                    onClick={() => setNewTarget(id)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <label className="field">
                 Folder to keep it in
                 <select
@@ -403,7 +492,7 @@ export function AppsView({
                   ))}
                 </select>
               </label>
-              {state && (
+              {state && newTarget === 'web' && (
                 <label className="field">
                   Kind of site
                   <select
@@ -428,7 +517,9 @@ export function AppsView({
                 />
               </label>
               <label className="field">
-                One or two sentences about it (shown in search results)
+                {newTarget === 'mobile'
+                  ? 'One or two sentences about it (what the app is for)'
+                  : 'One or two sentences about it (shown in search results)'}
                 <input
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
@@ -441,7 +532,11 @@ export function AppsView({
                   rows={3}
                   value={newRequest}
                   onChange={(e) => setNewRequest(e.target.value)}
-                  placeholder="A home page with our opening hours, a menu with prices and a contact form."
+                  placeholder={
+                    newTarget === 'mobile'
+                      ? 'A screen with our menu and prices, and a button to call us.'
+                      : 'A home page with our opening hours, a menu with prices and a contact form.'
+                  }
                 />
               </label>
               <div className="code-actions">
@@ -455,7 +550,8 @@ export function AppsView({
                         newName,
                         newDescription,
                         newRequest,
-                        newKind
+                        newKind,
+                        newTarget
                       )
                     )
                     setCreating(false)
@@ -479,7 +575,7 @@ export function AppsView({
             <>
               <div className="row row-tint">
                 <span className="row-icon">
-                  <Icon name="globe" />
+                  <Icon name={app.kind === 'mobile' ? 'phone' : 'globe'} />
                 </span>
                 <div className="row-main">
                   <p className="row-title">{app.title}</p>
@@ -523,6 +619,22 @@ export function AppsView({
                 >
                   Download ZIP
                 </button>
+                {app.kind === 'mobile' && !app.phone && (
+                  <button
+                    className="btn"
+                    disabled={busy}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Open ${app.title} to phones on this Wi-Fi? While it runs, devices on the same network can load the app from this laptop. Stop the preview to close it.`
+                        )
+                      )
+                        act('/v1/apps/phone', { folder: app.folder })
+                    }}
+                  >
+                    Open on your phone
+                  </button>
+                )}
                 <button
                   className="btn"
                   disabled={!!app.checking}
@@ -532,13 +644,39 @@ export function AppsView({
                 </button>
               </div>
 
+              {app.phone && (
+                <div className="apps-phone">
+                  <PhoneCode address={app.phone} />
+                  <div>
+                    <p className="row-title">On your phone, with Expo Go</p>
+                    <ol className="muted">
+                      <li>Install Expo Go from the App Store or Google Play (free).</li>
+                      <li>Connect the phone to the same Wi-Fi as this laptop.</li>
+                      <li>
+                        Android: open Expo Go and scan this code. iPhone: scan it with the Camera
+                        app.
+                      </li>
+                    </ol>
+                    <p className="faint mono">{app.phone}</p>
+                    <p className="faint">
+                      Open to this Wi-Fi until you press Stop the preview. If the phone can’t
+                      connect, Windows may be blocking Node.js: allow it on private networks.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <label className="field">
                 What should Titan build or change?
                 <textarea
                   rows={3}
                   value={request}
                   onChange={(e) => setRequest(e.target.value)}
-                  placeholder="For example: add a gallery page with six photos and a link to it in the menu."
+                  placeholder={
+                    app.kind === 'mobile'
+                      ? 'For example: add a second screen with our opening hours, and tabs to switch.'
+                      : 'For example: add a gallery page with six photos and a link to it in the menu.'
+                  }
                 />
               </label>
               <div className="code-actions">
@@ -571,18 +709,20 @@ export function AppsView({
                         </button>
                       ))}
                     </div>
-                    <button
-                      className={picking ? 'btn btn-primary' : 'btn'}
-                      aria-pressed={picking}
-                      onClick={() => {
-                        const next = !picking
-                        setPicking(next)
-                        if (next) setPicked(null)
-                        tellPicker(next)
-                      }}
-                    >
-                      {picking ? 'Click an element in the preview…' : 'Edit visually'}
-                    </button>
+                    {app.kind === 'web' && (
+                      <button
+                        className={picking ? 'btn btn-primary' : 'btn'}
+                        aria-pressed={picking}
+                        onClick={() => {
+                          const next = !picking
+                          setPicking(next)
+                          if (next) setPicked(null)
+                          tellPicker(next)
+                        }}
+                      >
+                        {picking ? 'Click an element in the preview…' : 'Edit visually'}
+                      </button>
+                    )}
                   </div>
                   {picked && (
                     <div className="apps-picked">
@@ -634,8 +774,12 @@ export function AppsView({
                     />
                   </div>
                   <p className="faint">
-                    Running on this laptop only, at {app.preview}. Changes show as soon as they’re
-                    saved.
+                    {app.phone
+                      ? `Running at ${app.preview}, and open to phones on this Wi-Fi.`
+                      : `Running on this laptop only, at ${app.preview}.`}{' '}
+                    Changes show as soon as they’re saved.
+                    {app.kind === 'mobile' &&
+                      ' This is the app through react-native-web; on a phone it uses the real iPhone and Android controls.'}
                   </p>
                 </>
               )}
@@ -695,60 +839,73 @@ export function AppsView({
                 </>
               )}
 
-              <h2 className="section">Publish</h2>
-              {app.published ? (
-                <p>
-                  Live at{' '}
-                  <a href={app.published.url} target="_blank" rel="noreferrer">
-                    {app.published.url}
-                  </a>{' '}
-                  <span className="faint">
-                    · published {new Date(app.published.at).toLocaleString()}
-                  </span>
-                </p>
+              {app.kind === 'mobile' ? (
+                <>
+                  <h2 className="section">Publish</h2>
+                  <p className="muted">
+                    Mobile apps go to the App Store and Google Play from your own developer
+                    accounts. That comes later in phase 9; for now, try it on your phone with Expo
+                    Go.
+                  </p>
+                </>
               ) : (
-                <p className="muted">
-                  Put the site on the internet, in your own Cloudflare account: you own it and its
-                  address, and Cloudflare’s free plan is enough for most small sites. Only a version
-                  that passes its checks is published.
-                </p>
+                <>
+                  <h2 className="section">Publish</h2>
+                  {app.published ? (
+                    <p>
+                      Live at{' '}
+                      <a href={app.published.url} target="_blank" rel="noreferrer">
+                        {app.published.url}
+                      </a>{' '}
+                      <span className="faint">
+                        · published {new Date(app.published.at).toLocaleString()}
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="muted">
+                      Put the site on the internet, in your own Cloudflare account: you own it and
+                      its address, and Cloudflare’s free plan is enough for most small sites. Only a
+                      version that passes its checks is published.
+                    </p>
+                  )}
+                  {app.problem && (
+                    <p className="note note-error" role="alert">
+                      {app.problem}
+                    </p>
+                  )}
+                  <div className="code-actions">
+                    <button
+                      className="btn btn-primary"
+                      disabled={busy || !!app.checking || !engine.ownKeys.cloudflare}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Publish ${app.title} to your Cloudflare account? Anyone with its address will be able to see it.`
+                          )
+                        )
+                          act('/v1/apps/publish', { folder: app.folder })
+                      }}
+                    >
+                      {app.checking === 'Publishing…' || app.checking?.includes('Cloudflare')
+                        ? app.checking
+                        : app.published
+                          ? 'Publish again'
+                          : 'Publish to Cloudflare'}
+                    </button>
+                    {!engine.ownKeys.cloudflare && (
+                      <span className="faint">Add your Cloudflare token below first.</span>
+                    )}
+                  </div>
+                  <OwnKeys
+                    kind="hosting"
+                    saved={engine.ownKeys as Record<KeyProvider, boolean>}
+                    models={[]}
+                    model={null}
+                    onUse={() => undefined}
+                    onChanged={onKeysChanged}
+                  />
+                </>
               )}
-              {app.problem && (
-                <p className="note note-error" role="alert">
-                  {app.problem}
-                </p>
-              )}
-              <div className="code-actions">
-                <button
-                  className="btn btn-primary"
-                  disabled={busy || !!app.checking || !engine.ownKeys.cloudflare}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `Publish ${app.title} to your Cloudflare account? Anyone with its address will be able to see it.`
-                      )
-                    )
-                      act('/v1/apps/publish', { folder: app.folder })
-                  }}
-                >
-                  {app.checking === 'Publishing…' || app.checking?.includes('Cloudflare')
-                    ? app.checking
-                    : app.published
-                      ? 'Publish again'
-                      : 'Publish to Cloudflare'}
-                </button>
-                {!engine.ownKeys.cloudflare && (
-                  <span className="faint">Add your Cloudflare token below first.</span>
-                )}
-              </div>
-              <OwnKeys
-                kind="hosting"
-                saved={engine.ownKeys as Record<KeyProvider, boolean>}
-                models={[]}
-                model={null}
-                onUse={() => undefined}
-                onChanged={onKeysChanged}
-              />
 
               <h2 className="section">GitHub</h2>
               {app.github ? (
@@ -828,8 +985,8 @@ export function AppsView({
                 </>
               )}
 
-              <h3 className="app-engine">Publish from GitHub</h3>
-              {app.github ? (
+              {app.kind === 'web' && <h3 className="app-engine">Publish from GitHub</h3>}
+              {app.kind !== 'web' ? null : app.github ? (
                 (() => {
                   const guide = hostGuide(gitHost, {
                     owner: app.github.owner,
@@ -1009,6 +1166,7 @@ export function AppsView({
               sites; after that, building and testing work offline with local models.
             </p>
           )}
+          {client && <ThisLaptop client={client} />}
         </>
       )}
     </div>

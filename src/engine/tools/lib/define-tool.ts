@@ -115,6 +115,7 @@ export interface AppAccess {
     description: string
     lang?: string
     starter?: import('../../lib/apps/starters').StarterId
+    kind?: import('../../lib/apps/template').AppKind
   }): Promise<import('../../lib/apps/service').AppInfo>
   info(folder: string): Promise<import('../../lib/apps/service').AppInfo>
   /** Show the plan for approval (6.7). Approved: the build's file changes and the app's checks run without asking again in this task. */
@@ -124,6 +125,8 @@ export interface AppAccess {
     options?: { browsers?: boolean }
   ): Promise<import('../../lib/apps/service').AppReport>
   preview(folder: string, action: 'start' | 'stop'): Promise<{ url: string | null }>
+  /** Open a mobile app to phones on this Wi-Fi for Expo Go (6.24): asks every time, on the laptop only. */
+  phone(folder: string): Promise<{ url: string; phone: string }>
   saveVersion(
     folder: string,
     message: string

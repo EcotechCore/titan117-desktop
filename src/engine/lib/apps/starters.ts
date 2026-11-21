@@ -179,3 +179,29 @@ export function agentNotes(starter: StarterId, brand: BrandKit, logoFile: string
   if (logoFile) lines.push(`- **Logo:** \`public/${logoFile}\`, with alt text naming the company.`)
   return lines.join('\n') + '\n'
 }
+
+/** A mobile app's colours (src/theme.ts) from the brand kit: the main colour is the accent, light and dark. */
+export function mobileTheme(brand: BrandKit): string {
+  return [
+    "/** The app's colours, light and dark. The brand kit set the accent. */",
+    'export const colors = {',
+    `  light: { background: '#ffffff', text: '#111827', muted: '#4b5563', accent: '${brand.primary}' },`,
+    `  dark: { background: '#0b0f17', text: '#f9fafb', muted: '#cbd5e1', accent: '${brand.primary}' }`,
+    '} as const',
+    ''
+  ].join('\n')
+}
+
+/** The part of a mobile app's AGENTS.md about its brand. */
+export function mobileAgentNotes(brand: BrandKit, logoFile: string | null): string {
+  const lines = ['', '## This app', '']
+  lines.push(
+    `- **Brand:** the main colour is \`${brand.primary}\` (\`colors.*.accent\` in \`src/theme.ts\`), the second \`${brand.accent}\`. Keep text readable on them (contrast 4.5:1).`
+  )
+  if (brand.tone) lines.push(`- **Tone of voice:** ${brand.tone}.`)
+  if (logoFile)
+    lines.push(
+      `- **Logo:** \`assets/${logoFile}\`; show it with \`<Image>\` and an \`accessibilityLabel\` naming the company.`
+    )
+  return lines.join('\n') + '\n'
+}
