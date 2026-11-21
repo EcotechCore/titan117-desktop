@@ -32,6 +32,13 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 21 Nov 2026 · Which coding tool is working is shown; tools found with an old PATH
+
+- **Your own tools found reliably (Windows):** the engine looks in its own PATH, Windows' current user and system PATH settings (read from the registry), and the usual install folders (`~\.local\bin` for Claude Code's installer, `%APPDATA%\npm`). The tools run with that PATH too. Found when the owner installed Claude Code but the app, started from a terminal with the old PATH, still said "not installed".
+- **Which tool is working is shown:** the step says "Claude Code (your plan)" instead of "Coding engine", and its approval cards and activity lines start with "Claude Code:".
+- **The owner's first real Claude Code job:** formatPrice with tests in the sample shop. It ran on the owner's Claude Pro plan, every file change and `npm test` came to the approval screen, and the tests passed.
+- 344 tests pass.
+
 ### 21 Nov 2026 · Links in answers are clickable; the Pull request step links to GitHub
 
 The owner's first real pull request through the GitHub sign-in worked (sample repo, pull request #6), but its address in the answer couldn't be clicked.

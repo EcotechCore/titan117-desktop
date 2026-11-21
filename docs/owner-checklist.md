@@ -8,6 +8,19 @@ Everything waiting on the owner, in the order to do it. Gathered from every repo
 
 - [x] ~~Push the branches and open the pull requests~~ Done and merged, 16 Nov 2026.
 
+## Next · After phase 8 (put aside by the owner on 21 Nov 2026)
+
+Nothing here blocks phase 8. Gathered here to do together once phase 8 is built.
+
+- [ ] **§53, the coding engine (phase 7), items 3–9:** one OpenCode server per coding task with a password; its model steps through our router (a coding job's budget: 150 steps, $3); our approvals decide every command and change it makes, and it never remembers an "always" of its own; its own internet calls, plugins and repo or home settings switched off; Codex and Cursor stay experimental. (Items 1 and 2, shipping OpenCode unchanged and downloading it on first use, you decided on 20 Nov 2026.)
+- [ ] **§54, git and the code builder screen (phase 7):** commits as you with a `Co-authored-by: Titan117` line; never a force-push, a push to the main branch or a commit carrying secrets; pushes and pull requests ask every time; pull requests through GitHub's CLI or GitHub's own page until the app is registered; project memory per repository; the code review changes nothing; open in VS Code or Cursor (items 9–13).
+- [ ] **§55, the rest of phase 7:** Claude Code on your own plan with every action through our approvals; Codex, Cursor's agent and Grok experimental and off by default; Antigravity and Gemini CLI not offered; the kill switch; commands on your own servers over SSH; Sign in with GitHub ready for the app; OpenCode in Seatbelt on macOS; JetBrains in Open in.
+- [ ] **A Windows code signing certificate: you start on Monday 23 Nov 2026** (a reminder is set for that morning). Needed sooner than planned: Windows' Smart App Control blocks our unsigned installer outright (it did on this laptop on 15 Nov 2026), and auto-update only installs updates signed by the same publisher.
+- [ ] **Accept Anthropic's Commercial Terms** for running Claude Code inside Titan117 (decisions §20, §55), before the beta.
+- [ ] **Ask Modal in writing** whether Titan117 users may run jobs on their own Modal accounts through our app (their terms limit use to the customer's own internal business; decisions §53.9). Needed before cloud sandboxes (3.15) are built, later in phase 7.
+- [ ] **Phase 7's check, done on 20 Nov 2026:** look at the pull requests the code builder opened, [#5](https://github.com/ispasdani/titan117-sample-shop/pull/5) (phase 7's check) and [#6](https://github.com/ispasdani/titan117-sample-shop/pull/6) (your first through Sign in with GitHub), in the private sample repo `ispasdani/titan117-sample-shop`, then merge or close it as you like. Also try the Code screen yourself on a project of your own: a job with Plan first, then Build, and Review the changes.
+- [ ] **Decide: send Claude Code jobs straight to Claude Code** (an improvement, not built yet). Today, when you pick Claude Code, Titan's own model still reads your request and writes the summary, which costs a little credit. With this, a job started from the Code screen with Claude Code would go to it directly, and its own answer would be the reply: no credits at all. Say yes and it gets built.
+
 ## Step 2 · Confirm the decisions (about an hour of reading)
 
 All confirmed by the owner on 18 Nov 2026 (decisions §44–§51), with one addition: Titan searches in the browser when asked to search on Google or another engine (§44.12).
@@ -22,9 +35,6 @@ All confirmed by the owner on 18 Nov 2026 (decisions §44–§51), with one addi
 - [x] **§51, the folder agent (phase 6):** document folders read-only for agents by default; reading in Node only (no Python: Docling and MarkItDown not used); citations by page, or by section heading for Word; search with word stems plus meaning (multilingual-e5-small, MIT, about 120 MB downloaded once); a task that touched a local-models-only folder never goes back to a cloud model.
 - [x] **OCR for scanned documents:** decided 20 Nov 2026: the language files ship inside the app (decisions §51.8). Built the same day.
 - [x] **Phase 5 started before phase 4's check passed**, at your request on 15 Nov 2026: confirm that stands.
-- [ ] **§53, the coding engine (phase 7), items 3–9:** one OpenCode server per coding task with a password; its model steps through our router (a coding job's budget: 150 steps, $3); our approvals decide every command and change it makes, and it never remembers an "always" of its own; its own internet calls, plugins and repo or home settings switched off; Codex and Cursor stay experimental. (Items 1 and 2, shipping OpenCode unchanged and downloading it on first use, you decided on 20 Nov 2026.)
-- [ ] **§54, git and the code builder screen (phase 7):** commits as you with a `Co-authored-by: Titan117` line; never a force-push, a push to the main branch or a commit carrying secrets; pushes and pull requests ask every time; pull requests through GitHub's CLI or GitHub's own page until the app is registered; project memory per repository; the code review changes nothing; open in VS Code or Cursor (items 9–13).
-- [ ] **§55, the rest of phase 7:** Claude Code on your own plan with every action through our approvals; Codex, Cursor's agent and Grok experimental and off by default; Antigravity and Gemini CLI not offered; the kill switch; commands on your own servers over SSH; Sign in with GitHub ready for the app; OpenCode in Seatbelt on macOS; JetBrains in Open in.
 - [ ] **The repos go private** (decided 20 Nov 2026; no rush). Your contribution graph keeps counting the commits if "Private contributions" is on in your GitHub profile settings; others see only the counts, not the repos.
 
 ## Step 3 · Try it yourself (an afternoon)
@@ -36,7 +46,6 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [x] **Turn off Wi-Fi** with the app open: the Offline banner, a cloud task stopping with "Continue with … (local)" (download a local model first), and both clearing when Wi-Fi is back.
 - [x] **A notification:** start a task, switch to another window, wait for "Titan finished".
 - [x] **Phase 6's check (the folder agent):** turn on a folder of your own real documents (contracts, invoices, offers) in Documents, ask questions whose answers you know, and see that the answers cite the right file and page. Also mark a folder "Local models only" and check that a cloud model task stops and offers a local model.
-- [ ] **Phase 7's check, done on 20 Nov 2026:** look at [the pull request](https://github.com/ispasdani/titan117-sample-shop/pull/5) the code builder opened in the private sample repo `ispasdani/titan117-sample-shop`, then merge or close it as you like. Also try the Code screen yourself on a project of your own: a job with Plan first, then Build, and Review the changes.
 - [ ] **Sign in with GitHub in the app** (Code screen → GitHub → Sign in with GitHub, enter the code on GitHub's page), then **Choose repositories** for the ones Titan may open pull requests in. Ask Titan for a small change in one of them and a pull request.
 - [ ] **Try your own coding tools, if you use them:** install Claude Code (and sign in with `claude auth login`), then on the Code screen choose it as the engine for a job. Codex, Cursor's agent and Grok work the same once turned on there (experimental). Also add one of your servers under Your servers and ask Titan to run `uptime` on it.
 - [ ] Search with your own Exa, Tavily or Brave key, if you have one (optional).
@@ -47,7 +56,6 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [ ] **Phase 5's check needs** (noted 20 Nov 2026), besides the certificate below: a Mac to build and test on; a clean Windows machine (a virtual machine is fine) to run the install from download to first task; and the 14-day offline test (the app works offline, then locks on day 15). Local first: none of it is urgent.
 
 - [ ] **Clerk Pro, two-factor required for staff, then remove `PORTAL_TWO_FACTOR`** (decisions §37). Unblocks the portal's error-report screens (phase 5) and later remote control (phase 15). **Waits** (owner, 20 Nov 2026): nothing is paid for until the app runs locally without issues.
-- [ ] **A Windows code signing certificate: you start on Monday 23 Nov 2026** (a reminder is set for that morning). Needed sooner than planned: Windows' Smart App Control blocks our unsigned installer outright (it did on this laptop on 15 Nov 2026), and auto-update only installs updates signed by the same publisher.
 - [ ] **Where updates are published** (an HTTPS address for signed releases, for example a GitHub release or our own storage); then set `PRODUCTION.updateUrl` in `src/main/index.ts` of the desktop app.
 - [ ] Once signed: **install on a clean Windows** (a virtual machine without the Visual C++ runtime) to see Microsoft's runtime step run.
 - [x] ~~Register our GitHub App~~ Done 21 Nov 2026: "Titan117 by EcotechCore", device flow on, client ID in the app.
@@ -60,8 +68,6 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 ## Step 5 · Legal and business (before launch)
 
 - [ ] Company details on the legal pages: registered name, registration number, VAT number, address (`apps/web/content/legal.ts`).
-- [ ] **Ask Modal in writing** whether Titan117 users may run jobs on their own Modal accounts through our app (their terms limit use to the customer's own internal business; decisions §53.9). Needed before cloud sandboxes (3.15) are built, later in phase 7.
-- [ ] **Accept Anthropic's Commercial Terms** for running Claude Code inside Titan117 (decisions §20, §55), before the beta.
 - [ ] The Romanian lawyer's review of the legal pages, now including the content rules, takedown process and **comments** for shared pages.
 - [ ] **Stripe's written OK** that our credits are allowed (before live mode).
 - [ ] The trademark lawyer's short opinion, then file the EU trademark "TITAN117" in classes 9 and 42 (decisions §33.7).
