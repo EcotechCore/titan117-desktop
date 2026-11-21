@@ -25,6 +25,9 @@ import { tempFolder, until } from './helpers'
 import { createCodeService } from '../src/engine/lib/code/service'
 import type { CodingEngine } from '../src/engine/lib/code/opencode'
 import type { Router } from '../src/engine/router'
+import { createAppService } from '../src/engine/lib/apps/service'
+import type { Runner } from '../src/engine/lib/apps/runner'
+import type { BrowserTests } from '../src/engine/lib/apps/browsers'
 
 interface Bench {
   allowed: string
@@ -98,6 +101,16 @@ function bench(
         enginePorts: () => [4999],
         // A server the user added; its address can't be reached in tests.
         servers: () => [{ name: 'web', target: 'nobody@host.invalid' }],
+        // The app builder with nothing that runs: the denial tests never get that far.
+        apps: createAppService({
+          runner: {
+            preview: () => null,
+            stopPreview: () => false,
+            stopAll: () => undefined
+          } as unknown as Runner,
+          browsers: {} as BrowserTests,
+          coAuthor: () => true
+        }),
         answers: { get: (k) => answers.get(k) ?? null, set: (k, v) => void answers.set(k, v) }
       }
   const layer = createPermissionLayer({
@@ -183,6 +196,15 @@ const SECRET_TEXT =
  * Stands in for OpenCode: asks to change a file outside the project, then to
  * delete a folder, and reports what it was told.
  */
+/** A folder that looks like an app made with the builder. */
+function fakeApp(dir: string): void {
+  mkdirSync(join(dir, '.titan117'), { recursive: true })
+  writeFileSync(
+    join(dir, '.titan117', 'app.json'),
+    JSON.stringify({ kind: 'web', title: 'Test', template: 'web@1', createdAt: 1 })
+  )
+}
+
 const fakeCodeEngine: CodingEngine = {
   async run(run) {
     const ask = (
@@ -407,6 +429,123 @@ const DENIALS: Record<string, () => Promise<void>> = {
     expect(
       (await none.run({ name: 'code_task', input: { folder: none.allowed, request: 'x' } })).status
     ).toBe('refused')
+  },
+
+  async app_create() {
+    const b = bench()
+    const input = { folder: b.allowed, name: 'Bakery', description: 'Bread.' }
+    // Outside the allowed folders: refused even when approved.
+    expect(
+      (await b.run({ name: 'app_create', input: { ...input, folder: b.outside } }, 'approve'))
+        .status
+    ).toBe('refused')
+    expect(existsSync(join(b.outside, 'bakery'))).toBe(false)
+    // Denied: nothing is made.
+    expect((await b.run({ name: 'app_create', input }, 'deny')).status).toBe('refused')
+    expect(existsSync(join(b.allowed, 'bakery'))).toBe(false)
+    const none = bench({ noServices: true })
+    expect(
+      (await none.run({ name: 'app_create', input: { ...input, folder: none.allowed } }, 'approve'))
+        .status
+    ).toBe('refused')
+  },
+
+  async app_build() {
+    const b = bench()
+    expect(
+      (await b.run({ name: 'app_build', input: { folder: b.outside, request: 'a shop' } })).status
+    ).toBe('refused')
+    // Not an app made with the builder: nothing runs.
+    const notApp = await b.run({ name: 'app_build', input: { folder: b.allowed, request: 'x' } })
+    expect(notApp.status).toBe('failed')
+    expect(b.asked()).toBe(0)
+    const none = bench({ noServices: true })
+    expect(
+      (await none.run({ name: 'app_build', input: { folder: none.allowed, request: 'x' } })).status
+    ).toBe('refused')
+  },
+
+  async app_check() {
+    const b = bench()
+    // Not an app made with the builder: nothing asks or runs.
+    expect((await b.run({ name: 'app_check', input: { folder: b.allowed } })).status).toBe('failed')
+    expect(b.asked()).toBe(0)
+    fakeApp(b.allowed)
+    expect((await b.run({ name: 'app_check', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    // Running an app asks first; denied, nothing runs.
+    const denied = await b.run({ name: 'app_check', input: { folder: b.allowed } }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.store.listApprovals({ taskId: b.taskId }).map((a) => a.tool)).toEqual(['app_run'])
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'app_check', input: { folder: none.allowed } })).status).toBe(
+      'refused'
+    )
+  },
+
+  async app_preview() {
+    const b = bench()
+    fakeApp(b.allowed)
+    expect((await b.run({ name: 'app_preview', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    expect(
+      (await b.run({ name: 'app_preview', input: { folder: b.allowed } }, 'deny')).status
+    ).toBe('refused')
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'app_preview', input: { folder: none.allowed } })).status).toBe(
+      'refused'
+    )
+  },
+
+  async app_versions() {
+    const b = bench()
+    expect((await b.run({ name: 'app_versions', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'app_versions', input: { folder: none.allowed } })).status).toBe(
+      'refused'
+    )
+  },
+
+  async app_restore() {
+    const b = bench()
+    const input = { folder: b.allowed, version: 'abc1234' }
+    expect(
+      (await b.run({ name: 'app_restore', input: { ...input, folder: b.outside } }, 'approve'))
+        .status
+    ).toBe('refused')
+    expect((await b.run({ name: 'app_restore', input }, 'deny')).status).toBe('refused')
+    const none = bench({ noServices: true })
+    expect(
+      (
+        await none.run(
+          { name: 'app_restore', input: { ...input, folder: none.allowed } },
+          'approve'
+        )
+      ).status
+    ).toBe('refused')
+  },
+
+  async app_github() {
+    const b = bench()
+    expect((await b.run({ name: 'app_github', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    // An outward action: it asks, laptop only, and denied nothing is saved.
+    fakeApp(b.allowed)
+    const card = await b.approvalOf({ name: 'app_github', input: { folder: b.allowed } })
+    expect(card.tool).toBe('app_github')
+    expect(card.risk).toBe('external')
+    expect(card.canAlways).toBe(false)
+    const denied = await b.run({ name: 'app_github', input: { folder: b.allowed } }, 'deny')
+    expect(denied.status).toBe('refused')
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'app_github', input: { folder: none.allowed } })).status).toBe(
+      'refused'
+    )
   },
 
   async list_folder() {
@@ -1046,7 +1185,8 @@ describe('tool denial tests', () => {
           () => ctx.search.search({ query: 'x' }),
           () => ctx.pages.read('https://example.com'),
           () => ctx.artifacts.list(),
-          () => ctx.documents.search('x')
+          () => ctx.documents.search('x'),
+          () => ctx.apps.versions('.')
         ]
         const refused: string[] = []
         for (const attempt of tries) {
@@ -1062,7 +1202,7 @@ describe('tool denial tests', () => {
     })
     const b = bench({ extraTools: [greedy] })
     const outcome = await b.run({ name: 'greedy', input: {} })
-    expect(outcome.output.split(',')).toEqual(Array(12).fill('PermissionError'))
+    expect(outcome.output.split(',')).toEqual(Array(13).fill('PermissionError'))
   })
 
   it('every tool declares a risk and its permissions', () => {

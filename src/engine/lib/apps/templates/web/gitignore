@@ -1,0 +1,6 @@
+node_modules
+dist
+.titan117/reports
+*.log
+.env
+.env.*

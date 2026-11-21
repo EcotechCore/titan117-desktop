@@ -136,7 +136,9 @@ injathons` (next to the repos, not in the references folder) | ours | `f9d719e` 
 | [get-convex/chef](https://github.com/get-convex/chef) | App builder on Convex | Apache 2.0 | Code | `builder/convex-chef` | Apache 2.0 | `d8a6cb6a6f22` |
 | [onlook-dev/onlook](https://github.com/onlook-dev/onlook) | Visual edit: click an element, change it (6.9) | Apache 2.0 | Code | `builder/onlook` | Apache 2.0 | `423e2e924366` |
 | [shadcn-ui/ui](https://github.com/shadcn-ui/ui) | Components for generated apps | MIT | Code | `builder/shadcn-ui` | MIT | `d2fba50ee5b9` |
-| [microsoft/playwright](https://github.com/microsoft/playwright) | Browser tests in three engines | Apache 2.0 | Lib | `builder/playwright` | | |
+| [microsoft/playwright](https://github.com/microsoft/playwright) | Browser tests in three engines | Apache 2.0 | Lib (the `playwright-core` package, already a dependency; its Firefox and WebKit builds downloaded by it, decisions §56.10) | not cloned: the npm package is the code we run | Apache 2.0 (checked again 21 Nov 2026) | `playwright-core` 1.65.1 |
+
+**Phase 8, 21 Nov 2026:** the six builder references are in the references folder at the commits above. The first part (template, build loop, checks, preview, report, versions) is our own code, written fresh; dyad, bolt.diy and open-lovable are read next for publishing and the builder screen, and onlook for visual edit (6.9).
 
 ## Phase 9 · App builder: mobile and desktop
 

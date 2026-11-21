@@ -38,6 +38,10 @@ import { convert, ConvertError, FORMATS, zipArtifacts, type ExportFormat } from 
 import { SearchError, DEFAULT_SEARCH_SETTINGS, siteOf } from './lib/search'
 import { ShareError, type ShareService } from './lib/share'
 import { ReportError, type ReportService } from './lib/reports'
+import { AppError } from './lib/apps/service'
+import { NodeDownloadError } from './lib/apps/node'
+import { GitError } from './lib/git'
+import { PermissionError } from './lib/folders'
 import type { SetupInterest, SetupState } from '../shared/protocol'
 import { SEARCH_KEY_PROVIDERS, type SearchSettings } from '../shared/protocol'
 
@@ -128,6 +132,24 @@ export function createApi(deps: {
     servers(): import('./lib/ssh').Server[]
     addServer(input: { name?: unknown; target?: unknown; port?: unknown }): void
     removeServer(name: string): void
+  }
+  /** The Apps screen (§6, decisions §56): the user's own clicks, inside the allowed folders. */
+  apps?: {
+    list(): Promise<unknown>
+    create(input: {
+      folder: string
+      title: string
+      description: string
+      lang?: string
+    }): Promise<unknown>
+    report(folder: string): Promise<unknown>
+    versions(folder: string): Promise<unknown>
+    screenshot(folder: string, id: string, file: string): Promise<string>
+    preview(folder: string, action: 'start' | 'stop'): Promise<{ url: string | null }>
+    check(folder: string): Promise<{ started: boolean }>
+    restore(folder: string, sha: string): Promise<{ sha: string }>
+    github(folder: string, action: 'save' | 'stop', isPrivate: boolean): Promise<unknown>
+    setModels(next: import('./tools/lib/define-tool').AppModels): void
   }
   setup?: {
     state(): Promise<SetupState>
@@ -286,6 +308,67 @@ export function createApi(deps: {
     query: Record<string, string>
   ): Promise<unknown | null> {
     switch (key) {
+      case 'GET apps':
+        return need(deps.apps).list()
+      case 'POST apps': {
+        const text = (name: string, max: number): string => {
+          const value = field(body, name)
+          if (typeof value !== 'string' || value.length > max)
+            throw new ApiError(400, 'BAD_REQUEST', `"${name}" is missing or too long.`)
+          return value
+        }
+        const lang = field(body, 'lang')
+        return {
+          app: await need(deps.apps).create({
+            folder: text('folder', 1000),
+            title: text('title', 120),
+            description: text('description', 300),
+            ...(typeof lang === 'string' ? { lang } : {})
+          })
+        }
+      }
+      case 'PUT apps': {
+        const role = (name: string): string | null => {
+          const value = field(body, name)
+          return typeof value === 'string' && value.trim() ? modelId(value) : null
+        }
+        need(deps.apps).setModels({
+          planner: role('planner'),
+          coder: role('coder'),
+          fixer: role('fixer')
+        })
+        return need(deps.apps).list()
+      }
+      case 'GET apps/:id': {
+        // `/v1/apps/report?folder=…`, `versions?folder=…`, `screenshot?folder=…&report=…&file=…`
+        if (!query.folder) throw new ApiError(400, 'BAD_REQUEST', 'Which app?')
+        const a = need(deps.apps)
+        if (id === 'report') return { report: await a.report(query.folder) }
+        if (id === 'versions') return { versions: await a.versions(query.folder) }
+        if (id === 'screenshot')
+          return { png: await a.screenshot(query.folder, query.report ?? '', query.file ?? '') }
+        throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+      }
+      case 'POST apps/:id': {
+        const folder = field(body, 'folder')
+        if (typeof folder !== 'string') throw new ApiError(400, 'BAD_REQUEST', 'Which app?')
+        const a = need(deps.apps)
+        if (id === 'preview')
+          return a.preview(folder, field(body, 'action') === 'stop' ? 'stop' : 'start')
+        if (id === 'check') return a.check(folder)
+        if (id === 'github')
+          return a.github(
+            folder,
+            field(body, 'action') === 'stop' ? 'stop' : 'save',
+            field(body, 'private') !== false
+          )
+        if (id === 'restore') {
+          const sha = field(body, 'version')
+          if (typeof sha !== 'string') throw new ApiError(400, 'BAD_REQUEST', 'Which version?')
+          return a.restore(folder, sha)
+        }
+        throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+      }
       case 'GET code': {
         const code = need(deps.code)
         const base = { components: code.components(), coAuthor: code.coAuthor() }
@@ -740,7 +823,11 @@ export function createApi(deps: {
         error instanceof SearchError ||
         error instanceof ConvertError ||
         error instanceof ShareError ||
-        error instanceof ReportError
+        error instanceof ReportError ||
+        error instanceof AppError ||
+        error instanceof GitError ||
+        error instanceof NodeDownloadError ||
+        error instanceof PermissionError
       )
         return { status: 400, body: { error: 'BAD_REQUEST', message: error.message } }
       if (error instanceof ArtifactError)

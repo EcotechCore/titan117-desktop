@@ -9,9 +9,13 @@ Code we copied or adapted from other projects (guardrails §11, decisions §4). 
 
 ## Programs the app downloads and runs unchanged
 
-Downloaded on first use, pinned and checked against hashes in `src/engine/lib/code/components.ts` (decisions §53). Their notices go into the third-party licences file with the rest.
+Downloaded on first use, pinned and checked against hashes in `src/engine/lib/code/components.ts` and `src/engine/lib/apps/node.ts` (decisions §53, §56). Firefox and WebKit are downloaded by Playwright itself, at the revisions its version pins (it checks no hash, decisions §56.10). Their notices go into the third-party licences file with the rest.
 
 | Program | Licence | What it is | Version |
 |---|---|---|---|
 | [anomalyco/opencode](https://github.com/anomalyco/opencode) (`opencode-<os>-<arch>` from npm) | MIT. The program is built with [Bun](https://github.com/oven-sh/bun) (MIT), whose runtime statically links **JavaScriptCore (LGPL-2)** from [oven-sh/WebKit](https://github.com/oven-sh/WebKit) and tinycc (LGPL-2.1); shipped unchanged, with Bun's relinking instructions at [bun.com/docs/project/license](https://bun.com/docs/project/license) | The coding engine, run as its own program on 127.0.0.1 | 1.19.6 (tag `v1.19.6`, `f4e363c`) |
 | [BurntSushi/ripgrep](https://github.com/BurntSushi/ripgrep) | MIT or Unlicense | Code search for OpenCode | 15.1.0 |
+| [nodejs/node](https://github.com/nodejs/node) (the official build from nodejs.org) | MIT, with bundled parts under their own permissive licences; npm is Artistic 2.0 with ISC, MIT, BlueOak, Apache 2.0 and BSD packages | Runs npm and the dev server for the apps the app builder makes | 26.13.1 |
+| Playwright's Firefox build ([microsoft/playwright](https://github.com/microsoft/playwright)) | MPL 2.0 (Firefox) | Tests apps in Firefox | revision 1572 (Firefox 159.0), from `playwright-core` 1.65.1 |
+| Playwright's WebKit build | LGPL 2 and BSD (WebKit, JavaScriptCore) | Tests apps in WebKit, close to Safari | revision 2388 (WebKit 27.2) |
+| Playwright's ffmpeg build | LGPL 2.1 (`COPYING.LGPLv2.1` in the download) | Comes with the browsers; Playwright uses it for videos, we don't | revision 1013 |
