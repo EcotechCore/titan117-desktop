@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 21 Nov 2026 · Fix: the same laptop signing in again no longer uses up a device place
+
+The app sends its install's fingerprint (the SHA-256 of a random ID kept in the account folder) with the sign-in. The web app then replaces the old device from the same install instead of refusing at the plan's limit (titan117-web). The account test checks that the fingerprint goes along, is stable, and never contains the ID. 340 tests pass.
+
 ### 21 Nov 2026 · Phase 7: your own coding tools, servers over SSH, GitHub sign-in, Seatbelt, JetBrains
 
 On `phase-7-own-tools`. Decisions §55 (to be confirmed).
