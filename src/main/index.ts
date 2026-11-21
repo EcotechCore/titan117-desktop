@@ -17,6 +17,7 @@ import {
 } from 'electron'
 import { join, normalize, sep } from 'path'
 import { allowedFolder, findEditors, openInEditor } from './lib/editors'
+import { GitHubSignIn } from './lib/github'
 import { SANDBOX_HOST, Staged, isSandboxUrl, safeName, writeChosenFile } from './lib/export'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -90,7 +91,13 @@ const PRODUCTION = {
   webUrl: 'https://titan117.com',
   apiUrl: null as string | null,
   // Where signed releases are published (feature 1.10); set with code signing (decisions §50).
-  updateUrl: null as string | null
+  updateUrl: null as string | null,
+  // Our GitHub App's client ID (not a secret; decisions §25, §55); set once the app is registered.
+  githubClientId: null as string | null
+}
+
+function githubClientId(): string | null {
+  return is.dev ? process.env['TITAN117_GITHUB_CLIENT_ID'] || null : PRODUCTION.githubClientId
 }
 
 function accountConfig(): { webUrl: string | null; apiUrl: string | null } {
@@ -104,6 +111,7 @@ function accountConfig(): { webUrl: string | null; apiUrl: string | null } {
 let account: Account | null = null
 let keys: Keys | null = null
 let connectorSecrets: ConnectorSecrets | null = null
+let github: GitHubSignIn | null = null
 
 function keychain(): { encrypt(text: string): Buffer; decrypt(data: Buffer): string } | null {
   return safeStorage.isEncryptionAvailable()
@@ -112,6 +120,12 @@ function keychain(): { encrypt(text: string): Buffer; decrypt(data: Buffer): str
         decrypt: (data) => safeStorage.decryptString(data)
       }
     : null
+}
+
+/** The GitHub sign-in's current access token goes to the engine only (decisions §25). */
+async function pushGitHub(): Promise<void> {
+  if (!github) return
+  engine?.postMessage({ type: 'github', token: await github.token() })
 }
 
 /** The user's own API keys go to the engine only (features 2.9, 11.5). */
@@ -177,6 +191,12 @@ function startAccount(): void {
   })
   keys = new Keys(app.getPath('userData'), keychain())
   connectorSecrets = new ConnectorSecrets(app.getPath('userData'), keychain())
+  github = new GitHubSignIn(app.getPath('userData'), keychain(), githubClientId(), fetch, () => {
+    void pushGitHub()
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('github:changed')
+  })
+  // The access token lasts 8 hours: refresh well before, and keep the engine's copy current.
+  setInterval(() => void pushGitHub(), 30 * 60_000).unref()
   renewLease()
   setInterval(renewLease, RENEW_EVERY_MS)
   // The lease can run out while the app is open: look again every minute.
@@ -208,6 +228,7 @@ function startEngine(): void {
         // A new or restarted engine starts locked until it hears where the account stands.
         pushAccount()
         pushKeys()
+        void pushGitHub()
         // The engine before this one crashed: the new one keeps it as an error to report (19.1).
         if (crashed !== null) {
           child.postMessage({ type: 'crashed', code: crashed })
@@ -512,6 +533,28 @@ function registerBridge(): void {
     if (!fromOurPage(event) || typeof path !== 'string') throw new Error('Refused.')
     engine?.postMessage({ type: 'removeFolder', path })
     return true
+  })
+
+  // Sign in with GitHub (decisions §25, §55): GitHub's own page, our app's device flow.
+  ipcMain.handle('github:status', (event) => {
+    if (!fromOurPage(event) || !github) throw new Error('Refused.')
+    return github.status()
+  })
+  ipcMain.handle('github:signIn', async (event) => {
+    if (!fromOurPage(event) || !github) throw new Error('Refused.')
+    const code = await github.start()
+    await shell.openExternal(code.verificationUri)
+    return github.status()
+  })
+  ipcMain.handle('github:cancel', (event) => {
+    if (!fromOurPage(event) || !github) throw new Error('Refused.')
+    github.cancel()
+    return github.status()
+  })
+  ipcMain.handle('github:signOut', (event) => {
+    if (!fromOurPage(event) || !github) throw new Error('Refused.')
+    github.signOut()
+    return github.status()
   })
 
   // Open a project in the user's editor (13.12): only folders the user allowed.

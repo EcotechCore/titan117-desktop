@@ -13,6 +13,15 @@ contextBridge.exposeInMainWorld('titan117', {
   engine: () => ipcRenderer.invoke('engine:connection'),
   addFolder: () => ipcRenderer.invoke('folders:add'),
   removeFolder: (path: string) => ipcRenderer.invoke('folders:remove', path),
+  github: {
+    status: () => ipcRenderer.invoke('github:status'),
+    signIn: () => ipcRenderer.invoke('github:signIn'),
+    cancel: () => ipcRenderer.invoke('github:cancel'),
+    signOut: () => ipcRenderer.invoke('github:signOut'),
+    onChange: (listener: () => void) => {
+      ipcRenderer.on('github:changed', () => listener())
+    }
+  },
   code: {
     editors: () => ipcRenderer.invoke('code:editors'),
     open: (folder: string, editor: string) => ipcRenderer.invoke('code:open', folder, editor)

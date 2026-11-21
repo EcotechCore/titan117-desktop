@@ -121,6 +121,8 @@ export interface Engine {
   setKeys(keys: OwnKeys): void
   /** Connector secrets from the keychain, per connector id (feature 3.6). */
   setConnectorSecrets(secrets: Record<string, Record<string, string>>): void
+  /** The user's GitHub sign-in (decisions §25): kept in memory only, scrubbed from every log. */
+  setGitHubToken(token: string | null): void
   close(): Promise<void>
   /** For tests. */
   parts: {
@@ -305,6 +307,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   let serverPort = 0
   // The coding engine's model bridge (decisions §53): on 127.0.0.1, never reachable by a tool.
   const codeBridge = await startModelBridge()
+  let githubToken: string | null = null
   // The user's own coding tools (13.14): their approvals come to us here.
   const toolApprovals = await startApprovalServer()
   const ownTools = createOwnTools({
@@ -360,6 +363,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       enginePorts: () => [serverPort, codeBridge.port, toolApprovals.port],
       gitCoAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
       servers: () => getMeta<Server[]>(db, 'servers', []),
+      githubToken: () => githubToken,
       toolApi: (taskId) => {
         const value = scriptToken(taskId)
         return value ? { url: `http://127.0.0.1:${serverPort}`, token: value } : null
@@ -719,6 +723,10 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       for (const key of Object.values(next)) registerSecret(key ?? null)
       ownKeys = next
       emit({ type: 'settings', defaultModel: getMeta<string | null>(db, 'defaultModel', null) })
+    },
+    setGitHubToken(next) {
+      registerSecret(next)
+      githubToken = next
     },
     setConnectorSecrets(next) {
       for (const values of Object.values(next))

@@ -319,9 +319,43 @@ export interface PullRequestResult {
   url: string
 }
 
+/** Opens a pull request through GitHub's API; its address, or null when GitHub said no. */
+export async function createWithApi(
+  fetchFn: typeof fetch,
+  token: string,
+  repo: { owner: string; repo: string },
+  pr: { title: string; body: string; head: string; base: string }
+): Promise<string | null> {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'Content-Type': 'application/json'
+  }
+  const base = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/pulls`
+  const created = await fetchFn(base, { method: 'POST', headers, body: JSON.stringify(pr) })
+  if (created.status === 201)
+    return String(((await created.json()) as { html_url?: string }).html_url ?? '') || null
+  // One already open for this branch: that one.
+  if (created.status === 422) {
+    const open = await fetchFn(
+      `${base}?state=open&head=${encodeURIComponent(`${repo.owner}:${pr.head}`)}`,
+      {
+        headers
+      }
+    )
+    if (open.ok) {
+      const list = (await open.json()) as { html_url?: string }[]
+      if (list[0]?.html_url) return list[0].html_url
+    }
+  }
+  return null
+}
+
 export async function openPullRequest(
   dir: string,
-  input: { title: string; body: string; base?: string }
+  input: { title: string; body: string; base?: string },
+  options: { githubToken?: string | null; fetch?: typeof fetch } = {}
 ): Promise<PullRequestResult> {
   const status = await gitStatus(dir)
   if (!status.remote?.github)
@@ -337,6 +371,17 @@ export async function openPullRequest(
   )
   if (pushed.code !== 0)
     throw new GitError(`Push "${status.branch}" first (git_push), then open the pull request.`)
+
+  // The user's GitHub sign-in through our app (decisions §25): GitHub shows the user, with the app's badge.
+  if (options.githubToken) {
+    const made = await createWithApi(
+      options.fetch ?? fetch,
+      options.githubToken,
+      status.remote.github,
+      { title: input.title, body: input.body, head: status.branch, base }
+    ).catch(() => null)
+    if (made) return { how: 'opened', url: made }
+  }
 
   // GitHub's own CLI, if the user has it and is signed in: it acts as them.
   const auth = await run('gh', ['auth', 'status', '--hostname', 'github.com'], dir).catch(

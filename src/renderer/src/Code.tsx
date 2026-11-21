@@ -11,6 +11,7 @@ import type { EngineState } from '../../shared/protocol'
 import { codeRequest, diffCounts, reviewRequest } from './code-lib'
 import { Diff } from './Diff'
 import { ServersSection } from './Servers'
+import { GitHubSection } from './GitHub'
 import type { EngineClient } from './engine'
 import { folderName } from './format'
 import { Icon } from './ui'
@@ -387,6 +388,7 @@ export function CodeView({
               ))}
             </>
           )}
+          <GitHubSection onProblem={onProblem} />
           <ServersSection client={client} onProblem={onProblem} />
         </>
       )}

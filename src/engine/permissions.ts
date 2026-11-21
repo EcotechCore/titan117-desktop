@@ -138,6 +138,8 @@ export interface Services {
   code?: CodeService
   /** Whether agent commits carry the Titan117 co-author line (decisions §25); on by default. */
   gitCoAuthor?: () => boolean
+  /** The user's GitHub sign-in through our app (decisions §25); null when signed out. */
+  githubToken?: () => string | null
   /** The servers the user added (3.15). */
   servers?: () => Server[]
 }
@@ -565,7 +567,10 @@ export function createPermissionLayer(deps: {
               coAuthor: services.gitCoAuthor?.() ?? true
             }),
           push: async (folder) => gitPush(await repoToChange(folder)),
-          pullRequest: async (folder, input) => openPullRequest(await repoToChange(folder), input)
+          pullRequest: async (folder, input) =>
+            openPullRequest(await repoToChange(folder), input, {
+              githubToken: services.githubToken?.() ?? null
+            })
         }
       : denied<GitAccess>('git')
 
