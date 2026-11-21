@@ -135,6 +135,8 @@ export interface AppAccess {
     folder: string,
     options?: { private?: boolean }
   ): Promise<import('../../lib/apps/service').GitHubSave>
+  /** Publish to the user's own hosting (6.15): asks every time, on the laptop only. */
+  publish(folder: string): Promise<import('../../lib/apps/service').Published>
   models(): AppModels
 }
 

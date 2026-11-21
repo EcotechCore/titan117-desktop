@@ -529,6 +529,26 @@ const DENIALS: Record<string, () => Promise<void>> = {
     ).toBe('refused')
   },
 
+  async app_publish() {
+    const b = bench()
+    expect((await b.run({ name: 'app_publish', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    // Public and outward: it asks every time, laptop only; denied, nothing is published.
+    fakeApp(b.allowed)
+    const card = await b.approvalOf({ name: 'app_publish', input: { folder: b.allowed } })
+    expect(card.tool).toBe('app_publish')
+    expect(card.risk).toBe('external')
+    expect(card.canAlways).toBe(false)
+    expect(
+      (await b.run({ name: 'app_publish', input: { folder: b.allowed } }, 'deny')).status
+    ).toBe('refused')
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'app_publish', input: { folder: none.allowed } })).status).toBe(
+      'refused'
+    )
+  },
+
   async app_github() {
     const b = bench()
     expect((await b.run({ name: 'app_github', input: { folder: b.outside } })).status).toBe(

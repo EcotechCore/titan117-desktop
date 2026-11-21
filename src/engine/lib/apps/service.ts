@@ -23,6 +23,7 @@ import type { BrowserReport, BrowserTests, EngineName } from './browsers'
 import type { CheckResult, Runner } from './runner'
 import { slugOf, TEMPLATE_VERSION, webTemplate } from './template'
 import { findOrMakeRepo, pushApp, type GitHubRepo } from './github'
+import { publishToCloudflare } from './cloudflare'
 import {
   agentNotes,
   cleanBrand,
@@ -63,6 +64,14 @@ export interface AppInfo extends AppMeta {
   preview: string | null
   /** The app's repository on the user's GitHub (6.18), when saved there. */
   github: GitHubLink | null
+  /** Where it was last published (6.15). */
+  published: Published | null
+}
+
+export interface Published {
+  host: 'cloudflare'
+  url: string
+  at: number
 }
 
 export interface GitHubLink extends GitHubRepo {
@@ -156,6 +165,8 @@ export interface AppService {
   /** Save to the user's own GitHub and keep it up to date with each version (6.18). */
   saveToGitHub(dir: string, options: { private: boolean }): Promise<GitHubSave>
   stopGitHubSync(dir: string): void
+  /** Build, check and publish to the user's own Cloudflare account (6.15). */
+  publish(dir: string, onProgress?: (note: string) => void): Promise<Published>
   /** The current version's files as a ZIP (6.18). */
   zip(dir: string): Promise<{ name: string; data: Buffer }>
   versions(dir: string): Promise<GitVersion[]>
@@ -178,6 +189,13 @@ export function createAppService(deps: {
     /** How a push happens (tests push to a local repository). */
     push?: typeof pushApp
   }
+  /** Publishing (6.15): the user's own hosting token, and where each app was published. */
+  hosting?: {
+    token(host: 'cloudflare'): string | null
+    published(): Record<string, Published>
+    setPublished(next: Record<string, Published>): void
+    fetch?: typeof fetch
+  }
 }): AppService {
   const { runner, browsers } = deps
 
@@ -189,7 +207,8 @@ export function createAppService(deps: {
       folder: dir,
       name: basename(dir),
       preview: runner.preview(dir)?.url ?? null,
-      github: deps.github?.links()[dir] ?? null
+      github: deps.github?.links()[dir] ?? null,
+      published: deps.hosting?.published()[dir] ?? null
     }
   }
 
@@ -474,6 +493,36 @@ export function createAppService(deps: {
         name: `${app.name}${latest ? `-${latest.sha}` : ''}.zip`,
         data: await gitArchiveZip(dir)
       }
+    },
+
+    async publish(dir, onProgress) {
+      const app = info(dir)
+      const token = deps.hosting?.token('cloudflare') ?? null
+      if (!deps.hosting || !token)
+        throw new AppError(
+          'Add your Cloudflare token first (Apps screen, Your hosting), then publish again.'
+        )
+      // Only what passes its checks is published.
+      onProgress?.('Installing packages…')
+      const install = await runner.install(dir)
+      if (!install.ok) throw new AppError('The packages didn’t install, so nothing was published.')
+      onProgress?.('Typecheck, build and tests…')
+      const failed = (await runner.checks(dir)).filter((c) => c.ran && !c.ok)
+      if (failed.length)
+        throw new AppError(
+          `Not published: ${failed.map((c) => c.name).join(', ')} failed. Fix them first (Test it shows what's wrong).`
+        )
+      const result = await publishToCloudflare({
+        fetch: deps.hosting.fetch,
+        token,
+        dist: join(dir, 'dist'),
+        name: app.name,
+        onProgress
+      })
+      const published: Published = { host: 'cloudflare', url: result.url, at: Date.now() }
+      deps.hosting.setPublished({ ...deps.hosting.published(), [dir]: published })
+      deps.onChange?.()
+      return published
     },
 
     stopGitHubSync(dir) {

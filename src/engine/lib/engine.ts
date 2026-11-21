@@ -62,7 +62,8 @@ import { createOwnTools, NOT_OFFERED, type OwnToolId } from './code/own-tools'
 import { createNodeComponent } from './apps/node'
 import { createRunner } from './apps/runner'
 import { createBrowserTests } from './apps/browsers'
-import { AppError, createAppService, type GitHubLink } from './apps/service'
+import { AppError, createAppService, type GitHubLink, type Published } from './apps/service'
+import { PublishError } from './apps/cloudflare'
 import { cleanBrand, STARTERS, type BrandKit } from './apps/starters'
 import type { AppModels } from '../tools/lib/define-tool'
 
@@ -547,6 +548,11 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       token: () => githubToken,
       links: () => getMeta<Record<string, GitHubLink>>(db, 'appGitHub', {}),
       setLinks: (next) => setMeta(db, 'appGitHub', next)
+    },
+    hosting: {
+      token: (host) => ownKeys[host] ?? null,
+      published: () => getMeta<Record<string, Published>>(db, 'appPublished', {}),
+      setPublished: (next) => setMeta(db, 'appPublished', next)
     }
   })
   const brandKit = (): BrandKit | null => {
@@ -682,11 +688,17 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   // The Apps screen (§6): the user's own clicks, on apps inside the allowed folders.
   const realWritable = (folder: string): Promise<string> => checkWritable(policy(), folder)
   const appChecks = new Map<string, string>()
+  /** The last background run's problem per app (publishing), shown on the screen. */
+  const appProblems = new Map<string, string>()
   const appView = {
     async list() {
       const allowed = policy().allowed
       return {
-        apps: apps.list(allowed).map((a) => ({ ...a, checking: appChecks.get(a.folder) ?? null })),
+        apps: apps.list(allowed).map((a) => ({
+          ...a,
+          checking: appChecks.get(a.folder) ?? null,
+          problem: appProblems.get(a.folder) ?? null
+        })),
         models: appModels(),
         brand: brandKit() ?? cleanBrand(null),
         starters: STARTERS.map(({ id, label, description }) => ({ id, label, description })),
@@ -750,6 +762,29 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       return { started: true }
     },
     restore: async (folder: string, sha: string) => apps.restore(await realWritable(folder), sha),
+    /** Runs in the background, like a test run; the screen hears "changed apps". */
+    async publish(folder: string) {
+      const real = await realWritable(folder)
+      if (appChecks.has(real)) return { started: false }
+      appChecks.set(real, 'Publishing…')
+      emit({ type: 'changed', what: 'apps' })
+      void apps
+        .publish(real, (note) => {
+          appChecks.set(real, note)
+          emit({ type: 'changed', what: 'apps' })
+        })
+        .then(() => appProblems.delete(real))
+        .catch((error) => {
+          appProblems.set(real, error instanceof Error ? error.message : String(error))
+          if (!(error instanceof AppError) && !(error instanceof PublishError))
+            log.capture('apps', error, {})
+        })
+        .finally(() => {
+          appChecks.delete(real)
+          emit({ type: 'changed', what: 'apps' })
+        })
+      return { started: true }
+    },
     async zip(folder: string) {
       const file = await apps.zip(await resolveAllowed(policy(), folder))
       return { name: file.name, base64: file.data.toString('base64') }

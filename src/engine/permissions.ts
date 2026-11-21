@@ -49,6 +49,7 @@ import type {
 } from './tools/lib/define-tool'
 import { AppError, type AppService } from './lib/apps/service'
 import { NodeDownloadError } from './lib/apps/node'
+import { PublishError } from './lib/apps/cloudflare'
 import { runOnServer, SshError, type Server } from './lib/ssh'
 import {
   GitError,
@@ -706,6 +707,25 @@ export function createPermissionLayer(deps: {
             appService().saveVersion(await appFolder(folder), message),
           versions: async (folder) => appService().versions(await resolveAllowed(policy, folder)),
           restore: async (folder, sha) => appService().restore(await appFolder(folder), sha),
+          async publish(folder) {
+            const real = await appFolder(folder)
+            const app = appService().info(real)
+            // Outward and public (decisions §30): asks every time, on the laptop only.
+            const decision = await gate(
+              ctx,
+              `${callId}-publish`,
+              'app_publish',
+              { folder },
+              {
+                risk: 'external',
+                summary: `Publish "${app.title}" to your Cloudflare account: anyone with its address can see it${app.published ? ` (it replaces ${app.published.url})` : ''}`
+              },
+              true
+            )
+            if (!decision.allowed) throw new PermissionError(`Not published: ${decision.why}`)
+            activity(ctx, 'approval', 'app_publish', `Publishing ${app.title}`, decision.approvedBy)
+            return appService().publish(real, (note) => activity(ctx, 'tool', 'app_publish', note))
+          },
           async saveToGitHub(folder, options) {
             const real = await appFolder(folder)
             const app = appService().info(real)
@@ -822,7 +842,8 @@ export function createPermissionLayer(deps: {
           error instanceof GitError ||
           error instanceof SshError ||
           error instanceof AppError ||
-          error instanceof NodeDownloadError
+          error instanceof NodeDownloadError ||
+          error instanceof PublishError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }

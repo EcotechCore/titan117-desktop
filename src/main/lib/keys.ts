@@ -1,6 +1,6 @@
 /**
  * The user's own API keys (features 2.9, 11.5, 16.3): OpenRouter, Anthropic,
- * OpenAI and Google for models; Exa, Tavily and Brave for web search. Kept on this laptop only, encrypted by the OS keychain
+ * OpenAI and Google for models; Exa, Tavily and Brave for web search; Cloudflare for publishing apps. Kept on this laptop only, encrypted by the OS keychain
  * (Electron's safeStorage); never sent to our servers (decisions §32) or to
  * the window. The engine receives them to call each provider directly.
  *
@@ -33,6 +33,18 @@ async function tryKey(provider: KeyProvider, key: string, fetchFn: typeof fetch)
         return false
       throw error
     }
+  }
+  // Cloudflare (6.15): its own token check, which changes nothing.
+  if (provider === 'cloudflare') {
+    const res = await fetchFn('https://api.cloudflare.com/client/v4/user/tokens/verify', {
+      headers: { Authorization: `Bearer ${key}` }
+    })
+    if (res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { result?: { status?: string } }
+      return body.result?.status === 'active'
+    }
+    if ([400, 401, 403].includes(res.status)) return false
+    throw new Error(`Cloudflare answered ${res.status}.`)
   }
   // Search keys (decisions §44): one small search, the only check these providers offer.
   if (provider === 'brave') {

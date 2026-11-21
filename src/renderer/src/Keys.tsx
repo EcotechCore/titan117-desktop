@@ -13,7 +13,7 @@ const PROVIDERS: {
   name: string
   where: string
   note: string
-  kind?: 'search'
+  kind?: 'search' | 'hosting'
 }[] = [
   {
     id: 'openrouter',
@@ -59,6 +59,13 @@ const PROVIDERS: {
     where: 'api-dashboard.search.brave.com',
     note: 'An independent web index. Its results are never cached, as Brave’s terms ask.',
     kind: 'search'
+  },
+  {
+    id: 'cloudflare',
+    name: 'Cloudflare',
+    where: 'dash.cloudflare.com/profile/api-tokens',
+    note: 'Publishes your sites to your own Cloudflare account (its free plan is enough for most). Create a token with the “Edit Cloudflare Workers” template.',
+    kind: 'hosting'
   }
 ]
 
@@ -71,7 +78,7 @@ export function OwnKeys({
   kind = 'models'
 }: {
   /** Model keys (the Models view) or search keys (Web search). */
-  kind?: 'models' | 'search'
+  kind?: 'models' | 'search' | 'hosting'
   saved: Record<KeyProvider, boolean>
   models: OwnKeyModel[]
   model: string | null
@@ -110,11 +117,17 @@ export function OwnKeys({
   return (
     <>
       <h2 className="section">
-        {kind === 'search' ? 'Your own search keys' : 'Your own API keys'}
+        {kind === 'search'
+          ? 'Your own search keys'
+          : kind === 'hosting'
+            ? 'Your hosting'
+            : 'Your own API keys'}
       </h2>
       <p className="muted">
-        Optional. Calls with your own key go straight to the provider and are billed by them, not in
-        credits. Keys stay on this computer, in its keychain, and are never sent to Titan117.
+        {kind === 'hosting'
+          ? 'Your own hosting account: you own the sites and pay your host directly, if anything. '
+          : 'Optional. Calls with your own key go straight to the provider and are billed by them, not in credits. '}
+        Keys stay on this computer, in its keychain, and are never sent to Titan117.
       </p>
       {PROVIDERS.filter((p) => (p.kind ?? 'models') === kind).map((p) => (
         <div key={p.id} className="row key-row">

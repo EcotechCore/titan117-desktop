@@ -100,7 +100,8 @@ const NAMES: Record<KeyProvider, string> = {
   google: 'Google',
   exa: 'Exa',
   tavily: 'Tavily',
-  brave: 'Brave'
+  brave: 'Brave',
+  cloudflare: 'Cloudflare'
 }
 
 /** What the checklist reads; the engine fills it in. */
@@ -251,7 +252,9 @@ export function checklist(
           target:
             provider === 'exa' || provider === 'tavily' || provider === 'brave'
               ? 'search'
-              : 'models',
+              : provider === 'cloudflare'
+                ? 'apps'
+                : 'models',
           label: 'Replace'
         }
       })

@@ -584,6 +584,7 @@ function App(): React.JSX.Element {
               client={api}
               engine={engine}
               cloud={state.cloud}
+              onKeysChanged={() => void reloadModels().catch(fail)}
               changed={
                 (state.changed.apps ?? 0) +
                 state.tasks.filter((t) => t.status === 'running').length * 1000 +

@@ -20,6 +20,8 @@ import {
 import type { EngineClient } from './engine'
 import { folderName } from './format'
 import { Icon } from './ui'
+import { OwnKeys } from './Keys'
+import type { KeyProvider } from '../../shared/protocol'
 
 interface AppInfo {
   folder: string
@@ -29,6 +31,8 @@ interface AppInfo {
   createdAt: number
   preview: string | null
   checking: string | null
+  problem: string | null
+  published: { host: 'cloudflare'; url: string; at: number } | null
   github: { owner: string; repo: string; url: string; sync: boolean; error: string | null } | null
 }
 
@@ -169,8 +173,10 @@ export function AppsView({
   cloud,
   changed,
   onStart,
-  onProblem
+  onProblem,
+  onKeysChanged
 }: {
+  onKeysChanged(): void
   client: EngineClient | null
   engine: EngineState
   cloud: CloudModel[]
@@ -685,6 +691,61 @@ export function AppsView({
                     ))}
                 </>
               )}
+
+              <h2 className="section">Publish</h2>
+              {app.published ? (
+                <p>
+                  Live at{' '}
+                  <a href={app.published.url} target="_blank" rel="noreferrer">
+                    {app.published.url}
+                  </a>{' '}
+                  <span className="faint">
+                    · published {new Date(app.published.at).toLocaleString()}
+                  </span>
+                </p>
+              ) : (
+                <p className="muted">
+                  Put the site on the internet, in your own Cloudflare account: you own it and its
+                  address, and Cloudflare’s free plan is enough for most small sites. Only a version
+                  that passes its checks is published.
+                </p>
+              )}
+              {app.problem && (
+                <p className="note note-error" role="alert">
+                  {app.problem}
+                </p>
+              )}
+              <div className="code-actions">
+                <button
+                  className="btn btn-primary"
+                  disabled={busy || !!app.checking || !engine.ownKeys.cloudflare}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Publish ${app.title} to your Cloudflare account? Anyone with its address will be able to see it.`
+                      )
+                    )
+                      act('/v1/apps/publish', { folder: app.folder })
+                  }}
+                >
+                  {app.checking === 'Publishing…' || app.checking?.includes('Cloudflare')
+                    ? app.checking
+                    : app.published
+                      ? 'Publish again'
+                      : 'Publish to Cloudflare'}
+                </button>
+                {!engine.ownKeys.cloudflare && (
+                  <span className="faint">Add your Cloudflare token below first.</span>
+                )}
+              </div>
+              <OwnKeys
+                kind="hosting"
+                saved={engine.ownKeys as Record<KeyProvider, boolean>}
+                models={[]}
+                model={null}
+                onUse={() => undefined}
+                onChanged={onKeysChanged}
+              />
 
               <h2 className="section">GitHub</h2>
               {app.github ? (

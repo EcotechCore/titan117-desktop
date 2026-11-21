@@ -412,6 +412,31 @@ export const appGitHub = defineTool<{ folder: string; private?: boolean }>({
   }
 })
 
+export const appPublish = defineTool<{ folder: string }>({
+  name: 'app_publish',
+  description: [
+    'Publish a web app made with app_create to the user’s own Cloudflare account (6.15), so anyone with its address',
+    'can see it. Only when the user asks. It builds and checks the app first and publishes only if everything passes;',
+    'it asks the user first, every time.'
+  ].join(' '),
+  params: {
+    type: 'object',
+    properties: { folder: { type: 'string', description: 'The app’s folder.' } },
+    required: ['folder']
+  },
+  // The approval is asked inside, as an outward action (laptop only, every time).
+  risk: 'read',
+  permissions: { apps: true },
+  describe: (input) => `Publish ${input.folder}`,
+  async run(input, ctx) {
+    const published = await ctx.apps.publish(input.folder)
+    return {
+      output: `Published at ${published.url}`,
+      summary: `Published: ${published.url}`
+    }
+  }
+})
+
 export const appTools = [
   appCreate,
   appBuild,
@@ -419,5 +444,6 @@ export const appTools = [
   appPreview,
   appVersions,
   appRestore,
-  appGitHub
+  appGitHub,
+  appPublish
 ]

@@ -152,6 +152,7 @@ export function createApi(deps: {
     restore(folder: string, sha: string): Promise<{ sha: string }>
     github(folder: string, action: 'save' | 'stop', isPrivate: boolean): Promise<unknown>
     zip(folder: string): Promise<{ name: string; base64: string }>
+    publish(folder: string): Promise<{ started: boolean }>
     setModels(next: import('./tools/lib/define-tool').AppModels): void
   }
   setup?: {
@@ -368,6 +369,7 @@ export function createApi(deps: {
         if (id === 'preview')
           return a.preview(folder, field(body, 'action') === 'stop' ? 'stop' : 'start')
         if (id === 'check') return a.check(folder)
+        if (id === 'publish') return a.publish(folder)
         if (id === 'github')
           return a.github(
             folder,
