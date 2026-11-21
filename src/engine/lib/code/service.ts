@@ -108,11 +108,15 @@ export function createCodeService(deps: {
             ...assessed.assessment,
             refuse: 'this is a review: it changes nothing.'
           }
+        // The user's own tool asking: its name on the card and in the activity log.
+        const asker = job.tool ? OWN_TOOLS.find((t) => t.id === job.tool)?.name : undefined
         return permissions.decide(ctx, {
           callId: ask.tool?.callID ?? ask.id,
           tool: assessed.tool,
           input: assessed.input,
-          assessment: assessed.assessment
+          assessment: asker
+            ? { ...assessed.assessment, summary: `${asker}: ${assessed.assessment.summary}` }
+            : assessed.assessment
         })
       }
 

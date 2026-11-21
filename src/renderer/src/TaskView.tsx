@@ -45,8 +45,17 @@ const TOOL_LABEL: Record<string, string> = {
   pull_request: 'Pull request'
 }
 
+/** The user's own coding tools (13.14), by the id code_task gets. */
+const OWN_TOOL_LABEL: Record<string, string> = {
+  'claude-code': 'Claude Code (your plan)',
+  codex: 'Codex (your plan)',
+  cursor: 'Cursor’s agent (your plan)',
+  grok: 'Grok (your plan)'
+}
+
 function stepLabel(call: ToolCall): string {
-  const what = TOOL_LABEL[call.name] ?? call.name.replace(/_/g, ' ')
+  const own = call.name === 'code_task' ? OWN_TOOL_LABEL[String(call.input.tool ?? '')] : undefined
+  const what = own ?? TOOL_LABEL[call.name] ?? call.name.replace(/_/g, ' ')
   const detail = [
     'path',
     'command',
