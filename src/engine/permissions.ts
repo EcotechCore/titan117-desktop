@@ -40,7 +40,8 @@ import { isNetworkFailure } from './lib/online'
 import type { DocumentsAccess, PageAccess } from './tools/lib/define-tool'
 import type { DocIndex } from './lib/doc-index'
 import type { CodeService } from './lib/code/service'
-import type { CodeAccess, GitAccess } from './tools/lib/define-tool'
+import type { CodeAccess, GitAccess, ServerAccess } from './tools/lib/define-tool'
+import { runOnServer, SshError, type Server } from './lib/ssh'
 import {
   GitError,
   gitBranch,
@@ -137,6 +138,8 @@ export interface Services {
   code?: CodeService
   /** Whether agent commits carry the Titan117 co-author line (decisions §25); on by default. */
   gitCoAuthor?: () => boolean
+  /** The servers the user added (3.15). */
+  servers?: () => Server[]
 }
 
 interface Waiting {
@@ -566,12 +569,27 @@ export function createPermissionLayer(deps: {
         }
       : denied<GitAccess>('git')
 
+    const servers: ServerAccess = p.servers
+      ? {
+          list: () => (services.servers?.() ?? []).map(({ name, target }) => ({ name, target })),
+          run(name, command, timeoutMs) {
+            const server = (services.servers?.() ?? []).find((s) => s.name === name)
+            if (!server)
+              throw new PermissionError(
+                `"${name}" isn't one of your servers. Servers are added by you, on the Code screen.`
+              )
+            return runOnServer(server, command, { timeoutMs, signal: ctx.signal })
+          }
+        }
+      : denied<ServerAccess>('servers')
+
     return {
       taskId: ctx.taskId,
       agent: ctx.agent,
       files,
       code,
       git,
+      servers,
       search,
       documents,
       pages,
@@ -645,7 +663,8 @@ export function createPermissionLayer(deps: {
           error instanceof ConvertError ||
           error instanceof DocumentError ||
           error instanceof SheetError ||
-          error instanceof GitError
+          error instanceof GitError ||
+          error instanceof SshError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }

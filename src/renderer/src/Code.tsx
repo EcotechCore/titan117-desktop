@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { EngineState } from '../../shared/protocol'
 import { codeRequest, diffCounts, reviewRequest } from './code-lib'
 import { Diff } from './Diff'
+import { ServersSection } from './Servers'
 import type { EngineClient } from './engine'
 import { folderName } from './format'
 import { Icon } from './ui'
@@ -386,6 +387,7 @@ export function CodeView({
               ))}
             </>
           )}
+          <ServersSection client={client} onProblem={onProblem} />
         </>
       )}
     </div>

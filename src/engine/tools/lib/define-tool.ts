@@ -60,6 +60,14 @@ export interface ToolPermissions {
   code?: boolean
   /** Git in a repository inside the allowed folders: looking, or also changing (13.7). */
   git?: 'read' | 'write'
+  /** Commands on the user's own servers over SSH (3.15). */
+  servers?: boolean
+}
+
+/** The user's own servers (3.15): only the ones they added in the app. */
+export interface ServerAccess {
+  list(): { name: string; target: string }[]
+  run(name: string, command: string, timeoutMs: number): Promise<import('../../lib/ssh').SshResult>
 }
 
 /** Git as the user (13.7, decisions §25), inside the allowed folders. */
@@ -123,6 +131,7 @@ export interface ToolContext {
   documents: DocumentsAccess
   code: CodeAccess
   git: GitAccess
+  servers: ServerAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.

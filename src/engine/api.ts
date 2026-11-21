@@ -124,6 +124,10 @@ export function createApi(deps: {
       notOffered: { name: string; why: string }[]
     }>
     setToolEnabled(id: string, on: boolean): void
+    /** The user's own servers (3.15): added and removed only from the window. */
+    servers(): import('./lib/ssh').Server[]
+    addServer(input: { name?: unknown; target?: unknown; port?: unknown }): void
+    removeServer(name: string): void
   }
   setup?: {
     state(): Promise<SetupState>
@@ -308,8 +312,28 @@ export function createApi(deps: {
         return { coAuthor: need(deps.code).coAuthor() }
       }
       case 'GET code/:id':
+        if (id === 'servers') return { servers: need(deps.code).servers() }
         if (id !== 'tools') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
         return need(deps.code).tools()
+      case 'POST code/:id': {
+        if (id !== 'servers') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        try {
+          need(deps.code).addServer({
+            name: field(body, 'name'),
+            target: field(body, 'target'),
+            port: field(body, 'port')
+          })
+        } catch (error) {
+          throw new ApiError(400, 'BAD_REQUEST', (error as Error).message)
+        }
+        return { servers: need(deps.code).servers() }
+      }
+      case 'DELETE code/:id': {
+        // `/v1/code/servers?name=…`
+        if (id !== 'servers' || !query.name) throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        need(deps.code).removeServer(query.name)
+        return { servers: need(deps.code).servers() }
+      }
       case 'GET documents':
         return { folders: need(deps.documents).status() }
       case 'PUT documents': {

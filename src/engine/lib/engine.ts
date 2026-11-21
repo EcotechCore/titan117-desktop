@@ -57,6 +57,7 @@ import { createOpencodeEngine } from './code/opencode'
 import { createCodeService } from './code/service'
 import { GitError, gitChangedFiles, gitDiff, gitStatus } from './git'
 import { startApprovalServer } from './code/approval-mcp'
+import { checkServer, type Server } from './ssh'
 import { createOwnTools, NOT_OFFERED, type OwnToolId } from './code/own-tools'
 
 export interface AccountState {
@@ -358,6 +359,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       fetch: connectivity.track(options.toolFetch ?? fetch),
       enginePorts: () => [serverPort, codeBridge.port, toolApprovals.port],
       gitCoAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
+      servers: () => getMeta<Server[]>(db, 'servers', []),
       toolApi: (taskId) => {
         const value = scriptToken(taskId)
         return value ? { url: `http://127.0.0.1:${serverPort}`, token: value } : null
@@ -593,6 +595,19 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     coAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
     setCoAuthor: (on: boolean) => setMeta(db, 'gitCoAuthor', on),
     tools: async () => ({ tools: await ownTools.status(), notOffered: NOT_OFFERED }),
+    servers: () => getMeta<Server[]>(db, 'servers', []),
+    addServer(input: { name?: unknown; target?: unknown; port?: unknown }) {
+      const server = checkServer(input)
+      const list = getMeta<Server[]>(db, 'servers', []).filter((s) => s.name !== server.name)
+      setMeta(db, 'servers', [...list, server].slice(-50))
+    },
+    removeServer(name: string) {
+      setMeta(
+        db,
+        'servers',
+        getMeta<Server[]>(db, 'servers', []).filter((s) => s.name !== name)
+      )
+    },
     setToolEnabled(id: string, on: boolean) {
       const list = getMeta<string[]>(db, 'ownToolsEnabled', []).filter((t) => t !== id)
       setMeta(db, 'ownToolsEnabled', on ? [...list, id as OwnToolId] : list)
