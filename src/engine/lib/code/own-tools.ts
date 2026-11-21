@@ -98,6 +98,8 @@ export interface OwnToolStatus {
   signedIn: boolean | null
   experimental: boolean
   enabled: boolean
+  /** Switched off by Titan117 from our cloud (decisions §20: a vendor changed its terms). */
+  killed: boolean
   signIn: string
 }
 
@@ -350,6 +352,8 @@ export function createOwnTools(deps: {
   scratch: string
   /** Experimental tools the user turned on. */
   enabled(id: OwnToolId): boolean
+  /** Adapters Titan117 switched off from its cloud (decisions §20). */
+  killed?(id: OwnToolId): boolean
   /** Files changed in the project (git), to report what the tool changed. */
   changes(repo: string): Promise<Map<string, ChangedFile>>
   run?: Runner
@@ -384,7 +388,8 @@ export function createOwnTools(deps: {
       installed: !!program,
       signedIn: program ? await signedIn(spec, program) : false,
       experimental: spec.experimental,
-      enabled: !spec.experimental || deps.enabled(spec.id),
+      killed: deps.killed?.(spec.id) ?? false,
+      enabled: !(deps.killed?.(spec.id) ?? false) && (!spec.experimental || deps.enabled(spec.id)),
       signIn: spec.signIn
     }
   }
@@ -550,6 +555,14 @@ export function createOwnTools(deps: {
           files: [],
           usedTool: false,
           note: `${spec.name} isn’t signed in. Sign in with \`${spec.signIn}\` in a terminal.`
+        }
+      if (status.killed)
+        return {
+          status: 'failed',
+          text: '',
+          files: [],
+          usedTool: false,
+          note: `Titan117 has switched off running ${spec.name} for now (its maker's terms changed or are being checked).`
         }
       if (!status.enabled)
         return {

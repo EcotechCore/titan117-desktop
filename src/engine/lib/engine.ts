@@ -310,10 +310,30 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   let githubToken: string | null = null
   // The user's own coding tools (13.14): their approvals come to us here.
   const toolApprovals = await startApprovalServer()
+  /** Kill switches for the coding-tool adapters (decisions §20), from our web app; kept when offline. */
+  async function checkKillSwitches(): Promise<void> {
+    if (!account.proxyUrl) return
+    try {
+      const response = await fetch(`${account.proxyUrl.replace(/\/$/, '')}/kill-switches`)
+      if (!response.ok) return
+      const body = (await response.json()) as { disabled?: unknown }
+      if (Array.isArray(body.disabled))
+        setMeta(
+          db,
+          'killSwitches',
+          body.disabled.filter((d): d is string => typeof d === 'string').slice(0, 20)
+        )
+    } catch {
+      // Offline: the last list stays.
+    }
+  }
+  setInterval(() => void checkKillSwitches(), 60 * 60_000).unref()
   const ownTools = createOwnTools({
     approvals: toolApprovals,
     scratch: join(options.dataDir ?? tmpdir(), 'scratch', 'own-tools'),
     enabled: (id) => getMeta<string[]>(db, 'ownToolsEnabled', []).includes(id),
+    // The last kill switches heard from our cloud, kept for when the laptop is offline.
+    killed: (id) => getMeta<string[]>(db, 'killSwitches', []).includes(id),
     changes: (repo) => gitChangedFiles(repo)
   })
   const scriptToken = (taskId: string): string | null => {
@@ -745,6 +765,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       }
       // Signed in again: reports waiting in the queue go, and fixes are checked (19.5, 19.8).
       void reports.flush().then(() => reports.checkFixed())
+      void checkKillSwitches()
       // The window re-reads the state (cloud models on or off) on a settings event.
       emit({ type: 'settings', defaultModel: getMeta<string | null>(db, 'defaultModel', null) })
     },

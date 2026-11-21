@@ -34,6 +34,7 @@ interface ToolsState {
     signedIn: boolean | null
     experimental: boolean
     enabled: boolean
+    killed: boolean
     signIn: string
   }[]
   notOffered: { name: string; why: string }[]
@@ -358,13 +359,15 @@ export function CodeView({
                       {t.experimental && <span className="tag">experimental</span>}
                     </p>
                     <p className="muted">
-                      {!t.installed
-                        ? 'Not installed on this laptop.'
-                        : t.signedIn === false
-                          ? `Installed, not signed in. In a terminal: ${t.signIn}`
-                          : t.signedIn === null
-                            ? 'Installed. Its sign-in is checked when a job starts.'
-                            : 'Installed and signed in.'}
+                      {t.killed
+                        ? 'Switched off by Titan117 for now: its maker’s terms changed or are being checked. Titan117’s own engine does the job instead.'
+                        : !t.installed
+                          ? 'Not installed on this laptop.'
+                          : t.signedIn === false
+                            ? `Installed, not signed in. In a terminal: ${t.signIn}`
+                            : t.signedIn === null
+                              ? 'Installed. Its sign-in is checked when a job starts.'
+                              : 'Installed and signed in.'}
                       {t.experimental &&
                         ' Its maker’s terms don’t yet say whether another app may run it, so it asks once before each job and works in its own restricted mode.'}
                     </p>

@@ -216,6 +216,24 @@ describe('running the user’s own tools', () => {
     expect(JSON.stringify(status)).not.toContain('someone@example.com')
   })
 
+  it('doesn’t run a tool Titan117 switched off from its cloud (kill switch)', async () => {
+    const own = createOwnTools({
+      approvals: undefined as never,
+      scratch: tempFolder('t117-own-'),
+      enabled: () => true,
+      killed: (id) => id === 'claude-code',
+      changes: async () => new Map(),
+      run: fakeRunner({ claude: 'C:\\bin\\claude.exe' }, async () => ({ code: 0 }))
+    })
+    expect((await own.status()).find((t) => t.id === 'claude-code')).toMatchObject({
+      killed: true,
+      enabled: false
+    })
+    const result = await own.run({ ...base, tool: 'claude-code' })
+    expect(result.usedTool).toBe(false)
+    expect(result.note).toMatch(/switched off/)
+  })
+
   it('falls back when a tool is missing, signed out or turned off', async () => {
     const missing = await tools(fakeRunner({}, async () => ({ code: 0 }))).run({
       ...base,
