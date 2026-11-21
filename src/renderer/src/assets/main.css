@@ -1821,3 +1821,13 @@ textarea.edit {
   max-height: 420px;
   overflow: auto;
 }
+.apps-brand {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.apps-brand input[type='color'] {
+  width: 64px;
+  height: 34px;
+  padding: 2px;
+}

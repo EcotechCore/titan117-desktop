@@ -27,7 +27,7 @@ export type SizeId = (typeof SIZES)[number]['id']
 
 export interface ShotResult {
   engine: EngineName
-  size: SizeId | 'desktop-dark'
+  size: SizeId | 'desktop-dark' | 'phone-slow' | 'desktop-language'
   /** File name inside the report folder. */
   screenshot: string | null
   consoleErrors: string[]
@@ -36,8 +36,16 @@ export interface ShotResult {
   failedRequests: string[]
   /** The page is wider than the screen (a sideways scroll on phones). */
   overflow: boolean
+  /** Over the limit on a slow network (phone-slow only). */
+  slow?: boolean
   loadMs: number
 }
+
+/** Each request's extra wait on the slow-network run, and what counts as too slow (6.21). */
+export const SLOW_DELAY_MS = 300
+export const SLOW_LIMIT_MS = 8_000
+/** The other language a site is opened in (6.21): the browser asks for Romanian. */
+export const OTHER_LOCALE = 'ro-RO'
 
 export interface SeoFinding {
   ok: boolean
@@ -268,16 +276,32 @@ export function createBrowserTests(deps: {
       }
       report.engines.push({ engine, ran: true })
       try {
-        const variants = [
+        type Variant = {
+          size: ShotResult['size']
+          viewport: (typeof SIZES)[number]
+          dark: boolean
+          slow?: boolean
+          locale?: string
+        }
+        const variants: Variant[] = [
           ...SIZES.map((s) => ({ size: s.id as ShotResult['size'], viewport: s, dark: false })),
-          { size: 'desktop-dark' as const, viewport: SIZES[2], dark: true }
+          { size: 'desktop-dark', viewport: SIZES[2], dark: true }
         ]
+        // Conditions (6.21), in the first engine that runs: a slow network and another language.
+        if (engine === report.engines.find((e) => e.ran)?.engine)
+          variants.push(
+            { size: 'phone-slow', viewport: SIZES[0], dark: false, slow: true },
+            { size: 'desktop-language', viewport: SIZES[2], dark: false, locale: OTHER_LOCALE }
+          )
         for (const variant of variants) {
           if (options.signal?.aborted) break
           const context = await browser.newContext({
             viewport: { width: variant.viewport.width, height: variant.viewport.height },
             colorScheme: variant.dark ? 'dark' : 'light',
-            serviceWorkers: 'block'
+            serviceWorkers: 'block',
+            ...(variant.locale
+              ? { locale: variant.locale, extraHTTPHeaders: { 'Accept-Language': variant.locale } }
+              : {})
           })
           const shot: ShotResult = {
             engine,
@@ -290,9 +314,12 @@ export function createBrowserTests(deps: {
             loadMs: 0
           }
           // Only the app's own preview is reachable.
-          await context.route('**/*', (route) => {
+          await context.route('**/*', async (route) => {
             const target = route.request().url()
-            if (target.startsWith(origin) || /^(data|blob):/.test(target)) return route.continue()
+            if (target.startsWith(origin) || /^(data|blob):/.test(target)) {
+              if (variant.slow) await new Promise((r) => setTimeout(r, SLOW_DELAY_MS))
+              return route.continue()
+            }
             shot.failedRequests.push(`Blocked (outside the preview): ${target.slice(0, 200)}`)
             return route.abort('blockedbyclient')
           })
@@ -313,6 +340,7 @@ export function createBrowserTests(deps: {
             await page.goto(url, { waitUntil: 'load', timeout: 30_000 })
             await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined)
             shot.loadMs = Date.now() - started
+            if (variant.slow) shot.slow = shot.loadMs > SLOW_LIMIT_MS
             shot.overflow = await page.evaluate(
               () => document.documentElement.scrollWidth > window.innerWidth + 1
             )
@@ -332,6 +360,19 @@ export function createBrowserTests(deps: {
       } finally {
         await browser.close().catch(() => undefined)
       }
+    }
+    // Works without the internet: nothing outside the preview was asked for (6.21).
+    if (report.shots.length) {
+      const outside = report.shots.flatMap((s) =>
+        s.failedRequests.filter((r) => r.startsWith('Blocked'))
+      ).length
+      report.seo.push({
+        check: 'Works offline',
+        ok: outside === 0,
+        detail: outside
+          ? `${outside} request(s) to other websites: the page needs the internet.`
+          : 'Nothing comes from other websites.'
+      })
     }
     writeFileSync(join(outDir, 'browsers.json'), JSON.stringify(report, null, 2))
     return report

@@ -141,7 +141,9 @@ export function createApi(deps: {
       title: string
       description: string
       lang?: string
+      starter?: string
     }): Promise<unknown>
+    setBrand(next: unknown): void
     report(folder: string): Promise<unknown>
     versions(folder: string): Promise<unknown>
     screenshot(folder: string, id: string, file: string): Promise<string>
@@ -149,6 +151,7 @@ export function createApi(deps: {
     check(folder: string): Promise<{ started: boolean }>
     restore(folder: string, sha: string): Promise<{ sha: string }>
     github(folder: string, action: 'save' | 'stop', isPrivate: boolean): Promise<unknown>
+    zip(folder: string): Promise<{ name: string; base64: string }>
     setModels(next: import('./tools/lib/define-tool').AppModels): void
   }
   setup?: {
@@ -318,14 +321,21 @@ export function createApi(deps: {
           return value
         }
         const lang = field(body, 'lang')
+        const starter = field(body, 'starter')
         return {
           app: await need(deps.apps).create({
             folder: text('folder', 1000),
             title: text('title', 120),
             description: text('description', 300),
-            ...(typeof lang === 'string' ? { lang } : {})
+            ...(typeof lang === 'string' ? { lang } : {}),
+            ...(typeof starter === 'string' ? { starter } : {})
           })
         }
+      }
+      case 'PUT apps/:id': {
+        if (id !== 'brand') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        need(deps.apps).setBrand(body)
+        return need(deps.apps).list()
       }
       case 'PUT apps': {
         const role = (name: string): string | null => {
@@ -345,6 +355,7 @@ export function createApi(deps: {
         const a = need(deps.apps)
         if (id === 'report') return { report: await a.report(query.folder) }
         if (id === 'versions') return { versions: await a.versions(query.folder) }
+        if (id === 'zip') return a.zip(query.folder)
         if (id === 'screenshot')
           return { png: await a.screenshot(query.folder, query.report ?? '', query.file ?? '') }
         throw new ApiError(404, 'NOT_FOUND', 'Not found.')

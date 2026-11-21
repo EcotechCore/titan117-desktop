@@ -527,3 +527,39 @@ export async function gitPushTo(
     )
   throw new GitError(why.trim().split('\n').slice(-3).join('\n') || 'The push failed.')
 }
+
+/**
+ * The files of one version as a ZIP (6.18, export): exactly what was saved,
+ * so never installed packages, test reports or anything git ignores.
+ */
+export function gitArchiveZip(dir: string, ref = 'HEAD'): Promise<Buffer> {
+  if (!/^[A-Za-z0-9._/-]{1,100}$/.test(ref) || ref.startsWith('-'))
+    return Promise.reject(new GitError(`"${ref}" isn’t a version.`))
+  return new Promise((resolve, reject) => {
+    execFile(
+      'git',
+      ['archive', '--format=zip', ref],
+      {
+        cwd: dir,
+        env: gitEnv(),
+        timeout: TIMEOUT_MS,
+        maxBuffer: 200 * 1024 * 1024,
+        windowsHide: true,
+        encoding: 'buffer'
+      },
+      (error, stdout, stderr) => {
+        if (error)
+          return reject(
+            new GitError(
+              String(stderr || error.message)
+                .trim()
+                .split(/\r?\n/)
+                .slice(-2)
+                .join(' ')
+            )
+          )
+        resolve(stdout)
+      }
+    )
+  })
+}

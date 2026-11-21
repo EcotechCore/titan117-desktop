@@ -63,6 +63,7 @@ import { createNodeComponent } from './apps/node'
 import { createRunner } from './apps/runner'
 import { createBrowserTests } from './apps/browsers'
 import { AppError, createAppService, type GitHubLink } from './apps/service'
+import { cleanBrand, STARTERS, type BrandKit } from './apps/starters'
 import type { AppModels } from '../tools/lib/define-tool'
 
 export interface AccountState {
@@ -548,6 +549,10 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       setLinks: (next) => setMeta(db, 'appGitHub', next)
     }
   })
+  const brandKit = (): BrandKit | null => {
+    const saved = getMeta<BrandKit | null>(db, 'brandKit', null)
+    return saved ? cleanBrand(saved) : null
+  }
   const appModels = (): AppModels =>
     getMeta<AppModels>(db, 'appModels', { planner: null, coder: null, fixer: null })
   permissions.useServices({
@@ -558,7 +563,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     localOnlyTasks,
     code,
     apps,
-    appModels
+    appModels,
+    brandKit
   })
 
   // Setup and health (1.12, 1.20, 1.21): facts from every part of the engine.
@@ -682,12 +688,29 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       return {
         apps: apps.list(allowed).map((a) => ({ ...a, checking: appChecks.get(a.folder) ?? null })),
         models: appModels(),
+        brand: brandKit() ?? cleanBrand(null),
+        starters: STARTERS.map(({ id, label, description }) => ({ id, label, description })),
         components: { node: nodeComponent.status(), browsers: appBrowsers.status() }
       }
     },
-    async create(input: { folder: string; title: string; description: string; lang?: string }) {
+    async create(input: {
+      folder: string
+      title: string
+      description: string
+      lang?: string
+      starter?: string
+    }) {
       const parent = await realWritable(input.folder)
-      return apps.create(parent, input)
+      const brand = brandKit()
+      const logo = brand?.logo ? await resolveAllowed(policy(), brand.logo) : ''
+      return apps.create(parent, {
+        ...input,
+        starter: STARTERS.find((s) => s.id === input.starter)?.id,
+        ...(brand ? { brand: { ...brand, logo } } : {})
+      })
+    },
+    setBrand(next: unknown) {
+      setMeta(db, 'brandKit', cleanBrand(next as Partial<Record<keyof BrandKit, unknown>>))
     },
     report: async (folder: string) => apps.latestReport(await resolveAllowed(policy(), folder)),
     versions: async (folder: string) => apps.versions(await resolveAllowed(policy(), folder)),
@@ -727,6 +750,10 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       return { started: true }
     },
     restore: async (folder: string, sha: string) => apps.restore(await realWritable(folder), sha),
+    async zip(folder: string) {
+      const file = await apps.zip(await resolveAllowed(policy(), folder))
+      return { name: file.name, base64: file.data.toString('base64') }
+    },
     /** The user's click: save to their GitHub, or stop pushing new versions. */
     async github(folder: string, action: 'save' | 'stop', isPrivate: boolean) {
       const real = await realWritable(folder)

@@ -41,9 +41,26 @@ interface Models {
   fixer: string | null
 }
 
+interface Brand {
+  primary: string
+  accent: string
+  font: 'system' | 'serif' | 'rounded' | 'mono'
+  tone: string
+  logo: string
+}
+
+const FONT_NAMES: Record<Brand['font'], string> = {
+  system: 'Clean (the system font)',
+  serif: 'Classic (serif)',
+  rounded: 'Friendly (rounded)',
+  mono: 'Technical (monospace)'
+}
+
 interface AppsState {
   apps: AppInfo[]
   models: Models
+  brand: Brand
+  starters: { id: string; label: string; description: string }[]
   components: {
     node: { version: string; ready: boolean; bytes: number }
     browsers: { firefox: boolean; webkit: boolean }
@@ -169,6 +186,7 @@ export function AppsView({
   const [newName, setNewName] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [newRequest, setNewRequest] = useState('')
+  const [newKind, setNewKind] = useState('blank')
   const [busy, setBusy] = useState(false)
   const [privateRepo, setPrivateRepo] = useState(true)
   // What went wrong with the last click, shown here (the chat's error line isn't on this screen).
@@ -250,6 +268,14 @@ export function AppsView({
       .finally(() => setBusy(false))
   }
 
+  function setBrand(change: Partial<Brand>): void {
+    if (!client || !state) return
+    client
+      .send<AppsState>('PUT', '/v1/apps/brand', { ...state.brand, ...change })
+      .then(setState)
+      .catch(fail)
+  }
+
   function setRole(role: keyof Models, value: string): void {
     if (!client || !state) return
     const next = { ...state.models, [role]: value || null }
@@ -326,6 +352,22 @@ export function AppsView({
                   ))}
                 </select>
               </label>
+              {state && (
+                <label className="field">
+                  Kind of site
+                  <select
+                    value={newKind}
+                    onChange={(e) => setNewKind(e.target.value)}
+                    aria-label="Kind of site"
+                  >
+                    {state.starters.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}: {s.description}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label className="field">
                 Name
                 <input
@@ -361,7 +403,8 @@ export function AppsView({
                         newFolder || engine.folders[0],
                         newName,
                         newDescription,
-                        newRequest
+                        newRequest,
+                        newKind
                       )
                     )
                     setCreating(false)
@@ -414,6 +457,21 @@ export function AppsView({
                     {busy ? 'Starting…' : 'Preview'}
                   </button>
                 )}
+                <button
+                  className="btn"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!client) return
+                    client
+                      .get<{ name: string; base64: string }>(
+                        `/v1/apps/zip?folder=${encodeURIComponent(app.folder)}`
+                      )
+                      .then((f) => window.titan117.artifacts.save(f.name, f.base64))
+                      .catch(fail)
+                  }}
+                >
+                  Download ZIP
+                </button>
                 <button
                   className="btn"
                   disabled={!!app.checking}
@@ -648,6 +706,63 @@ export function AppsView({
 
           {state && (
             <>
+              <h2 className="section">Your brand</h2>
+              <p className="muted">
+                Used for every new app: its colours, font, logo and tone of voice. Existing apps
+                keep theirs; ask Titan to apply a change to one.
+              </p>
+              <div className="apps-brand">
+                <label className="field">
+                  Main colour
+                  <input
+                    type="color"
+                    value={state.brand.primary}
+                    onChange={(e) => setBrand({ primary: e.target.value })}
+                  />
+                </label>
+                <label className="field">
+                  Second colour
+                  <input
+                    type="color"
+                    value={state.brand.accent}
+                    onChange={(e) => setBrand({ accent: e.target.value })}
+                  />
+                </label>
+                <label className="field">
+                  Font
+                  <select
+                    value={state.brand.font}
+                    onChange={(e) => setBrand({ font: e.target.value as Brand['font'] })}
+                  >
+                    {(Object.keys(FONT_NAMES) as Brand['font'][]).map((f) => (
+                      <option key={f} value={f}>
+                        {FONT_NAMES[f]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="field">
+                Tone of voice
+                <input
+                  defaultValue={state.brand.tone}
+                  placeholder="For example: warm and plain, no jargon"
+                  onBlur={(e) => {
+                    if (e.target.value !== state.brand.tone) setBrand({ tone: e.target.value })
+                  }}
+                />
+              </label>
+              <label className="field">
+                Logo (a PNG, SVG, JPEG or WebP file in one of your allowed folders)
+                <input
+                  defaultValue={state.brand.logo}
+                  placeholder="For example: C:\\Users\\you\\Documents\\logo.png"
+                  onBlur={(e) => {
+                    if (e.target.value !== state.brand.logo) setBrand({ logo: e.target.value })
+                  }}
+                />
+              </label>
+
               <h2 className="section">Models for builds</h2>
               <p className="muted">
                 A strong model plans, a cheaper one writes the code, and after repeated failures a

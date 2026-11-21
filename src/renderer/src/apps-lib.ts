@@ -10,11 +10,12 @@ export function appCreateRequest(
   folder: string,
   name: string,
   description: string,
-  request: string
+  request: string,
+  kind = 'blank'
 ): string {
   const first = request.trim()
   return [
-    `Make a new web app called "${name.trim()}" in the folder ${folder}, with the description "${description.trim()}" (app_create).`,
+    `Make a new web app called "${name.trim()}" in the folder ${folder}, with the description "${description.trim()}" (app_create${kind !== 'blank' ? `, kind "${kind}"` : ''}).`,
     first
       ? `Then build it with the app builder (app_build): ${first}`
       : 'Then stop: I will say what to build.'

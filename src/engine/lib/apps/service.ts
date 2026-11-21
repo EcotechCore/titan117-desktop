@@ -8,19 +8,46 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, extname, join } from 'node:path'
 
-import { gitCommit, gitInit, gitLog, gitRestore, gitStatus, type GitVersion } from '../git'
+import {
+  gitArchiveZip,
+  gitCommit,
+  gitInit,
+  gitLog,
+  gitRestore,
+  gitStatus,
+  type GitVersion
+} from '../git'
 import type { BrowserReport, BrowserTests, EngineName } from './browsers'
 import type { CheckResult, Runner } from './runner'
 import { slugOf, TEMPLATE_VERSION, webTemplate } from './template'
 import { findOrMakeRepo, pushApp, type GitHubRepo } from './github'
+import {
+  agentNotes,
+  cleanBrand,
+  LOGO_TYPES,
+  STARTERS,
+  themeCss,
+  type BrandKit,
+  type StarterId
+} from './starters'
 
 export class AppError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'AppError'
   }
+}
+
+export interface NewApp {
+  title: string
+  description: string
+  lang?: string
+  /** A starting point per kind of business (6.8). */
+  starter?: StarterId
+  /** The brand kit; its logo, if any, is a real path already checked by the caller. */
+  brand?: BrandKit
 }
 
 export interface AppMeta {
@@ -90,6 +117,10 @@ export function summarize(checks: CheckResult[], browsers: BrowserReport | null)
       for (const e of s.consoleErrors) lines.push(`✗ Console error (${where}): ${e}`)
       for (const r of s.failedRequests) lines.push(`✗ Request (${where}): ${r}`)
       if (s.overflow) lines.push(`✗ Wider than the screen (${where}): the page scrolls sideways.`)
+      if (s.slow)
+        lines.push(
+          `✗ Slow on a slow network (${where}): ${Math.round(s.loadMs / 1000)} seconds to load.`
+        )
     }
     for (const f of browsers.seo) if (!f.ok) lines.push(`✗ SEO, ${f.check}: ${f.detail}`)
   }
@@ -104,10 +135,7 @@ export function summarize(checks: CheckResult[], browsers: BrowserReport | null)
 export interface AppService {
   info(dir: string): AppInfo
   list(roots: string[]): AppInfo[]
-  create(
-    parent: string,
-    input: { title: string; description: string; lang?: string }
-  ): Promise<AppInfo>
+  create(parent: string, input: NewApp): Promise<AppInfo>
   check(
     dir: string,
     options?: {
@@ -128,6 +156,8 @@ export interface AppService {
   /** Save to the user's own GitHub and keep it up to date with each version (6.18). */
   saveToGitHub(dir: string, options: { private: boolean }): Promise<GitHubSave>
   stopGitHubSync(dir: string): void
+  /** The current version's files as a ZIP (6.18). */
+  zip(dir: string): Promise<{ name: string; data: Buffer }>
   versions(dir: string): Promise<GitVersion[]>
   restore(dir: string, sha: string): Promise<{ sha: string }>
   stopAll(): void
@@ -230,10 +260,7 @@ export function createAppService(deps: {
     },
 
     /** A new web app in its own folder inside `parent`, saved as its first version. */
-    async create(
-      parent: string,
-      input: { title: string; description: string; lang?: string }
-    ): Promise<AppInfo> {
+    async create(parent: string, input: NewApp): Promise<AppInfo> {
       const title = input.title.trim()
       if (!title) throw new AppError('A new app needs a name.')
       const dir = join(parent, slugOf(title))
@@ -247,6 +274,39 @@ export function createAppService(deps: {
         description: input.description.trim() || title,
         lang: input.lang ?? 'en'
       })
+      // The starter's pages and the brand kit (6.8).
+      const starter = STARTERS.find((s) => s.id === input.starter) ?? STARTERS[0]
+      const brand = cleanBrand(input.brand)
+      let logoFile: string | null = null
+      if (brand.logo) {
+        const type = LOGO_TYPES[extname(brand.logo).toLowerCase()]
+        if (!type) throw new AppError('The logo must be a PNG, SVG, JPEG or WebP file.')
+        const data = await readFile(brand.logo)
+        if (data.length > 2_000_000)
+          throw new AppError('The logo is over 2 MB; use a smaller file.')
+        logoFile = `logo.${type}`
+        await mkdir(join(dir, 'public'), { recursive: true })
+        await writeFile(join(dir, 'public', logoFile), data)
+      }
+      const css = files.get('src/index.css')
+      if (css) files.set('src/index.css', css.replace(/@theme \{[^}]*\}/, themeCss(brand)))
+      files.set(
+        'AGENTS.md',
+        (files.get('AGENTS.md') ?? '') + agentNotes(starter.id, brand, logoFile)
+      )
+      if (starter.pages.length > 1) {
+        const site = JSON.parse(files.get('site.config.json') ?? '{}') as {
+          pages: { path: string; title: string; description: string }[]
+        }
+        for (const page of starter.pages)
+          if (!site.pages.some((p) => p.path === page.path))
+            site.pages.push({
+              path: page.path,
+              title: `${page.title} · ${title}`,
+              description: input.description.trim() || title
+            })
+        files.set('site.config.json', JSON.stringify(site, null, 2) + '\n')
+      }
       for (const [path, content] of files) {
         const target = join(dir, path)
         await mkdir(dirname(target), { recursive: true })
@@ -255,7 +315,7 @@ export function createAppService(deps: {
       const meta: AppMeta = {
         kind: 'web',
         title,
-        template: TEMPLATE_VERSION,
+        template: starter.id === 'blank' ? TEMPLATE_VERSION : `${TEMPLATE_VERSION}/${starter.id}`,
         createdAt: Date.now()
       }
       await mkdir(join(dir, '.titan117'), { recursive: true })
@@ -405,6 +465,15 @@ export function createAppService(deps: {
       setLink(dir, { ...repo, sync: true, error: null })
       deps.onChange?.()
       return { status: 'saved', repo, created }
+    },
+
+    async zip(dir) {
+      const app = info(dir)
+      const [latest] = await gitLog(dir, 1)
+      return {
+        name: `${app.name}${latest ? `-${latest.sha}` : ''}.zip`,
+        data: await gitArchiveZip(dir)
+      }
     },
 
     stopGitHubSync(dir) {

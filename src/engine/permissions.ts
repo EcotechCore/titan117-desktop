@@ -156,6 +156,8 @@ export interface Services {
   apps?: AppService
   /** The models chosen for each role in an app build (6.10). */
   appModels?: () => AppModels
+  /** The brand kit applied to new apps (6.8, 15.1). */
+  brandKit?: () => import('./lib/apps/starters').BrandKit | null
 }
 
 interface Waiting {
@@ -638,7 +640,13 @@ export function createPermissionLayer(deps: {
       ? {
           async create(input) {
             const parent = await appFolder(input.folder)
-            return appService().create(parent, input)
+            // The brand kit's logo is read only from the allowed folders.
+            const brand = services.brandKit?.() ?? undefined
+            const logo = brand?.logo ? await resolveAllowed(policy, brand.logo) : ''
+            return appService().create(parent, {
+              ...input,
+              ...(brand ? { brand: { ...brand, logo } } : {})
+            })
           },
           info: async (folder) => appService().info(await resolveAllowed(policy, folder)),
           async approvePlan(folder, plan) {

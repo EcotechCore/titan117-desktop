@@ -67,7 +67,7 @@ describe('the web app builder, for real', () => {
     const shots = readdirSync(join(app.folder, '.titan117', 'reports', report.id)).filter((f) =>
       f.endsWith('.png')
     )
-    expect(shots).toHaveLength(12)
+    expect(shots).toHaveLength(14)
     expect(report.browsers?.seo.filter((f) => !f.ok)).toEqual([])
     expect(report.passed).toBe(true)
 

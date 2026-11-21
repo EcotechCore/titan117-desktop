@@ -112,6 +112,7 @@ export interface AppAccess {
     title: string
     description: string
     lang?: string
+    starter?: import('../../lib/apps/starters').StarterId
   }): Promise<import('../../lib/apps/service').AppInfo>
   info(folder: string): Promise<import('../../lib/apps/service').AppInfo>
   /** Show the plan for approval (6.7). Approved: the build's file changes and the app's checks run without asking again in this task. */
