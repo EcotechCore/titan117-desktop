@@ -37,6 +37,8 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [x] **A notification:** start a task, switch to another window, wait for "Titan finished".
 - [x] **Phase 6's check (the folder agent):** turn on a folder of your own real documents (contracts, invoices, offers) in Documents, ask questions whose answers you know, and see that the answers cite the right file and page. Also mark a folder "Local models only" and check that a cloud model task stops and offers a local model.
 - [ ] **Phase 7's check, done on 20 Nov 2026:** look at [the pull request](https://github.com/ispasdani/titan117-sample-shop/pull/5) the code builder opened in the private sample repo `ispasdani/titan117-sample-shop`, then merge or close it as you like. Also try the Code screen yourself on a project of your own: a job with Plan first, then Build, and Review the changes.
+- [ ] **Sign in with GitHub in the app** (Code screen → GitHub → Sign in with GitHub, enter the code on GitHub's page), then **Choose repositories** for the ones Titan may open pull requests in. Ask Titan for a small change in one of them and a pull request.
+- [ ] **Try your own coding tools, if you use them:** install Claude Code (and sign in with `claude auth login`), then on the Code screen choose it as the engine for a job. Codex, Cursor's agent and Grok work the same once turned on there (experimental). Also add one of your servers under Your servers and ask Titan to run `uptime` on it.
 - [ ] Search with your own Exa, Tavily or Brave key, if you have one (optional).
 - [x] The microphone button with your own microphone (phase 3).
 
@@ -60,8 +62,6 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [ ] Company details on the legal pages: registered name, registration number, VAT number, address (`apps/web/content/legal.ts`).
 - [ ] **Ask Modal in writing** whether Titan117 users may run jobs on their own Modal accounts through our app (their terms limit use to the customer's own internal business; decisions §53.9). Needed before cloud sandboxes (3.15) are built, later in phase 7.
 - [ ] **Accept Anthropic's Commercial Terms** for running Claude Code inside Titan117 (decisions §20, §55), before the beta.
-- [ ] **Sign in with GitHub in the app** (Code screen → GitHub → Sign in with GitHub, enter the code on GitHub's page), then **Choose repositories** for the ones Titan may open pull requests in. Ask Titan for a small change in one of them and a pull request.
-- [ ] **Try your own coding tools, if you use them:** install Claude Code (and sign in with `claude auth login`), then on the Code screen choose it as the engine for a job. Codex, Cursor's agent and Grok work the same once turned on there (experimental). Also add one of your servers under Your servers and ask Titan to run `uptime` on it.
 - [ ] The Romanian lawyer's review of the legal pages, now including the content rules, takedown process and **comments** for shared pages.
 - [ ] **Stripe's written OK** that our credits are allowed (before live mode).
 - [ ] The trademark lawyer's short opinion, then file the EU trademark "TITAN117" in classes 9 and 42 (decisions §33.7).
