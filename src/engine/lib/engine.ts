@@ -62,7 +62,7 @@ import { createOwnTools, NOT_OFFERED, type OwnToolId } from './code/own-tools'
 import { createNodeComponent } from './apps/node'
 import { createRunner } from './apps/runner'
 import { createBrowserTests } from './apps/browsers'
-import { AppError, createAppService } from './apps/service'
+import { AppError, createAppService, type GitHubLink } from './apps/service'
 import type { AppModels } from '../tools/lib/define-tool'
 
 export interface AccountState {
@@ -541,7 +541,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     }),
     browsers: appBrowsers,
     coAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
-    onChange: () => emit({ type: 'changed', what: 'apps' })
+    onChange: () => emit({ type: 'changed', what: 'apps' }),
+    github: {
+      token: () => githubToken,
+      links: () => getMeta<Record<string, GitHubLink>>(db, 'appGitHub', {}),
+      setLinks: (next) => setMeta(db, 'appGitHub', next)
+    }
   })
   const appModels = (): AppModels =>
     getMeta<AppModels>(db, 'appModels', { planner: null, coder: null, fixer: null })
@@ -722,6 +727,15 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       return { started: true }
     },
     restore: async (folder: string, sha: string) => apps.restore(await realWritable(folder), sha),
+    /** The user's click: save to their GitHub, or stop pushing new versions. */
+    async github(folder: string, action: 'save' | 'stop', isPrivate: boolean) {
+      const real = await realWritable(folder)
+      if (action === 'stop') {
+        apps.stopGitHubSync(real)
+        return { status: 'stopped' }
+      }
+      return apps.saveToGitHub(real, { private: isPrivate })
+    },
     setModels(next: AppModels) {
       setMeta(db, 'appModels', next)
     }

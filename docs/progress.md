@@ -32,6 +32,17 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 21 Nov 2026 · Phase 8: Save to GitHub
+
+Asked for by the owner. Decisions §56.16 (to be confirmed).
+
+- **On the Apps screen, Save to GitHub** (private by default) puts the app in a repository in the user's own GitHub account, as the user, through our GitHub App's sign-in, with all its versions. After that, **each new version is pushed by itself** until Stop pushing; a failed push never stops a version being saved, and its reason shows on the screen.
+- **The repository:** made through GitHub's API once our GitHub App has the "Repository creation" (or "Administration") permission, which it doesn't have yet (owner checklist). Until then the screen links to GitHub's own new-repository page, filled in, and the next save uses that empty repository. A repository with commits is never used; the next free name is.
+- **Pushing** (`src/engine/lib/apps/github.ts`, `gitPushTo` and `gitRemoteSet` in `git.ts`): the token reaches git only as a header through its environment, never on a command line or in `.git/config`; never forced, so changes made on GitHub stop the push and nothing is overwritten. An app's own repository gets its `main` pushed (an exception to "never push to main", which stays for other repositories).
+- **Asks** every time, on the laptop only, when Titan does it (`app_github`, with its denial test); the screen's button is the user's own click.
+- **Fixed on the way:** errors on the Apps screen weren't shown (the window shows them only in the chat); they now show on the screen, by the button that caused them.
+- **Checks:** typecheck, lint, 374 tests (8 new: the repository found or made against a fake GitHub, a push into a local repository that keeps the token out of the settings and refuses to overwrite, the sync after each version), build and licences pass. In the built app, the GitHub section shows and, without a sign-in, says to sign in first. **Not yet tried against the real GitHub:** it needs the owner's sign-in and makes a repository in their account (owner checklist).
+
 ### 21 Nov 2026 · Phase 8 started: the app builder for the web, first part
 
 Decisions §56 (to be confirmed). Branch `phase-8-app-builder`.

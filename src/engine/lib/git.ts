@@ -68,12 +68,23 @@ function gitEnv(): Record<string, string> {
   return cleanEnv(process.env, tmpdir(), extra)
 }
 
-function run(program: string, args: string[], cwd: string): Promise<RunResult> {
+function run(
+  program: string,
+  args: string[],
+  cwd: string,
+  extraEnv: Record<string, string> = {}
+): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     execFile(
       program,
       args,
-      { cwd, env: gitEnv(), timeout: TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+      {
+        cwd,
+        env: { ...gitEnv(), ...extraEnv },
+        timeout: TIMEOUT_MS,
+        maxBuffer: 8 * 1024 * 1024,
+        windowsHide: true
+      },
       (error, stdout, stderr) => {
         const code = (error as { code?: unknown } | null)?.code
         if (code === 'ENOENT')
@@ -466,4 +477,53 @@ export async function gitRestore(
   const after = await gitStatus(dir)
   if (!after.changes.length) throw new GitError('That version is the same as the current one.')
   return { sha: (await gitCommit(dir, { ...input })).sha }
+}
+
+/** Point a remote at a URL, adding it if it's new (an app's own repository, 6.18). */
+export async function gitRemoteSet(dir: string, name: string, url: string): Promise<void> {
+  if (!/^[A-Za-z0-9._-]{1,50}$/.test(name)) throw new GitError(`"${name}" isn’t a remote name.`)
+  if (!/^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+\.git$/.test(url))
+    throw new GitError('Only a GitHub repository address can be used here.')
+  const has = (await git(dir, 'remote')).split(/\r?\n/).includes(name)
+  await git(dir, 'remote', ...(has ? ['set-url', name, url] : ['add', name, url]))
+}
+
+/**
+ * Push one branch of an app's own repository (6.18, decisions §56.16): the
+ * same branch name on the remote, never forced. With the user's GitHub
+ * sign-in token, git gets it as a header through its environment (never on
+ * a command line, never saved in the repository's settings); without it,
+ * the user's own git sign-in is used.
+ */
+export async function gitPushTo(
+  dir: string,
+  remote: string,
+  branch: string,
+  token: string | null
+): Promise<void> {
+  if (!BRANCH_NAME.test(branch)) throw new GitError(`"${branch}" isn’t a branch name.`)
+  const env: Record<string, string> = token
+    ? {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+        GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`
+      }
+    : {}
+  const result = await run(
+    'git',
+    ['push', '--set-upstream', remote, `${branch}:${branch}`],
+    dir,
+    env
+  )
+  if (result.code === 0) return
+  const why = `${result.stderr}\n${result.stdout}`
+  if (/non-fast-forward|fetch first|rejected/i.test(why))
+    throw new GitError(
+      'GitHub has changes this app doesn’t have (someone changed the repository on GitHub). Nothing was overwritten.'
+    )
+  if (/403|not found|denied|Authentication failed|could not read Username/i.test(why))
+    throw new GitError(
+      'GitHub didn’t let Titan117 push to this repository. On the Code screen, under GitHub, press Change repositories and add it.'
+    )
+  throw new GitError(why.trim().split('\n').slice(-3).join('\n') || 'The push failed.')
 }

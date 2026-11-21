@@ -148,6 +148,7 @@ export function createApi(deps: {
     preview(folder: string, action: 'start' | 'stop'): Promise<{ url: string | null }>
     check(folder: string): Promise<{ started: boolean }>
     restore(folder: string, sha: string): Promise<{ sha: string }>
+    github(folder: string, action: 'save' | 'stop', isPrivate: boolean): Promise<unknown>
     setModels(next: import('./tools/lib/define-tool').AppModels): void
   }
   setup?: {
@@ -355,6 +356,12 @@ export function createApi(deps: {
         if (id === 'preview')
           return a.preview(folder, field(body, 'action') === 'stop' ? 'stop' : 'start')
         if (id === 'check') return a.check(folder)
+        if (id === 'github')
+          return a.github(
+            folder,
+            field(body, 'action') === 'stop' ? 'stop' : 'save',
+            field(body, 'private') !== false
+          )
         if (id === 'restore') {
           const sha = field(body, 'version')
           if (typeof sha !== 'string') throw new ApiError(400, 'BAD_REQUEST', 'Which version?')

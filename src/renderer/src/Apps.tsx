@@ -27,7 +27,13 @@ interface AppInfo {
   createdAt: number
   preview: string | null
   checking: string | null
+  github: { owner: string; repo: string; url: string; sync: boolean; error: string | null } | null
 }
+
+type GitHubSave =
+  | { status: 'saved'; repo: { owner: string; repo: string; url: string }; created: boolean }
+  | { status: 'make-it'; url: string; name: string }
+  | { status: 'stopped' }
 
 interface Models {
   planner: string | null
@@ -164,6 +170,13 @@ export function AppsView({
   const [newDescription, setNewDescription] = useState('')
   const [newRequest, setNewRequest] = useState('')
   const [busy, setBusy] = useState(false)
+  const [privateRepo, setPrivateRepo] = useState(true)
+  // What went wrong with the last click, shown here (the chat's error line isn't on this screen).
+  const [problem, setProblem] = useState<string | null>(null)
+  const [githubProblem, setGitHubProblem] = useState<string | null>(null)
+  const fail = (error: unknown): void =>
+    setProblem(error instanceof Error ? error.message : 'Something went wrong.')
+  const [makeIt, setMakeIt] = useState<{ folder: string; url: string; name: string } | null>(null)
   // The preview is shown at the real screen width, scaled down to fit the window.
   const frameWrap = useRef<HTMLDivElement | null>(null)
   const [room, setRoom] = useState(800)
@@ -211,10 +224,29 @@ export function AppsView({
   function act(path: string, body: Record<string, unknown>): void {
     if (!client) return
     setBusy(true)
+    setProblem(null)
     client
       .send('POST', path, body)
       .then(load)
-      .catch(onProblem)
+      .catch(fail)
+      .finally(() => setBusy(false))
+  }
+
+  /** Save to the user's own GitHub (6.18), or stop pushing new versions. */
+  function github(folder: string, action: 'save' | 'stop'): void {
+    if (!client) return
+    setBusy(true)
+    setGitHubProblem(null)
+    setMakeIt(null)
+    client
+      .send<GitHubSave>('POST', '/v1/apps/github', { folder, action, private: privateRepo })
+      .then((r) => {
+        if (r.status === 'make-it') setMakeIt({ folder, url: r.url, name: r.name })
+        load()
+      })
+      .catch((error: unknown) =>
+        setGitHubProblem(error instanceof Error ? error.message : 'Something went wrong.')
+      )
       .finally(() => setBusy(false))
   }
 
@@ -344,6 +376,11 @@ export function AppsView({
             </div>
           )}
 
+          {problem && (
+            <p className="note note-error" role="alert">
+              {problem}
+            </p>
+          )}
           {app && (
             <>
               <div className="row row-tint">
@@ -497,6 +534,84 @@ export function AppsView({
                         )}
                       </div>
                     ))}
+                </>
+              )}
+
+              <h2 className="section">GitHub</h2>
+              {app.github ? (
+                <div className="row">
+                  <div className="row-main">
+                    <p className="row-title">
+                      Saved to{' '}
+                      <a href={app.github.url} target="_blank" rel="noreferrer">
+                        {app.github.owner}/{app.github.repo}
+                      </a>
+                    </p>
+                    <p className="muted">
+                      {app.github.sync
+                        ? 'Each new version is pushed there, as you.'
+                        : 'New versions aren’t pushed there any more.'}
+                    </p>
+                    {app.github.error && (
+                      <p className="note">The last push didn’t work: {app.github.error}</p>
+                    )}
+                  </div>
+                  <button
+                    className="btn"
+                    disabled={busy}
+                    onClick={() => github(app.folder, 'save')}
+                  >
+                    {app.github.sync ? 'Push now' : 'Push and keep it up to date'}
+                  </button>
+                  {app.github.sync && (
+                    <button
+                      className="btn"
+                      disabled={busy}
+                      onClick={() => github(app.folder, 'stop')}
+                    >
+                      Stop pushing
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p className="muted">
+                    Keep the code in your own GitHub account, with every version: no lock-in. After
+                    this, each new version is pushed there too. Needs Sign in with GitHub (Code
+                    screen).
+                  </p>
+                  <div className="code-actions">
+                    <label className="choice">
+                      <input
+                        type="checkbox"
+                        checked={privateRepo}
+                        onChange={(e) => setPrivateRepo(e.target.checked)}
+                      />{' '}
+                      Private repository
+                    </label>
+                    <button
+                      className="btn btn-primary"
+                      disabled={busy}
+                      onClick={() => github(app.folder, 'save')}
+                    >
+                      Save to GitHub
+                    </button>
+                  </div>
+                  {githubProblem && (
+                    <p className="note note-error" role="alert">
+                      {githubProblem}
+                    </p>
+                  )}
+                  {makeIt?.folder === app.folder && (
+                    <p className="note">
+                      Titan117 may not make repositories in your account yet. Make an empty one
+                      named <span className="mono">{makeIt.name}</span> on{' '}
+                      <a href={makeIt.url} target="_blank" rel="noreferrer">
+                        GitHub’s page
+                      </a>{' '}
+                      (filled in for you; add nothing to it), then press Save to GitHub again.
+                    </p>
+                  )}
                 </>
               )}
 

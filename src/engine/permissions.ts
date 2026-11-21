@@ -698,6 +698,34 @@ export function createPermissionLayer(deps: {
             appService().saveVersion(await appFolder(folder), message),
           versions: async (folder) => appService().versions(await resolveAllowed(policy, folder)),
           restore: async (folder, sha) => appService().restore(await appFolder(folder), sha),
+          async saveToGitHub(folder, options) {
+            const real = await appFolder(folder)
+            const app = appService().info(real)
+            const isPrivate = options?.private !== false
+            // An outward action (decisions §25): asks every time, on the laptop only.
+            const decision = await gate(
+              ctx,
+              `${callId}-github`,
+              'app_github',
+              { folder, private: isPrivate },
+              {
+                risk: 'external',
+                summary: app.github
+                  ? `Push "${app.title}" to ${app.github.url}`
+                  : `Save "${app.title}" to your GitHub as a ${isPrivate ? 'private' : 'public'} repository, as you, and push each new version to it`
+              },
+              true
+            )
+            if (!decision.allowed) throw new PermissionError(`Not saved: ${decision.why}`)
+            activity(
+              ctx,
+              'approval',
+              'app_github',
+              `Saving ${app.title} to GitHub`,
+              decision.approvedBy
+            )
+            return appService().saveToGitHub(real, { private: isPrivate })
+          },
           models: () => services.appModels?.() ?? { planner: null, coder: null, fixer: null }
         }
       : denied<AppAccess>('the app builder')

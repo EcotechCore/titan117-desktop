@@ -202,6 +202,8 @@ export const appBuild = defineTool<{ folder: string; request: string }>({
     return {
       output: [
         `${status} ${version ? `Saved as a new version (${version.sha}).` : 'Nothing changed, so no new version.'}`,
+        version?.pushed ? `Pushed to ${version.pushed}.` : '',
+        version?.pushError ? `Not pushed to GitHub: ${version.pushError}` : '',
         notes.join(' '),
         '',
         `The checks:\n${report.summary.slice(0, MAX_TEXT)}`,
@@ -326,4 +328,45 @@ export const appRestore = defineTool<{ folder: string; version: string }>({
   }
 })
 
-export const appTools = [appCreate, appBuild, appCheck, appPreview, appVersions, appRestore]
+export const appGitHub = defineTool<{ folder: string; private?: boolean }>({
+  name: 'app_github',
+  description: [
+    'Save a web app made with app_create to the user’s own GitHub (export, 6.18): a repository in their account,',
+    'private unless they ask otherwise, with all its versions; after that each new version is pushed to it.',
+    'Only when the user asks. It asks the user first, every time.'
+  ].join(' '),
+  params: {
+    type: 'object',
+    properties: {
+      folder: { type: 'string', description: 'The app’s folder.' },
+      private: { type: 'boolean', description: 'A private repository (default true).' }
+    },
+    required: ['folder']
+  },
+  // The approval is asked inside, as an outward action (laptop only, every time).
+  risk: 'read',
+  permissions: { apps: true },
+  describe: (input) => `Save ${input.folder} to your GitHub`,
+  async run(input, ctx) {
+    const result = await ctx.apps.saveToGitHub(input.folder, { private: input.private })
+    if (result.status === 'make-it')
+      return {
+        output: `Titan117’s GitHub App may not make repositories yet. Ask the user to make an empty repository named "${result.name}" on GitHub’s page, ${result.url} , and then save again.`,
+        summary: 'GitHub: make the repository first'
+      }
+    return {
+      output: `Saved to ${result.repo.url}${result.created ? ' (a new repository)' : ''}. Each new version is pushed there from now on.`,
+      summary: `Saved to GitHub: ${result.repo.owner}/${result.repo.repo}`
+    }
+  }
+})
+
+export const appTools = [
+  appCreate,
+  appBuild,
+  appCheck,
+  appPreview,
+  appVersions,
+  appRestore,
+  appGitHub
+]

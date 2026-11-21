@@ -529,6 +529,25 @@ const DENIALS: Record<string, () => Promise<void>> = {
     ).toBe('refused')
   },
 
+  async app_github() {
+    const b = bench()
+    expect((await b.run({ name: 'app_github', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    // An outward action: it asks, laptop only, and denied nothing is saved.
+    fakeApp(b.allowed)
+    const card = await b.approvalOf({ name: 'app_github', input: { folder: b.allowed } })
+    expect(card.tool).toBe('app_github')
+    expect(card.risk).toBe('external')
+    expect(card.canAlways).toBe(false)
+    const denied = await b.run({ name: 'app_github', input: { folder: b.allowed } }, 'deny')
+    expect(denied.status).toBe('refused')
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'app_github', input: { folder: none.allowed } })).status).toBe(
+      'refused'
+    )
+  },
+
   async list_folder() {
     const b = bench()
     expect((await b.run({ name: 'list_folder', input: { path: b.outside } })).status).toBe(

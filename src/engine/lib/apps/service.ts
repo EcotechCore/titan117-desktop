@@ -14,6 +14,7 @@ import { gitCommit, gitInit, gitLog, gitRestore, gitStatus, type GitVersion } fr
 import type { BrowserReport, BrowserTests, EngineName } from './browsers'
 import type { CheckResult, Runner } from './runner'
 import { slugOf, TEMPLATE_VERSION, webTemplate } from './template'
+import { findOrMakeRepo, pushApp, type GitHubRepo } from './github'
 
 export class AppError extends Error {
   constructor(message: string) {
@@ -33,7 +34,21 @@ export interface AppInfo extends AppMeta {
   folder: string
   name: string
   preview: string | null
+  /** The app's repository on the user's GitHub (6.18), when saved there. */
+  github: GitHubLink | null
 }
+
+export interface GitHubLink extends GitHubRepo {
+  /** Push each new version (on until the user stops it). */
+  sync: boolean
+  /** Why the last push failed, if it did. */
+  error: string | null
+}
+
+/** Saving an app to the user's GitHub (6.18): a repository, or GitHub's page to make one. */
+export type GitHubSave =
+  | { status: 'saved'; repo: GitHubRepo; created: boolean }
+  | { status: 'make-it'; url: string; name: string }
 
 export interface AppReport {
   id: string
@@ -106,7 +121,13 @@ export interface AppService {
   screenshot(dir: string, id: string, file: string): Promise<Buffer>
   startPreview(dir: string): Promise<{ url: string }>
   stopPreview(dir: string): boolean
-  saveVersion(dir: string, message: string): Promise<{ sha: string } | null>
+  saveVersion(
+    dir: string,
+    message: string
+  ): Promise<{ sha: string; pushed: string | null; pushError: string | null } | null>
+  /** Save to the user's own GitHub and keep it up to date with each version (6.18). */
+  saveToGitHub(dir: string, options: { private: boolean }): Promise<GitHubSave>
+  stopGitHubSync(dir: string): void
   versions(dir: string): Promise<GitVersion[]>
   restore(dir: string, sha: string): Promise<{ sha: string }>
   stopAll(): void
@@ -118,21 +139,65 @@ export function createAppService(deps: {
   /** Whether agent commits carry the co-author line (decisions §25). */
   coAuthor: () => boolean
   onChange?: () => void
+  /** The user's GitHub sign-in through our app, and where each app is saved (decisions §25, §56.16). */
+  github?: {
+    token(): string | null
+    links(): Record<string, GitHubLink>
+    setLinks(next: Record<string, GitHubLink>): void
+    fetch?: typeof fetch
+    /** How a push happens (tests push to a local repository). */
+    push?: typeof pushApp
+  }
 }): AppService {
   const { runner, browsers } = deps
 
   function info(dir: string): AppInfo {
     const meta = readMeta(dir)
     if (!meta) throw new AppError(`"${dir}" isn't an app made with the app builder.`)
-    return { ...meta, folder: dir, name: basename(dir), preview: runner.preview(dir)?.url ?? null }
+    return {
+      ...meta,
+      folder: dir,
+      name: basename(dir),
+      preview: runner.preview(dir)?.url ?? null,
+      github: deps.github?.links()[dir] ?? null
+    }
   }
 
-  async function saveVersion(dir: string, message: string): Promise<{ sha: string } | null> {
+  function setLink(dir: string, link: GitHubLink | null): void {
+    if (!deps.github) return
+    const next = { ...deps.github.links() }
+    if (link) next[dir] = link
+    else delete next[dir]
+    deps.github.setLinks(next)
+  }
+
+  /** Push to the app's GitHub repository; the error is kept on the link, never thrown. */
+  async function syncGitHub(
+    dir: string
+  ): Promise<{ pushed: string | null; pushError: string | null }> {
+    const link = deps.github?.links()[dir]
+    if (!link?.sync) return { pushed: null, pushError: null }
+    try {
+      await (deps.github?.push ?? pushApp)(dir, link, deps.github?.token() ?? null)
+      setLink(dir, { ...link, error: null })
+      return { pushed: link.url, pushError: null }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setLink(dir, { ...link, error: message })
+      return { pushed: null, pushError: message }
+    }
+  }
+
+  async function saveVersion(
+    dir: string,
+    message: string
+  ): Promise<{ sha: string; pushed: string | null; pushError: string | null } | null> {
     const status = await gitStatus(dir)
     if (!status.changes.length) return null
     const { sha } = await gitCommit(dir, { message, coAuthor: deps.coAuthor() })
+    const pushed = await syncGitHub(dir)
     deps.onChange?.()
-    return { sha }
+    return { sha, ...pushed }
   }
 
   return {
@@ -299,6 +364,57 @@ export function createAppService(deps: {
 
     saveVersion,
 
+    async saveToGitHub(dir, options) {
+      const meta = info(dir)
+      const token = deps.github?.token() ?? null
+      if (!deps.github || !token)
+        throw new AppError(
+          'Sign in with GitHub first (Code screen, under GitHub), then save again.'
+        )
+      // Already saved there: just push what's new.
+      const known = deps.github.links()[dir]
+      let repo: GitHubRepo
+      let created = false
+      if (known) repo = known
+      else {
+        const status = await gitStatus(dir)
+        const own = status.remote?.github
+        if (own) repo = { ...own, url: `https://github.com/${own.owner}/${own.repo}` }
+        else {
+          const found = await findOrMakeRepo(deps.github.fetch ?? fetch, token, {
+            name: meta.name,
+            description: readFileSafe(dir) ?? meta.title,
+            private: options.private
+          })
+          if (found.status === 'make-it') return found
+          repo = found.repo
+          created = found.created
+        }
+      }
+      try {
+        await (deps.github.push ?? pushApp)(dir, repo, token)
+      } catch (error) {
+        setLink(dir, {
+          ...repo,
+          sync: true,
+          error: error instanceof Error ? error.message : String(error)
+        })
+        deps.onChange?.()
+        throw error
+      }
+      setLink(dir, { ...repo, sync: true, error: null })
+      deps.onChange?.()
+      return { status: 'saved', repo, created }
+    },
+
+    stopGitHubSync(dir) {
+      const link = deps.github?.links()[dir]
+      if (link) {
+        setLink(dir, { ...link, sync: false })
+        deps.onChange?.()
+      }
+    },
+
     versions: (dir: string): Promise<GitVersion[]> => gitLog(dir, 100),
 
     async restore(dir: string, sha: string): Promise<{ sha: string }> {
@@ -314,5 +430,17 @@ export function createAppService(deps: {
     },
 
     stopAll: () => runner.stopAll()
+  }
+}
+
+/** The site's description from its config, for the repository's description. */
+function readFileSafe(dir: string): string | null {
+  try {
+    const site = JSON.parse(readFileSync(join(dir, 'site.config.json'), 'utf8')) as {
+      description?: unknown
+    }
+    return typeof site.description === 'string' ? site.description : null
+  } catch {
+    return null
   }
 }

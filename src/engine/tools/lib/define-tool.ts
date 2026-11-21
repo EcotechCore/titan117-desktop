@@ -121,9 +121,17 @@ export interface AppAccess {
     options?: { browsers?: boolean }
   ): Promise<import('../../lib/apps/service').AppReport>
   preview(folder: string, action: 'start' | 'stop'): Promise<{ url: string | null }>
-  saveVersion(folder: string, message: string): Promise<{ sha: string } | null>
+  saveVersion(
+    folder: string,
+    message: string
+  ): Promise<{ sha: string; pushed: string | null; pushError: string | null } | null>
   versions(folder: string): Promise<import('../../lib/git').GitVersion[]>
   restore(folder: string, sha: string): Promise<{ sha: string }>
+  /** Save to the user's own GitHub (6.18): asks every time, on the laptop only. */
+  saveToGitHub(
+    folder: string,
+    options?: { private?: boolean }
+  ): Promise<import('../../lib/apps/service').GitHubSave>
   models(): AppModels
 }
 
