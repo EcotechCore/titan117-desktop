@@ -18,6 +18,7 @@ import { createAppService, summarize, type AppReport } from '../src/engine/lib/a
 import { createNodeComponent, safeJoin, tarFiles } from '../src/engine/lib/apps/node'
 import { slugOf, webTemplate } from '../src/engine/lib/apps/template'
 import { cleanBrand } from '../src/engine/lib/apps/starters'
+import { visualEditRequest } from '../src/renderer/src/apps-lib'
 import type { Runner, CheckResult } from '../src/engine/lib/apps/runner'
 import type { BrowserReport, BrowserTests } from '../src/engine/lib/apps/browsers'
 import type { CodeJob, CodeService } from '../src/engine/lib/code/service'
@@ -304,7 +305,12 @@ describe('app_build', () => {
       services: {
         apps,
         code,
-        appModels: () => ({ planner: 'big/planner', coder: 'cheap/coder', fixer: 'strong/fixer' })
+        appModels: () => ({
+          planner: 'big/planner',
+          coder: 'cheap/coder',
+          fixer: 'strong/fixer',
+          quick: 'small/quick'
+        })
       }
     })
     const task = store.createTask({ title: 't', agent: 'Titan', model: 'm' })
@@ -401,6 +407,27 @@ describe('app_build', () => {
     )
     s.layer.answer(again.id, 'deny', 'window')
     expect((await later).allowed).toBe(false)
+  })
+
+  it('a quick change skips planning, asks once and uses the quick-edits model', async () => {
+    const s = setup([[ok('typecheck'), ok('build'), ok('test')]])
+    const app = await s.apps.create(s.allowed, { title: 'Bakery', description: 'Bread.' })
+    const outcome = s.layer.execute(
+      {
+        id: 'q1',
+        name: 'app_build',
+        input: { folder: app.folder, request: 'Make the h1 blue', quick: true }
+      },
+      { taskId: s.task.id, agent: 'Titan', model: 'm', signal: new AbortController().signal }
+    )
+    const card = await until(
+      () => s.store.listApprovals({ taskId: s.task.id, status: 'pending' })[0]
+    )
+    expect(card.tool).toBe('app_plan')
+    expect(card.input).toEqual({ plan: 'A quick change:\nMake the h1 blue' })
+    s.layer.answer(card.id, 'approve', 'window')
+    expect((await outcome).output).toContain('All checks pass.')
+    expect(s.jobs.map((j) => [j.mode, j.model])).toEqual([['build', 'small/quick']])
   })
 
   it('stops after the last fix round and says the checks still fail', async () => {
@@ -517,6 +544,33 @@ describe('starters and the brand kit', () => {
     layer.answer(card.id, 'approve', 'window')
     expect((await outcome).status).toBe('refused')
     expect(existsSync(join(allowed, 'shop'))).toBe(false)
+  })
+})
+
+describe('visual edit', () => {
+  it('describes the picked element and asks for a quick change', () => {
+    const text = visualEditRequest(
+      '/sites/bakery',
+      {
+        tag: 'h1',
+        text: 'Fresh bread',
+        classes: 'text-4xl',
+        path: 'main > h1',
+        html: '<h1>',
+        page: '/'
+      },
+      'make it blue'
+    )
+    expect(text).toContain('<h1> with the text "Fresh bread"')
+    expect(text).toContain('where: main > h1')
+    expect(text).toContain('The change: make it blue')
+    expect(text).toContain('quick set to true')
+  })
+
+  it('the picker is in the preview only, never in a built site', () => {
+    const files = webTemplate({ name: 'a', title: 'a', description: 'a', lang: 'en' })
+    expect(files.get('vite.config.ts')).toContain('titan117Dev()')
+    expect(files.get('titan117-dev.ts')).toContain("apply: 'serve'")
   })
 })
 

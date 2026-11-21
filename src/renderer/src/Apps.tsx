@@ -13,7 +13,9 @@ import {
   appCreateRequest,
   isLocalPreview,
   PREVIEW_SIZES,
-  type PreviewSize
+  type PreviewSize,
+  visualEditRequest,
+  type PickedElement
 } from './apps-lib'
 import type { EngineClient } from './engine'
 import { folderName } from './format'
@@ -39,6 +41,7 @@ interface Models {
   planner: string | null
   coder: string | null
   fixer: string | null
+  quick?: string | null
 }
 
 interface Brand {
@@ -188,6 +191,11 @@ export function AppsView({
   const [newRequest, setNewRequest] = useState('')
   const [newKind, setNewKind] = useState('blank')
   const [busy, setBusy] = useState(false)
+  // Visual edit (6.9): pick an element in the preview, then say what to change.
+  const frame = useRef<HTMLIFrameElement | null>(null)
+  const [picking, setPicking] = useState(false)
+  const [picked, setPicked] = useState<PickedElement | null>(null)
+  const [change, setChange] = useState('')
   const [privateRepo, setPrivateRepo] = useState(true)
   // What went wrong with the last click, shown here (the chat's error line isn't on this screen).
   const [problem, setProblem] = useState<string | null>(null)
@@ -221,6 +229,40 @@ export function AppsView({
 
   const apps = state?.apps ?? []
   const app = apps.find((a) => a.folder === chosen) ?? apps[0] ?? null
+  const previewOrigin =
+    app?.preview && isLocalPreview(app.preview) ? new URL(app.preview).origin : null
+
+  /** Tell the preview's picker (dev only, in the app's own page) to turn on or off. */
+  const tellPicker = useCallback(
+    (on: boolean) => {
+      if (previewOrigin)
+        frame.current?.contentWindow?.postMessage({ type: 'titan117:pick', on }, previewOrigin)
+    },
+    [previewOrigin]
+  )
+  useEffect(() => {
+    const onMessage = (e: MessageEvent): void => {
+      // Only from the preview frame itself, at its own address.
+      if (e.origin !== previewOrigin || e.source !== frame.current?.contentWindow) return
+      const data = e.data as { type?: string; element?: PickedElement }
+      if (data?.type !== 'titan117:picked' || !data.element) return
+      const el = data.element
+      const text = (v: unknown, max: number): string =>
+        typeof v === 'string' ? v.slice(0, max) : ''
+      setPicked({
+        tag: text(el.tag, 20),
+        text: text(el.text, 200),
+        classes: text(el.classes, 300),
+        path: text(el.path, 400),
+        html: text(el.html, 600),
+        page: text(el.page, 200) || '/'
+      })
+      setPicking(false)
+      tellPicker(false)
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [previewOrigin, tellPicker])
 
   useEffect(() => {
     if (!client || !app) return
@@ -506,22 +548,71 @@ export function AppsView({
               {app.preview && isLocalPreview(app.preview) && (
                 <>
                   <h2 className="section">Preview</h2>
-                  <div className="segmented" role="radiogroup" aria-label="Screen size">
-                    {PREVIEW_SIZES.map((s) => (
-                      <button
-                        key={s.id}
-                        role="radio"
-                        aria-checked={size === s.id}
-                        className={size === s.id ? 'seg on' : 'seg'}
-                        onClick={() => setSize(s.id)}
-                      >
-                        {s.label}
-                      </button>
-                    ))}
+                  <div className="code-actions">
+                    <div className="segmented" role="radiogroup" aria-label="Screen size">
+                      {PREVIEW_SIZES.map((s) => (
+                        <button
+                          key={s.id}
+                          role="radio"
+                          aria-checked={size === s.id}
+                          className={size === s.id ? 'seg on' : 'seg'}
+                          onClick={() => setSize(s.id)}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      className={picking ? 'btn btn-primary' : 'btn'}
+                      aria-pressed={picking}
+                      onClick={() => {
+                        const next = !picking
+                        setPicking(next)
+                        if (next) setPicked(null)
+                        tellPicker(next)
+                      }}
+                    >
+                      {picking ? 'Click an element in the preview…' : 'Edit visually'}
+                    </button>
                   </div>
+                  {picked && (
+                    <div className="apps-picked">
+                      <p className="row-title">
+                        Selected: &lt;{picked.tag}&gt;
+                        {picked.text ? ` “${picked.text.slice(0, 80)}”` : ''}
+                      </p>
+                      <p className="faint mono">{picked.path}</p>
+                      <label className="field">
+                        What should change?
+                        <input
+                          value={change}
+                          onChange={(e) => setChange(e.target.value)}
+                          placeholder="For example: make it bigger and use the second colour"
+                        />
+                      </label>
+                      <div className="code-actions">
+                        <button
+                          className="btn btn-primary"
+                          disabled={!change.trim()}
+                          onClick={() => {
+                            onStart(visualEditRequest(app.folder, picked, change))
+                            setPicked(null)
+                            setChange('')
+                          }}
+                        >
+                          Change it
+                        </button>
+                        <button className="btn" onClick={() => setPicked(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="app-frame-wrap" ref={frameWrap}>
                     <iframe
                       key={app.preview}
+                      ref={frame}
+                      onLoad={() => picking && tellPicker(true)}
                       className="app-frame"
                       title={`Preview of ${app.title}`}
                       src={app.preview}
@@ -779,7 +870,8 @@ export function AppsView({
                 [
                   ['planner', 'Planner'],
                   ['coder', 'Coder'],
-                  ['fixer', 'Fixer (after repeated failures)']
+                  ['fixer', 'Fixer (after repeated failures)'],
+                  ['quick', 'Quick edits (visual edits and small changes)']
                 ] as const
               ).map(([role, label]) => (
                 <label key={role} className="field">

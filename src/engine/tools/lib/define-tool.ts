@@ -103,6 +103,8 @@ export interface AppModels {
   planner: string | null
   coder: string | null
   fixer: string | null
+  /** Small changes, like a visual edit (6.9). */
+  quick?: string | null
 }
 
 /** The app builder (§6, decisions §56): running an app's code asks first, like a command. */

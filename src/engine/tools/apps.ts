@@ -145,7 +145,7 @@ export const appCreate = defineTool<{
   }
 })
 
-export const appBuild = defineTool<{ folder: string; request: string }>({
+export const appBuild = defineTool<{ folder: string; request: string; quick?: boolean }>({
   name: 'app_build',
   description: [
     'Build or change a web app made with app_create: the coding engine plans it, the user approves the plan, it writes',
@@ -156,7 +156,12 @@ export const appBuild = defineTool<{ folder: string; request: string }>({
     type: 'object',
     properties: {
       folder: { type: 'string', description: 'The app’s folder.' },
-      request: { type: 'string', description: 'What to build or change, in full.' }
+      request: { type: 'string', description: 'What to build or change, in full.' },
+      quick: {
+        type: 'boolean',
+        description:
+          'A small change (a visual edit, a word, a colour): no planning step; the user approves the request itself.'
+      }
     },
     required: ['folder', 'request']
   },
@@ -173,12 +178,21 @@ export const appBuild = defineTool<{ folder: string; request: string }>({
     let steps = 0
     const notes: string[] = []
 
-    const plan = await ctx.code.run({
-      folder: input.folder,
-      request: planPrompt(input.request),
-      mode: 'plan',
-      ...(roles.planner ? { model: roles.planner } : {})
-    })
+    // A quick change (6.9) skips planning: the request is what the user approves.
+    const plan = input.quick
+      ? {
+          status: 'done' as const,
+          text: `A quick change:\n${input.request}`,
+          costUsd: 0,
+          steps: 0,
+          error: undefined
+        }
+      : await ctx.code.run({
+          folder: input.folder,
+          request: planPrompt(input.request),
+          mode: 'plan',
+          ...(roles.planner ? { model: roles.planner } : {})
+        })
     cost += plan.costUsd
     steps += plan.steps
     if (plan.status !== 'done' || !plan.text.trim())
@@ -198,7 +212,9 @@ export const appBuild = defineTool<{ folder: string; request: string }>({
       folder: input.folder,
       request: buildPrompt(input.request, plan.text),
       mode: 'build',
-      ...(roles.coder ? { model: roles.coder } : {})
+      ...((input.quick ? (roles.quick ?? roles.coder) : roles.coder)
+        ? { model: (input.quick ? (roles.quick ?? roles.coder) : roles.coder) as string }
+        : {})
     })
     cost += build.costUsd
     steps += build.steps

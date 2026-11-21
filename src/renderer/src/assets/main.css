@@ -1831,3 +1831,10 @@ textarea.edit {
   height: 34px;
   padding: 2px;
 }
+.apps-picked {
+  border: 1px solid var(--tint-line);
+  background: var(--tint);
+  border-radius: 10px;
+  padding: 4px 14px 10px;
+  margin-top: 10px;
+}

@@ -15,5 +15,5 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "seo.ts", "vite.config.ts"]
+  "include": ["src", "seo.ts", "titan117-dev.ts", "vite.config.ts"]
 }

@@ -345,7 +345,8 @@ export function createApi(deps: {
         need(deps.apps).setModels({
           planner: role('planner'),
           coder: role('coder'),
-          fixer: role('fixer')
+          fixer: role('fixer'),
+          quick: role('quick')
         })
         return need(deps.apps).list()
       }

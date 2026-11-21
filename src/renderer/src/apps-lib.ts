@@ -22,6 +22,32 @@ export function appCreateRequest(
   ].join(' ')
 }
 
+/** An element picked in the preview (6.9). */
+export interface PickedElement {
+  tag: string
+  text: string
+  classes: string
+  path: string
+  html: string
+  page: string
+}
+
+/** A visual edit: the picked element and the change, for app_build's quick mode. */
+export function visualEditRequest(folder: string, element: PickedElement, change: string): string {
+  return [
+    `In the web app ${folder}, change one element I picked in the preview, on the page ${element.page}:`,
+    `- element: <${element.tag}>${element.text ? ` with the text "${element.text.slice(0, 120)}"` : ''}`,
+    element.classes ? `- its classes: ${element.classes.slice(0, 200)}` : '',
+    `- where: ${element.path}`,
+    '',
+    `The change: ${change.trim()}`,
+    '',
+    'Use the app builder (app_build) with quick set to true, and pass all of the above as the request.'
+  ]
+    .filter((line, i) => line || i > 3)
+    .join('\n')
+}
+
 export const PREVIEW_SIZES = [
   { id: 'phone', label: 'Phone', width: 390, height: 844 },
   { id: 'tablet', label: 'Tablet', width: 820, height: 1180 },
