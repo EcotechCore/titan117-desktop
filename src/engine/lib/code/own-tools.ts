@@ -17,11 +17,11 @@
  *  - Antigravity is not offered: its terms forbid third-party software
  *    accessing the service. Gemini CLI is now for Google's business plans.
  */
-import { spawn } from 'node:child_process'
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 
 import { cleanEnv } from '../shell'
 import type { EngineAsk } from './assess'
@@ -121,10 +121,67 @@ export type Runner = (
   }
 ) => Promise<Proc>
 
+/** A Windows PATH setting from the registry, with its %VARIABLES% filled in. */
+function registryPath(key: string): string[] {
+  try {
+    const out = execFileSync('reg.exe', ['query', key, '/v', 'Path'], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 5000
+    })
+    const value = /\bPath\s+REG_(?:EXPAND_)?SZ\s+(.*)/i.exec(out)?.[1]?.trim() ?? ''
+    return value
+      .replace(/%([^%]+)%/g, (_, name: string) => process.env[name] ?? `%${name}%`)
+      .split(';')
+  } catch {
+    return []
+  }
+}
+
+let searchCache: { at: number; dirs: string[] } | null = null
+
+/**
+ * Windows: where to look for the user's tools. The app's own PATH is the
+ * one it was started with, so a tool installed since (or a PATH changed
+ * since) wouldn't be found until the app was started from a fresh window.
+ * So: the app's PATH, plus Windows' current user and system PATH settings,
+ * plus the usual install folders (Claude Code's installer uses
+ * `~\.local\bin`; npm's global commands live in `%APPDATA%\npm`).
+ */
+export function windowsSearchDirs(): string[] {
+  if (searchCache && Date.now() - searchCache.at < 60_000) return searchCache.dirs
+  const home = process.env.USERPROFILE ?? homedir()
+  const dirs = [
+    ...(process.env.PATH ?? '').split(';'),
+    ...registryPath('HKCU\\Environment'),
+    ...registryPath('HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'),
+    join(home, '.local', 'bin'),
+    ...(process.env.APPDATA ? [join(process.env.APPDATA, 'npm')] : [])
+  ]
+    .map((d) => d.trim())
+    .filter(Boolean)
+  const seen = new Set<string>()
+  const unique = dirs.filter((d) => {
+    const key = d.toLowerCase().replace(/\\+$/, '')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  searchCache = { at: Date.now(), dirs: unique }
+  return unique
+}
+
 function toolEnv(): Record<string, string> {
   // The scrubbed environment (no keys or tokens of ours), plus what these
   // tools need to find their own sign-in: the user's home and app folders.
-  return cleanEnv(process.env, tmpdir(), { NO_COLOR: '1', CI: '1' })
+  const env = cleanEnv(process.env, tmpdir(), { NO_COLOR: '1', CI: '1' })
+  // On Windows the tools also see the current PATH (they start git and the like).
+  if (process.platform === 'win32') {
+    const path = windowsSearchDirs().join(';')
+    for (const key of Object.keys(env)) if (key.toUpperCase() === 'PATH') delete env[key]
+    env.Path = path
+  }
+  return env
 }
 
 /** Runs a program; `.cmd` shims (npm installs on Windows) go through cmd with fixed arguments only. */
@@ -175,8 +232,16 @@ export const runProgram: Runner = (program, args, options) =>
 /** Where a command lives on PATH, preferring a real program over a script shim. */
 export async function findProgram(
   command: string,
-  run: Runner = runProgram
+  run: Runner = runProgram,
+  dirs: string[] = process.platform === 'win32' ? windowsSearchDirs() : [],
+  exists: (path: string) => boolean = existsSync
 ): Promise<string | null> {
+  // Windows: look in the folders directly, a real program first, then a script shim.
+  for (const ext of ['.exe', '.cmd', '.bat'])
+    for (const dir of dirs) {
+      const candidate = join(dir, `${command}${ext}`)
+      if (exists(candidate)) return candidate
+    }
   const finder = process.platform === 'win32' ? 'where.exe' : 'which'
   const found = await run(finder, [command], { cwd: tmpdir(), timeoutMs: 5000 })
   if (found.code !== 0) return null
@@ -357,6 +422,8 @@ export function createOwnTools(deps: {
   /** Files changed in the project (git), to report what the tool changed. */
   changes(repo: string): Promise<Map<string, ChangedFile>>
   run?: Runner
+  /** Windows folders to look in (tests pass their own). */
+  searchDirs?: () => string[]
 }): OwnTools {
   const run = deps.run ?? runProgram
   const found = new Map<OwnToolId, { at: number; program: string | null }>()
@@ -366,7 +433,15 @@ export function createOwnTools(deps: {
     if (cached && Date.now() - cached.at < 60_000) return cached.program
     let program: string | null = null
     for (const command of spec.commands) {
-      program = await findProgram(command, run)
+      program = await findProgram(
+        command,
+        run,
+        deps.searchDirs
+          ? deps.searchDirs()
+          : !deps.run && process.platform === 'win32'
+            ? windowsSearchDirs()
+            : []
+      )
       if (program) break
     }
     found.set(spec.id, { at: Date.now(), program })

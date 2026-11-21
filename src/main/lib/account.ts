@@ -96,6 +96,27 @@ export class Account {
     writeFileSync(join(this.dir, name), data)
   }
 
+  /**
+   * This install's fingerprint for sign-in: the SHA-256 of a random ID made
+   * once and kept here. Signing in again from the same install then replaces
+   * its old device instead of using up another place on the plan. The ID
+   * itself never leaves the laptop, and it isn't a secret: it proves nothing.
+   */
+  installFingerprint(): string {
+    const file = join(this.dir, 'install-id')
+    let id = ''
+    try {
+      id = readFileSync(file, 'utf8').trim()
+    } catch {
+      // Not made yet.
+    }
+    if (!/^[A-Za-z0-9_-]{43}$/.test(id)) {
+      id = base64url(randomBytes(32))
+      this.write('install-id', id)
+    }
+    return base64url(createHash('sha256').update(id).digest())
+  }
+
   private load(): void {
     try {
       this.lastSeen = (
@@ -192,6 +213,7 @@ export class Account {
         page.searchParams.set('state', state)
         page.searchParams.set('port', String(port))
         page.searchParams.set('name', hostname().slice(0, 60))
+        page.searchParams.set('install', this.installFingerprint())
         void this.deps.openExternal(page.toString())
       })
     })

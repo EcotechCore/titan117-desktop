@@ -32,6 +32,17 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 21 Nov 2026 · Links in answers are clickable; the Pull request step links to GitHub
+
+The owner's first real pull request through the GitHub sign-in worked (sample repo, pull request #6), but its address in the answer couldn't be clicked.
+
+- **Links in answers:** `https://` links in Titan's answers (and while they stream in) are now links. They open in the user's own browser, because the window sends https links there and nothing else; the sentence's punctuation stays outside the link.
+- **The Pull request step:** it now has **Open on GitHub**, or **Create on GitHub** when GitHub's page still needs the Create click.
+- **Checked:** 3 new tests. In the built app, an answer with the pull request's address showed a link, and clicking it handed exactly that address to the browser (stubbed during the check). No console errors.
+
+### 21 Nov 2026 · Fix: the same laptop signing in again no longer uses up a device place
+
+The app sends its install's fingerprint (the SHA-256 of a random ID kept in the account folder) with the sign-in. The web app then replaces the old device from the same install instead of refusing at the plan's limit (titan117-web). The account test checks that the fingerprint goes along, is stable, and never contains the ID. 340 tests pass.
 ### 21 Nov 2026 · Phase 7: GitHub App registered, sign-in live
 
 The owner registered **Titan117 by EcotechCore** (client ID `Iv23liPxzFyagnONr6mT`).
