@@ -24,6 +24,7 @@ All confirmed by the owner on 18 Nov 2026 (decisions §44–§51), with one addi
 - [x] **Phase 5 started before phase 4's check passed**, at your request on 15 Nov 2026: confirm that stands.
 - [ ] **§53, the coding engine (phase 7), items 3–9:** one OpenCode server per coding task with a password; its model steps through our router (a coding job's budget: 150 steps, $3); our approvals decide every command and change it makes, and it never remembers an "always" of its own; its own internet calls, plugins and repo or home settings switched off; Codex and Cursor stay experimental. (Items 1 and 2, shipping OpenCode unchanged and downloading it on first use, you decided on 20 Nov 2026.)
 - [ ] **§54, git and the code builder screen (phase 7):** commits as you with a `Co-authored-by: Titan117` line; never a force-push, a push to the main branch or a commit carrying secrets; pushes and pull requests ask every time; pull requests through GitHub's CLI or GitHub's own page until the app is registered; project memory per repository; the code review changes nothing; open in VS Code or Cursor (items 9–13).
+- [ ] **§55, the rest of phase 7:** Claude Code on your own plan with every action through our approvals; Codex, Cursor's agent and Grok experimental and off by default; Antigravity and Gemini CLI not offered; the kill switch; commands on your own servers over SSH; Sign in with GitHub ready for the app; OpenCode in Seatbelt on macOS; JetBrains in Open in.
 - [ ] **The repos go private** (decided 20 Nov 2026; no rush). Your contribution graph keeps counting the commits if "Private contributions" is on in your GitHub profile settings; others see only the counts, not the repos.
 
 ## Step 3 · Try it yourself (an afternoon)
@@ -47,7 +48,7 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [ ] **A Windows code signing certificate: you start on Monday 23 Nov 2026** (a reminder is set for that morning). Needed sooner than planned: Windows' Smart App Control blocks our unsigned installer outright (it did on this laptop on 15 Nov 2026), and auto-update only installs updates signed by the same publisher.
 - [ ] **Where updates are published** (an HTTPS address for signed releases, for example a GitHub release or our own storage); then set `PRODUCTION.updateUrl` in `src/main/index.ts` of the desktop app.
 - [ ] Once signed: **install on a clean Windows** (a virtual machine without the Visual C++ runtime) to see Microsoft's runtime step run.
-- [ ] **Register our GitHub App** under the EcotechCore organisation (one-click GitHub sign-in for pull requests, decisions §25; **no longer blocking**: until then pull requests go through GitHub's CLI or GitHub's own page, §54): Settings → Developer settings → GitHub Apps → New. Turn on **device flow**; no webhook; no client secret needed; "Expire user authorization tokens" on. Permissions (repository): Contents read and write, Pull requests read and write, Metadata read. Then send me the app's **client ID** (it isn't secret).
+- [ ] **Register our GitHub App** under the EcotechCore organisation (one-click GitHub sign-in for pull requests, decisions §25; **no longer blocking**: until then pull requests go through GitHub's CLI or GitHub's own page, §54): Settings → Developer settings → GitHub Apps → New. Turn on **device flow**; no webhook; no client secret needed; "Expire user authorization tokens" on. Permissions (repository): Contents read and write, Pull requests read and write, Metadata read. Turn on **Enable Device Flow** (the sign-in won't start without it). Then send me the app's **client ID** (it isn't secret): it goes in `PRODUCTION.githubClientId` in `src/main/index.ts` of the desktop app. The sign-in is already built (decisions §55.9).
 - [ ] Mailboxes `support@`, `privacy@` and **`abuse@titan117.com`** (the Digital Services Act contact point for shared pages), or change the addresses in `apps/web/content/legal.ts`.
 - [ ] Stripe: the terms address in public details and "Successful payments" customer emails on, then switch on `STRIPE_REQUIRE_TERMS`.
 - [ ] Hard spending caps on our OpenRouter account and every paid provider, alerts at 50% and 80% (guardrails §3).
@@ -58,6 +59,8 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 
 - [ ] Company details on the legal pages: registered name, registration number, VAT number, address (`apps/web/content/legal.ts`).
 - [ ] **Ask Modal in writing** whether Titan117 users may run jobs on their own Modal accounts through our app (their terms limit use to the customer's own internal business; decisions §53.9). Needed before cloud sandboxes (3.15) are built, later in phase 7.
+- [ ] **Accept Anthropic's Commercial Terms** for running Claude Code inside Titan117 (decisions §20, §55), before the beta.
+- [ ] **Try your own coding tools, if you use them:** install Claude Code (and sign in with `claude auth login`), then on the Code screen choose it as the engine for a job. Codex, Cursor's agent and Grok work the same once turned on there (experimental). Also add one of your servers under Your servers and ask Titan to run `uptime` on it.
 - [ ] The Romanian lawyer's review of the legal pages, now including the content rules, takedown process and **comments** for shared pages.
 - [ ] **Stripe's written OK** that our credits are allowed (before live mode).
 - [ ] The trademark lawyer's short opinion, then file the EU trademark "TITAN117" in classes 9 and 42 (decisions §33.7).
@@ -74,7 +77,7 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 
 - [ ] **Production, postponed (decisions §52):** a Clerk production instance on titan117.com with its webhook to Convex production's `/clerk`; Convex production's environment (`CLERK_FRONTEND_API_URL`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SIGNING_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PROXY_SECRET`, `LEASE_PRIVATE_KEY`, `SITE_URL`); Stripe live mode after their written OK (`node scripts/stripe-setup.mjs --webhook <production site>/stripe`); a Vercel project from `titan117-web` (root `apps/web`) with its keys and titan117.com. Then Claude runs the Convex production deploy and checks the live routes.
 
-- [ ] macOS: a Mac to build and test every phase so far.
+- [ ] macOS: a Mac to build and test every phase so far, including OpenCode inside Seatbelt (decisions §55.10).
 - [ ] **Our own redraw of the eyes logo** before the beta (open decision 3, decisions §9), so the mark is ours before the trademark is filed.
 - [ ] Clerk production instances on our own domain; production web and Convex addresses and the production lease key in the desktop build (phase 18).
 - [ ] An OS sandbox for commands on Windows, revisited (decisions §43.1).
