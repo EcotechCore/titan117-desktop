@@ -24,6 +24,19 @@ interface GitState {
   changes: { path: string; status: string }[]
 }
 
+interface ToolsState {
+  tools: {
+    id: string
+    name: string
+    installed: boolean
+    signedIn: boolean | null
+    experimental: boolean
+    enabled: boolean
+    signIn: string
+  }[]
+  notOffered: { name: string; why: string }[]
+}
+
 interface CodeState {
   components: { id: string; name: string; version: string; ready: boolean; bytes: number }[]
   project: { git: GitState | null; diff: string; problem: string | null } | null
@@ -64,30 +77,29 @@ export function CodeView({
   const [mode, setMode] = useState<'plan' | 'build'>('plan')
   const [showDiff, setShowDiff] = useState(false)
   const [editors, setEditors] = useState<{ id: string; name: string }[]>([])
-  // The user's own coding tools (13.14) that can run now: installed, signed in, turned on.
-  const [tools, setTools] = useState<{ id: string; name: string }[]>([])
+  // The user's own coding tools (13.14): what's on this laptop, signed in and turned on.
+  const [toolState, setToolState] = useState<ToolsState | null>(null)
+  const tools = (toolState?.tools ?? []).filter(
+    (t) => t.installed && t.signedIn !== false && t.enabled
+  )
   const [engineId, setEngineId] = useState('titan117')
   useEffect(() => {
     let live = true
     client
-      ?.get<{
-        tools: {
-          id: string
-          name: string
-          installed: boolean
-          signedIn: boolean | null
-          enabled: boolean
-        }[]
-      }>('/v1/code/tools')
-      .then(
-        (r) =>
-          live && setTools(r.tools.filter((t) => t.installed && t.signedIn !== false && t.enabled))
-      )
+      ?.get<ToolsState>('/v1/code/tools')
+      .then((r) => live && setToolState(r))
       .catch(() => undefined)
     return () => {
       live = false
     }
   }, [client])
+
+  function setToolOn(id: string, on: boolean): void {
+    client
+      ?.send<ToolsState>('PUT', '/v1/code', { tool: id, enabled: on })
+      .then(setToolState)
+      .catch(onProblem)
+  }
 
   useEffect(() => {
     let live = true
@@ -326,6 +338,53 @@ export function CodeView({
               {Math.round(missing.reduce((n, c) => n + c.bytes, 0) / 1e6)} MB) once; after that it
               works offline with local models.
             </p>
+          )}
+
+          {toolState && (
+            <>
+              <h2 className="section">Your own coding tools</h2>
+              <p className="muted">
+                A coding tool you already use can do the job instead, on your own plan: Titan117
+                starts the tool’s own program, and you sign in to it yourself in the tool’s own way.
+                Its changes still wait for your OK here.
+              </p>
+              {toolState.tools.map((t) => (
+                <div key={t.id} className="row">
+                  <div className="row-main">
+                    <p className="row-title">
+                      {t.name}
+                      {t.experimental && <span className="tag">experimental</span>}
+                    </p>
+                    <p className="muted">
+                      {!t.installed
+                        ? 'Not installed on this laptop.'
+                        : t.signedIn === false
+                          ? `Installed, not signed in. In a terminal: ${t.signIn}`
+                          : t.signedIn === null
+                            ? 'Installed. Its sign-in is checked when a job starts.'
+                            : 'Installed and signed in.'}
+                      {t.experimental &&
+                        ' Its maker’s terms don’t yet say whether another app may run it, so it asks once before each job and works in its own restricted mode.'}
+                    </p>
+                  </div>
+                  {t.experimental && (
+                    <label className="choice">
+                      <input
+                        type="checkbox"
+                        checked={t.enabled}
+                        onChange={(e) => setToolOn(t.id, e.target.checked)}
+                      />{' '}
+                      On
+                    </label>
+                  )}
+                </div>
+              ))}
+              {toolState.notOffered.map((n) => (
+                <p key={n.name} className="faint">
+                  Not offered: {n.name}. {n.why}
+                </p>
+              ))}
+            </>
           )}
         </>
       )}
