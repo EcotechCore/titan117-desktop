@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 21 Nov 2026 · Phase 8's work merged
+
+The owner asked to merge: this repo's #33 (with titan117-web #35 and titan117-pop #30) is merged into `main` (squashed) after CI passed. CI caught one test that only failed on Linux: the Node.js download's fingerprint test stopped at "this system isn't supported" before the check it meant to test. Fixed by letting `createNodeComponent` take the system to act as (as the coding engine's download already does). Run the app from `main` now.
+
 ### 21 Nov 2026 · Phase 8: publish from GitHub, and cheaper models compared
 
 - **Publish from GitHub** (decisions §56.26): once an app is on GitHub, the Apps screen shows Cloudflare's, Netlify's and Vercel's own steps for connecting the repository in their dashboards, with the app's values filled in; each pushed version is then published by the host. Titan117 never handles the host's sign-in. The template now has `.nvmrc` (22), `engines.node` and a `wrangler.jsonc` so every host builds it with Node 22 or newer. Checked in the built app; `pnpm eval:apps` passes with the new template.
