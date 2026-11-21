@@ -738,7 +738,8 @@ Made on 21 Nov 2026 while finishing phase 7 (features 13.14, 3.15, 13.12; decisi
    - **No secret:** only the client ID, which isn't secret; the app must have "Enable Device Flow" on. The user enters a code on GitHub's own page.
    - **The tokens:** the access token lasts 8 hours and is refreshed in the background, also without a secret; each refresh replaces the old pair. The tokens are encrypted with the OS keychain in the main process. The engine gets only the current access token in memory, and it's scrubbed from every log.
    - **Pull requests try, in order:** the sign-in (GitHub's API), GitHub's CLI, then GitHub's own page filled in.
-   - **Until the owner registers the app,** the Code screen says so. The client ID goes in `PRODUCTION.githubClientId` (or `TITAN117_GITHUB_CLIENT_ID` in `.env` during development).
+   - **The app is registered** (21 Nov 2026): "Titan117 by EcotechCore", client ID `Iv23liPxzFyagnONr6mT` in `PRODUCTION.githubClientId` (development uses the same app unless `TITAN117_GITHUB_CLIENT_ID` names another).
+   - **Choosing repositories:** a user token reaches only the repositories where the user installed the app. So after signing in, the Code screen counts them and offers "Choose repositories" (GitHub's own install page for the app); with none chosen, it says so.
 10. **OpenCode inside Seatbelt on macOS** (§53.7):
     - OpenCode and every command it runs start under `sandbox-exec`.
     - They write only in the project, OpenCode's own folders and its temp folder.

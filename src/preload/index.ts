@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('titan117', {
     signIn: () => ipcRenderer.invoke('github:signIn'),
     cancel: () => ipcRenderer.invoke('github:cancel'),
     signOut: () => ipcRenderer.invoke('github:signOut'),
+    install: () => ipcRenderer.invoke('github:install'),
     onChange: (listener: () => void) => {
       ipcRenderer.on('github:changed', () => listener())
     }

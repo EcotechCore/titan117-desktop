@@ -32,6 +32,17 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 21 Nov 2026 · Phase 7: GitHub App registered, sign-in live
+
+The owner registered **Titan117 by EcotechCore** (client ID `Iv23liPxzFyagnONr6mT`).
+
+- **Checked against GitHub's API:** the device flow is on and gives a code, and the app is owned by EcotechCore with exactly contents write, pull requests write and metadata read, and no webhook events.
+- **In the app:** the client ID is in `PRODUCTION.githubClientId`; development uses the same app.
+- **Choosing repositories:** a user token reaches only repositories where the app is installed. After signing in, the GitHub section counts them through `/user/installations` and offers **Choose repositories** (GitHub's install page for the app); with none chosen, it says so. The wording of the code step was corrected (choosing repositories is a separate step).
+- **Tests:** 341 pass (one new, for the repository count).
+- **In the built app:** "Sign in with GitHub" got a real code from GitHub and was cancelled; nothing opened in the owner's browser during the check. No console errors.
+- **Left for the owner:** sign in for real and choose repositories (owner checklist).
+
 ### 21 Nov 2026 · Phase 7: your own coding tools, servers over SSH, GitHub sign-in, Seatbelt, JetBrains
 
 On `phase-7-own-tools`. Decisions §55 (to be confirmed).
