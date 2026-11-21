@@ -60,3 +60,62 @@ export type PreviewSize = (typeof PREVIEW_SIZES)[number]['id']
 export function isLocalPreview(url: string): boolean {
   return /^http:\/\/127\.0\.0\.1:\d{2,5}\/$/.test(url)
 }
+
+export type GitHost = 'cloudflare' | 'netlify' | 'vercel'
+
+export interface HostGuide {
+  name: string
+  /** The host's own page to start from. */
+  start: string
+  steps: string[]
+  /** What the user should know before choosing it. */
+  note: string
+}
+
+/**
+ * Publishing from the app's GitHub repository with the host's own Git
+ * connection (6.15, decisions §56.26): every push to main publishes the site.
+ * The steps and setting names are the hosts' own (checked 21 Nov 2026).
+ */
+export function hostGuide(
+  host: GitHost,
+  app: { repo: string; owner: string; name: string }
+): HostGuide {
+  const repo = `${app.owner}/${app.repo}`
+  if (host === 'cloudflare')
+    return {
+      name: 'Cloudflare',
+      start: 'https://dash.cloudflare.com/?to=/:account/workers-and-pages/create',
+      steps: [
+        'In Cloudflare, open Workers & Pages and press Create application.',
+        `Choose GitHub, let Cloudflare reach your repositories if it asks, and pick ${repo}.`,
+        `Name the project exactly ${app.name} (the name in the site's wrangler.jsonc).`,
+        'Build command: npm run build. Deploy command: leave npx wrangler deploy.',
+        'Press Save and Deploy. The site gets an address ending in workers.dev.'
+      ],
+      note: 'Free plan: 3,000 build minutes a month, plenty for a small site. Node 22 comes from the site’s .nvmrc file.'
+    }
+  if (host === 'netlify')
+    return {
+      name: 'Netlify',
+      start: 'https://app.netlify.com/start',
+      steps: [
+        'In Netlify, choose Add new project, then Import a Git repository.',
+        `Choose GitHub, follow the prompts to let Netlify reach your repositories, and pick ${repo}.`,
+        'Branch: main. Build command: npm run build. Publish directory: dist.',
+        'Press Publish. The site gets an address ending in netlify.app.'
+      ],
+      note: 'Its free plan has no commercial-use limit. Node 22 comes from the site’s .nvmrc file.'
+    }
+  return {
+    name: 'Vercel',
+    start: 'https://vercel.com/new',
+    steps: [
+      'In Vercel, press New Project.',
+      `Pick ${repo} (if it isn’t listed, use Adjust GitHub App Permissions and add it).`,
+      'Framework Preset: Vite. Build Command: npm run build. Output Directory: dist.',
+      'Press Deploy. The site gets an address ending in vercel.app.'
+    ],
+    note: 'Vercel’s free Hobby plan is for personal, non-commercial use: a company’s site needs Pro. A private repository in a GitHub organisation can’t deploy to Hobby. Node comes from the site’s package.json.'
+  }
+}

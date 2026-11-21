@@ -26,7 +26,7 @@ export interface TemplateInput {
  * Files saved under other names so they travel inside the bundle as plain
  * text: a dot file, and stylesheets (a bundler would process a `.css`).
  */
-const RENAMED: Record<string, string> = { gitignore: '.gitignore' }
+const RENAMED: Record<string, string> = { gitignore: '.gitignore', nvmrc: '.nvmrc' }
 const TEXT_SUFFIX = /\.tmpl$/
 
 /** `My Bakery!` → `my-bakery`; never empty. */
@@ -60,7 +60,7 @@ export function webTemplate(input: TemplateInput): Map<string, string> {
     files.set(
       path,
       // Only the JSON files carry values; everything else reads them from site.config.json.
-      path.endsWith('.json')
+      path.endsWith('.json') || path.endsWith('.jsonc')
         ? content.replace(/\{\{(name|title|description|lang)\}\}/g, (_, k: string) => values[k])
         : content
     )

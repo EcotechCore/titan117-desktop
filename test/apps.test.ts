@@ -18,7 +18,7 @@ import { createAppService, summarize, type AppReport } from '../src/engine/lib/a
 import { createNodeComponent, safeJoin, tarFiles } from '../src/engine/lib/apps/node'
 import { slugOf, webTemplate } from '../src/engine/lib/apps/template'
 import { cleanBrand } from '../src/engine/lib/apps/starters'
-import { visualEditRequest } from '../src/renderer/src/apps-lib'
+import { hostGuide, visualEditRequest } from '../src/renderer/src/apps-lib'
 import type { Runner, CheckResult } from '../src/engine/lib/apps/runner'
 import type { BrowserReport, BrowserTests } from '../src/engine/lib/apps/browsers'
 import type { CodeJob, CodeService } from '../src/engine/lib/code/service'
@@ -571,6 +571,34 @@ describe('visual edit', () => {
     const files = webTemplate({ name: 'a', title: 'a', description: 'a', lang: 'en' })
     expect(files.get('vite.config.ts')).toContain('titan117Dev()')
     expect(files.get('titan117-dev.ts')).toContain("apply: 'serve'")
+  })
+})
+
+describe('publishing from GitHub', () => {
+  it('gives each host its own steps with the app’s values filled in', () => {
+    const app = { owner: 'ana', repo: 'cluj-bakery', name: 'cluj-bakery' }
+    const cf = hostGuide('cloudflare', app)
+    expect(cf.steps.join(' ')).toContain('ana/cluj-bakery')
+    expect(cf.steps.join(' ')).toContain('exactly cluj-bakery')
+    expect(hostGuide('netlify', app).steps.join(' ')).toContain('Publish directory: dist')
+    const vercel = hostGuide('vercel', app)
+    expect(vercel.steps.join(' ')).toContain('Output Directory: dist')
+    expect(vercel.note).toContain('non-commercial')
+    for (const h of ['cloudflare', 'netlify', 'vercel'] as const)
+      expect(hostGuide(h, app).start).toMatch(/^https:\/\//)
+  })
+
+  it('the template tells every host to build with Node 22 or newer, and names the Worker', () => {
+    const files = webTemplate({
+      name: 'Cluj Bakery',
+      title: 'Cluj Bakery',
+      description: 'x',
+      lang: 'en'
+    })
+    expect(files.get('.nvmrc')?.trim()).toBe('22')
+    expect(JSON.parse(files.get('package.json')!).engines).toEqual({ node: '>=22' })
+    expect(files.get('wrangler.jsonc')).toContain('"name": "cluj-bakery"')
+    expect(files.get('wrangler.jsonc')).toContain('"directory": "./dist"')
   })
 })
 

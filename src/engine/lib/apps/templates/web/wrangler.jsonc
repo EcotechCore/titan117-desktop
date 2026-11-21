@@ -1,0 +1,10 @@
+// For publishing from GitHub with Cloudflare Workers Builds: the Worker's
+// name must match the one in Cloudflare's dashboard. Not used by the app itself.
+{
+  "name": "{{name}}",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

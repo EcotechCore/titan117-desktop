@@ -15,6 +15,8 @@ import {
   PREVIEW_SIZES,
   type PreviewSize,
   visualEditRequest,
+  hostGuide,
+  type GitHost,
   type PickedElement
 } from './apps-lib'
 import type { EngineClient } from './engine'
@@ -203,6 +205,7 @@ export function AppsView({
   const [picked, setPicked] = useState<PickedElement | null>(null)
   const [change, setChange] = useState('')
   const [privateRepo, setPrivateRepo] = useState(true)
+  const [gitHost, setGitHost] = useState<GitHost>('cloudflare')
   // What went wrong with the last click, shown here (the chat's error line isn't on this screen).
   const [problem, setProblem] = useState<string | null>(null)
   const [githubProblem, setGitHubProblem] = useState<string | null>(null)
@@ -823,6 +826,53 @@ export function AppsView({
                     </p>
                   )}
                 </>
+              )}
+
+              <h3 className="app-engine">Publish from GitHub</h3>
+              {app.github ? (
+                (() => {
+                  const guide = hostGuide(gitHost, {
+                    owner: app.github.owner,
+                    repo: app.github.repo,
+                    name: app.name
+                  })
+                  return (
+                    <div className="apps-guide">
+                      <p className="muted">
+                        Connect the repository to a host once, in the host’s own dashboard: after
+                        that, each new version Titan pushes is published by the host itself.
+                        Titan117 never needs that host’s password or token.
+                      </p>
+                      <div className="segmented" role="radiogroup" aria-label="Host">
+                        {(['cloudflare', 'netlify', 'vercel'] as const).map((h) => (
+                          <button
+                            key={h}
+                            role="radio"
+                            aria-checked={gitHost === h}
+                            className={gitHost === h ? 'seg on' : 'seg'}
+                            onClick={() => setGitHost(h)}
+                          >
+                            {hostGuide(h, { owner: '', repo: '', name: '' }).name}
+                          </button>
+                        ))}
+                      </div>
+                      <ol>
+                        {guide.steps.map((step) => (
+                          <li key={step}>{step}</li>
+                        ))}
+                      </ol>
+                      <p className="faint">{guide.note}</p>
+                      <a className="btn" href={guide.start} target="_blank" rel="noreferrer">
+                        Open {guide.name}
+                      </a>
+                    </div>
+                  )
+                })()
+              ) : (
+                <p className="faint">
+                  Save to GitHub first. Then Cloudflare, Netlify or Vercel can publish each new
+                  version by itself, connected in their own dashboard.
+                </p>
               )}
 
               <h2 className="section">Versions</h2>
