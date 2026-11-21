@@ -5,12 +5,14 @@
  * tool's own exit code.
  */
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { promptOf, startApprovalServer } from '../src/engine/lib/code/approval-mcp'
 import {
   claudeAsk,
   createOwnTools,
+  findProgram,
   readClaudeStream,
   type Runner
 } from '../src/engine/lib/code/own-tools'
@@ -100,6 +102,17 @@ describe('the approval endpoint Claude Code calls', () => {
       tool: 'Read',
       input: { a: 1 }
     })
+  })
+})
+
+describe('finding the user’s tools on Windows', () => {
+  it('looks in the given folders, a real program before a script shim', async () => {
+    const files = new Set(['C:/a/claude.cmd', 'C:/b/claude.exe'].map((p) => join(p)))
+    const never: Runner = async () => ({ code: 1, stdout: '', stderr: '' })
+    expect(await findProgram('claude', never, ['C:/a', 'C:/b'], (p) => files.has(p))).toBe(
+      join('C:/b/claude.exe')
+    )
+    expect(await findProgram('codex', never, ['C:/a', 'C:/b'], (p) => files.has(p))).toBeNull()
   })
 })
 
