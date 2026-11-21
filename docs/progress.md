@@ -34,7 +34,7 @@ Each entry: date, phase, what was done, and anything left open. One entry per pi
 
 ### 21 Nov 2026 · GitHub App: Repository creation permission
 
-The owner gave our GitHub App "Repository creation: Read and write", so Save to GitHub can make the repository itself. GitHub's public app details didn't list it yet right after; the first real save confirms it. Shared docs updated (decisions §56.16, the GitHub row, the owner checklist).
+The owner gave our GitHub App "Repository creation: Read and write", so Save to GitHub can make the repository itself. After the owner saved and accepted it, GitHub's API lists `repository_creation: write`. Still to try: a real save from the Apps screen, signed in. Shared docs updated (decisions §56.16, the GitHub row, the owner checklist).
 
 ### 21 Nov 2026 · Phase 8: Save to GitHub
 
