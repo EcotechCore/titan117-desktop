@@ -1,0 +1,9 @@
+{
+  "title": "{{title}}",
+  "description": "{{description}}",
+  "lang": "{{lang}}",
+  "url": "",
+  "image": "",
+  "organization": "{{title}}",
+  "pages": [{ "path": "/", "title": "{{title}}", "description": "{{description}}" }]
+}

@@ -16,7 +16,13 @@ import { createTaskNet } from '../src/engine/lib/web'
 import { createTaskPrivacy } from '../src/engine/privacy'
 import { registerSecret } from '../src/engine/redact'
 import { RESEARCH_RULES } from '../src/engine/runtime'
-import { isSandboxUrl, safeName, SANDBOX_CSP, Staged } from '../src/main/lib/export'
+import {
+  isLocalPreviewNavigation,
+  isSandboxUrl,
+  safeName,
+  SANDBOX_CSP,
+  Staged
+} from '../src/main/lib/export'
 import type { SearchSettings, TaskDetail } from '../src/shared/protocol'
 import { fakeWeb } from './fakes'
 import { call, MODEL, scripted, testEngine, until } from './helpers'
@@ -407,6 +413,17 @@ describe('the sandbox (17.18, decisions §44)', () => {
     expect(staged.respond(`/${'0'.repeat(32)}`).status).toBe(404)
     expect(isSandboxUrl(`titan117://sandbox/${id}`, 'titan117')).toBe(true)
     expect(isSandboxUrl('https://sandbox/', 'titan117')).toBe(false)
+    // An app's preview (phase 8): 127.0.0.1 with a port, never from an artifact's frame.
+    expect(isLocalPreviewNavigation('http://127.0.0.1:5173/', '', 'titan117')).toBe(true)
+    expect(
+      isLocalPreviewNavigation('http://127.0.0.1:5173/about', 'http://127.0.0.1:5173/', 'titan117')
+    ).toBe(true)
+    expect(
+      isLocalPreviewNavigation('http://127.0.0.1:5173/', `titan117://sandbox/${id}`, 'titan117')
+    ).toBe(false)
+    expect(isLocalPreviewNavigation('http://localhost:5173/', '', 'titan117')).toBe(false)
+    expect(isLocalPreviewNavigation('https://127.0.0.1:5173/', '', 'titan117')).toBe(false)
+    expect(isLocalPreviewNavigation('http://example.com:80/', '', 'titan117')).toBe(false)
     expect(safeName('../../evil\u0000.pdf', 'x')).toBe('.. .. evil .pdf')
   })
 

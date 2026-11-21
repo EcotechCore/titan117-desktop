@@ -87,6 +87,8 @@ export function ApprovalCard({
   const diff =
     typeof approval.input.diff === 'string' && approval.input.diff ? approval.input.diff : null
   const body = typeof approval.input.body === 'string' ? approval.input.body : null
+  // An app build's plan (6.7): read it before saying yes.
+  const plan = typeof approval.input.plan === 'string' ? approval.input.plan : null
   const counts = diff ? diffCounts(diff) : null
   return (
     <div className="approval" role="group" aria-label="Approval needed">
@@ -101,6 +103,12 @@ export function ApprovalCard({
             <span className="diff-del-n">−{counts.removed}</span>
           </summary>
           <Diff text={diff} max={400} />
+        </details>
+      )}
+      {plan !== null && (
+        <details className="approval-review" open>
+          <summary>Review the plan</summary>
+          <pre className="cmd approval-plan">{plan}</pre>
         </details>
       )}
       {body !== null && (

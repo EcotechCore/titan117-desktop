@@ -70,6 +70,20 @@ export function isSandboxUrl(url: string, scheme: string): boolean {
   }
 }
 
+/**
+ * An app's live preview (6.1): a dev server on this laptop's 127.0.0.1 only,
+ * shown in the Apps screen's frame. Never reached from an artifact's frame.
+ */
+export function isLocalPreviewNavigation(url: string, frameUrl: string, scheme: string): boolean {
+  if (isSandboxUrl(frameUrl, scheme)) return false
+  try {
+    const u = new URL(url)
+    return u.protocol === 'http:' && u.hostname === '127.0.0.1' && u.port !== '' && !u.username
+  } catch {
+    return false
+  }
+}
+
 /** A safe file name for a download (17.20): no path, no reserved or control characters. */
 export function safeName(name: unknown, fallback: string): string {
   const clean =

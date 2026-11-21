@@ -23,7 +23,7 @@ import { createSpeechEngine, type SpeechEngine } from './speech'
 import { createStore, type Store } from '../store'
 import { builtInTools, createRegistry, type AnyTool } from '../tools'
 import { getMeta, openDb, setMeta, type Db } from './db'
-import { realFolder, resolveAllowed, type FolderPolicy } from './folders'
+import { checkWritable, realFolder, resolveAllowed, type FolderPolicy } from './folders'
 import { createLocalModels, type LocalModels } from './llama'
 import { createLogger, type Logger } from './log'
 import { engineFetch, type Fetch } from './net'
@@ -59,6 +59,13 @@ import { GitError, gitChangedFiles, gitDiff, gitStatus } from './git'
 import { startApprovalServer } from './code/approval-mcp'
 import { checkServer, type Server } from './ssh'
 import { createOwnTools, NOT_OFFERED, type OwnToolId } from './code/own-tools'
+import { createNodeComponent } from './apps/node'
+import { createRunner } from './apps/runner'
+import { createBrowserTests } from './apps/browsers'
+import { AppError, createAppService, type GitHubLink, type Published } from './apps/service'
+import { PublishError } from './apps/cloudflare'
+import { cleanBrand, STARTERS, type BrandKit } from './apps/starters'
+import type { AppModels } from '../tools/lib/define-tool'
 
 export interface AccountState {
   /** The device token, sent only to our credits proxy. */
@@ -524,7 +531,47 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     memory,
     ownTools
   })
-  permissions.useServices({ search, pages, artifacts, documents, localOnlyTasks, code })
+  // The app builder (§6, decisions §56): Node.js and two test browsers, downloaded the first time.
+  const componentsDir = join(options.dataDir ?? tmpdir(), 'components')
+  const nodeComponent = createNodeComponent({ dir: join(componentsDir, 'node') })
+  const appBrowsers = createBrowserTests({ dir: join(componentsDir, 'browsers') })
+  const apps = createAppService({
+    runner: createRunner({
+      node: () => nodeComponent.ensure(),
+      npmDir: join(componentsDir, 'npm'),
+      scratch: join(scratchRoot, 'apps')
+    }),
+    browsers: appBrowsers,
+    coAuthor: () => getMeta<boolean>(db, 'gitCoAuthor', true),
+    onChange: () => emit({ type: 'changed', what: 'apps' }),
+    github: {
+      token: () => githubToken,
+      links: () => getMeta<Record<string, GitHubLink>>(db, 'appGitHub', {}),
+      setLinks: (next) => setMeta(db, 'appGitHub', next)
+    },
+    hosting: {
+      token: (host) => ownKeys[host] ?? null,
+      published: () => getMeta<Record<string, Published>>(db, 'appPublished', {}),
+      setPublished: (next) => setMeta(db, 'appPublished', next)
+    }
+  })
+  const brandKit = (): BrandKit | null => {
+    const saved = getMeta<BrandKit | null>(db, 'brandKit', null)
+    return saved ? cleanBrand(saved) : null
+  }
+  const appModels = (): AppModels =>
+    getMeta<AppModels>(db, 'appModels', { planner: null, coder: null, fixer: null })
+  permissions.useServices({
+    search,
+    pages,
+    artifacts,
+    documents,
+    localOnlyTasks,
+    code,
+    apps,
+    appModels,
+    brandKit
+  })
 
   // Setup and health (1.12, 1.20, 1.21): facts from every part of the engine.
   const setup = createSetupService({
@@ -638,6 +685,123 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       setMeta(db, 'ownToolsEnabled', on ? [...list, id as OwnToolId] : list)
     }
   }
+  // The Apps screen (§6): the user's own clicks, on apps inside the allowed folders.
+  const realWritable = (folder: string): Promise<string> => checkWritable(policy(), folder)
+  const appChecks = new Map<string, string>()
+  /** The last background run's problem per app (publishing), shown on the screen. */
+  const appProblems = new Map<string, string>()
+  const appView = {
+    async list() {
+      const allowed = policy().allowed
+      return {
+        apps: apps.list(allowed).map((a) => ({
+          ...a,
+          checking: appChecks.get(a.folder) ?? null,
+          problem: appProblems.get(a.folder) ?? null
+        })),
+        models: appModels(),
+        brand: brandKit() ?? cleanBrand(null),
+        starters: STARTERS.map(({ id, label, description }) => ({ id, label, description })),
+        components: { node: nodeComponent.status(), browsers: appBrowsers.status() }
+      }
+    },
+    async create(input: {
+      folder: string
+      title: string
+      description: string
+      lang?: string
+      starter?: string
+    }) {
+      const parent = await realWritable(input.folder)
+      const brand = brandKit()
+      const logo = brand?.logo ? await resolveAllowed(policy(), brand.logo) : ''
+      return apps.create(parent, {
+        ...input,
+        starter: STARTERS.find((s) => s.id === input.starter)?.id,
+        ...(brand ? { brand: { ...brand, logo } } : {})
+      })
+    },
+    setBrand(next: unknown) {
+      setMeta(db, 'brandKit', cleanBrand(next as Partial<Record<keyof BrandKit, unknown>>))
+    },
+    report: async (folder: string) => apps.latestReport(await resolveAllowed(policy(), folder)),
+    versions: async (folder: string) => apps.versions(await resolveAllowed(policy(), folder)),
+    async screenshot(folder: string, id: string, file: string) {
+      return (await apps.screenshot(await resolveAllowed(policy(), folder), id, file)).toString(
+        'base64'
+      )
+    },
+    async preview(folder: string, action: 'start' | 'stop') {
+      const real = await realWritable(folder)
+      if (action === 'stop') {
+        apps.stopPreview(real)
+        return { url: null }
+      }
+      return apps.startPreview(real)
+    },
+    /** Runs in the background; the screen hears "changed apps" as it moves on. */
+    async check(folder: string) {
+      const real = await realWritable(folder)
+      if (appChecks.has(real)) return { started: false }
+      appChecks.set(real, 'Starting…')
+      emit({ type: 'changed', what: 'apps' })
+      void apps
+        .check(real, {
+          onProgress: (note) => {
+            appChecks.set(real, note)
+            emit({ type: 'changed', what: 'apps' })
+          }
+        })
+        .catch((error) => {
+          if (!(error instanceof AppError)) log.capture('apps', error, {})
+        })
+        .finally(() => {
+          appChecks.delete(real)
+          emit({ type: 'changed', what: 'apps' })
+        })
+      return { started: true }
+    },
+    restore: async (folder: string, sha: string) => apps.restore(await realWritable(folder), sha),
+    /** Runs in the background, like a test run; the screen hears "changed apps". */
+    async publish(folder: string) {
+      const real = await realWritable(folder)
+      if (appChecks.has(real)) return { started: false }
+      appChecks.set(real, 'Publishing…')
+      emit({ type: 'changed', what: 'apps' })
+      void apps
+        .publish(real, (note) => {
+          appChecks.set(real, note)
+          emit({ type: 'changed', what: 'apps' })
+        })
+        .then(() => appProblems.delete(real))
+        .catch((error) => {
+          appProblems.set(real, error instanceof Error ? error.message : String(error))
+          if (!(error instanceof AppError) && !(error instanceof PublishError))
+            log.capture('apps', error, {})
+        })
+        .finally(() => {
+          appChecks.delete(real)
+          emit({ type: 'changed', what: 'apps' })
+        })
+      return { started: true }
+    },
+    async zip(folder: string) {
+      const file = await apps.zip(await resolveAllowed(policy(), folder))
+      return { name: file.name, base64: file.data.toString('base64') }
+    },
+    /** The user's click: save to their GitHub, or stop pushing new versions. */
+    async github(folder: string, action: 'save' | 'stop', isPrivate: boolean) {
+      const real = await realWritable(folder)
+      if (action === 'stop') {
+        apps.stopGitHubSync(real)
+        return { status: 'stopped' }
+      }
+      return apps.saveToGitHub(real, { private: isPrivate })
+    },
+    setModels(next: AppModels) {
+      setMeta(db, 'appModels', next)
+    }
+  }
   const handle = createApi({
     appVersion: options.appVersion,
     store,
@@ -667,6 +831,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     reports,
     documents,
     code: codeView,
+    apps: appView,
     notifications: {
       get: () => getMeta<boolean>(db, 'notifications', true),
       set: (on) => setMeta(db, 'notifications', on)
@@ -778,6 +943,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       await browser.close()
       await connectors.close()
       await codeEngine.shutdown()
+      apps.stopAll()
       await codeBridge.stop()
       await toolApprovals.stop()
       await local.dispose()

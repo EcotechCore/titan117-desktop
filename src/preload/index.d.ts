@@ -65,7 +65,14 @@ declare global {
       keys: {
         saved(): Promise<
           Record<
-            'openrouter' | 'anthropic' | 'openai' | 'google' | 'exa' | 'tavily' | 'brave',
+            | 'openrouter'
+            | 'anthropic'
+            | 'openai'
+            | 'google'
+            | 'exa'
+            | 'tavily'
+            | 'brave'
+            | 'cloudflare',
             boolean
           >
         >

@@ -251,7 +251,8 @@ describe('saving keys on this laptop', () => {
       google: false,
       exa: false,
       tavily: false,
-      brave: false
+      brave: false,
+      cloudflare: false
     })
     expect(keys.all()).toEqual({ openai: OPENAI_KEY })
     expect(readFileSync(join(dir, 'keys', 'openai.bin'), 'utf8')).not.toContain(OPENAI_KEY)
@@ -318,7 +319,8 @@ describe('the engine with your own keys', () => {
       google: false,
       exa: false,
       tavily: false,
-      brave: false
+      brave: false,
+      cloudflare: false
     })
 
     const estimate = (

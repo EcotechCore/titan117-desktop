@@ -174,7 +174,15 @@ export type EngineEvent =
   /** Memory, skills, past-task records or connectors changed: the window reloads that list. */
   | {
       type: 'changed'
-      what: 'memory' | 'skills' | 'records' | 'connectors' | 'artifacts' | 'reports' | 'documents'
+      what:
+        | 'memory'
+        | 'skills'
+        | 'records'
+        | 'connectors'
+        | 'artifacts'
+        | 'reports'
+        | 'documents'
+        | 'apps'
     }
   /** The engine went offline or came back online (1.22). */
   | { type: 'online'; online: boolean }
@@ -202,7 +210,13 @@ export const MODEL_KEY_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'google
 /** Search providers the user can add their own key for (feature 16.3, decisions §44). */
 export const SEARCH_KEY_PROVIDERS = ['exa', 'tavily', 'brave'] as const
 export type SearchKeyProvider = (typeof SEARCH_KEY_PROVIDERS)[number]
-export const KEY_PROVIDERS = [...MODEL_KEY_PROVIDERS, ...SEARCH_KEY_PROVIDERS] as const
+/** Hosting for publishing apps (6.15, decisions §56.18): the user's own account. */
+export const HOSTING_KEY_PROVIDERS = ['cloudflare'] as const
+export const KEY_PROVIDERS = [
+  ...MODEL_KEY_PROVIDERS,
+  ...SEARCH_KEY_PROVIDERS,
+  ...HOSTING_KEY_PROVIDERS
+] as const
 export type KeyProvider = (typeof KEY_PROVIDERS)[number]
 
 /** Model ids for the user's own keys: `anthropic:claude-…`, `openai:…`, `google:gemini-…`. */

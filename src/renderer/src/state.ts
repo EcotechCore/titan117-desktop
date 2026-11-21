@@ -24,6 +24,7 @@ export type View =
   | { kind: 'setup' }
   | { kind: 'documents' }
   | { kind: 'code' }
+  | { kind: 'apps' }
 
 export interface AppState {
   status: 'connecting' | 'ready' | 'lost'

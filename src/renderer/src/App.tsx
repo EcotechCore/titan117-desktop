@@ -31,6 +31,7 @@ import { ReportDialog } from './Reports'
 import { SetupView, SetupWizard, type FixHandler } from './Setup'
 import { DocumentsView } from './Documents'
 import { CodeView } from './Code'
+import { AppsView } from './Apps'
 import type { ReportMode } from '../../shared/protocol'
 
 const PROMPTS = [
@@ -397,6 +398,12 @@ function App(): React.JSX.Element {
           <Icon name="code" /> Code
         </button>
         <button
+          className={view.kind === 'apps' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'apps' } })}
+        >
+          <Icon name="globe" /> Apps
+        </button>
+        <button
           className={view.kind === 'documents' ? 'nav on' : 'nav'}
           onClick={() => dispatch({ type: 'view', view: { kind: 'documents' } })}
         >
@@ -565,6 +572,21 @@ function App(): React.JSX.Element {
               client={api}
               engine={engine}
               changed={
+                state.tasks.filter((t) => t.status === 'running').length * 1000 +
+                state.approvals.length
+              }
+              onStart={(message) => void startNew(message)}
+              onProblem={fail}
+            />
+          )}
+          {view.kind === 'apps' && (
+            <AppsView
+              client={api}
+              engine={engine}
+              cloud={state.cloud}
+              onKeysChanged={() => void reloadModels().catch(fail)}
+              changed={
+                (state.changed.apps ?? 0) +
                 state.tasks.filter((t) => t.status === 'running').length * 1000 +
                 state.approvals.length
               }

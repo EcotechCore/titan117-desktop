@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Next step:** phase 8, the app builder for the web. Production waits (§52).
+**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Phase 8 started (21 Nov 2026):** its first part works in the built app: make a web app, a plan you approve, the build, checks in Chromium, Firefox and WebKit at three sizes, fixes, a test report, versions and a live preview. **Since then (21 Nov 2026):** Save to GitHub, ZIP export, more test conditions, starters and a brand kit, visual edit and Cloudflare publishing are built, and the five sample apps all pass. **Next step:** the owner's real Save to GitHub and Cloudflare publish (the last part of phase 8's check); Netlify waits for our OAuth app, Vercel and Convex for their written answers. Production waits (§52).
 
 ## Phases
 
@@ -16,7 +16,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 5 | Install and setup | In progress | 15 Nov 2026 | |
 | 6 | Folder agent | Done | 16 Nov 2026 | 20 Nov 2026 |
 | 7 | Coding engine and code builder | Done (except what waits outside the code) | 20 Nov 2026 | 21 Nov 2026 |
-| 8 | App builder: web | Not started | | |
+| 8 | App builder: web | In progress | 21 Nov 2026 | |
 | 9 | App builder: mobile and desktop | Not started | | |
 | 10 | Sidebar apps | Not started | | |
 | 11 | Agent builder | Not started | | |
@@ -31,6 +31,56 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 21 Nov 2026 · Phase 8: publish from GitHub, and cheaper models compared
+
+- **Publish from GitHub** (decisions §56.26): once an app is on GitHub, the Apps screen shows Cloudflare's, Netlify's and Vercel's own steps for connecting the repository in their dashboards, with the app's values filled in; each pushed version is then published by the host. Titan117 never handles the host's sign-in. The template now has `.nvmrc` (22), `engines.node` and a `wrangler.jsonc` so every host builds it with Node 22 or newer. Checked in the built app; `pnpm eval:apps` passes with the new template.
+- **Cheaper models compared** (decisions §56.27): the five sample sites with DeepSeek V4.1 Flash (4 of 5, $0.22), GLM 5.3 Flash (5 of 5, $0.21, slower) and Qwen3 Coder Next (3 of 5, $0.52), against Claude Haiku 5.5 (5 of 5, $0.21, fastest). No cheaper default; the Apps screen names the two that passed everything. Reports in `test/live/results`.
+- **Checks:** typecheck, lint, tests, build and licences pass.
+
+### 21 Nov 2026 · Phase 8: export, conditions, specialist, starters, brand, visual edit, publishing, five sample apps
+
+Asked for by the owner ("proceed with everything"). Decisions §56.17–§56.25 (to be confirmed).
+
+- **Download ZIP** of the current version (`git archive`: never packages, reports or `.env`).
+- **More test conditions:** phone on a slow network, desktop in Romanian, and "works offline" (nothing asked from other websites). 14 screenshots per test run now.
+- **The web specialist:** fixed rules on content, SEO, speed, accessibility, phones, privacy and dark mode, given with every plan, build and fix.
+- **Starters** (restaurant, shop, services, portfolio, landing page) and **Your brand** (colours, font, tone, logo) on the Apps screen, applied to each new app.
+- **Visual edit:** "Edit visually" over the preview; click an element, say the change, approve once. A quick change skips planning and uses a new "Quick edits" model role. The picker lives only in the app's preview, never in a built site. In the built app: the heading picked, recoloured, checks passing, a version saved, for under a cent.
+- **Publish to Cloudflare:** the user's own token under Your hosting (checked with Cloudflare, kept in the keychain), only a version that passes its checks, Cloudflare's documented static assets upload, asks every time. Tested against a fake Cloudflare; a real publish needs the owner's token.
+- **Convex backend: not built.** Convex's docs leave the OAuth secret question and an "application builders" clause in its terms open; the owner asks Convex.
+- **Phase 8's check, first part: five sample apps** (`pnpm eval:samples`) all built and passed with Claude Haiku 5.5, $0.21 in all (`test/live/results/apps-samples-haiku-2026-11-21.md`). Publishing them waits for the owner's Cloudflare token.
+- **Fixed on the way:** errors on the Apps screen now show there; two key tests list Cloudflare.
+- **Checks:** typecheck, lint, 387 tests, build and licences pass; `pnpm eval:apps` passes.
+
+### 21 Nov 2026 · GitHub App: Repository creation permission
+
+The owner gave our GitHub App "Repository creation: Read and write", so Save to GitHub can make the repository itself. After the owner saved and accepted it, GitHub's API lists `repository_creation: write`. Still to try: a real save from the Apps screen, signed in. Shared docs updated (decisions §56.16, the GitHub row, the owner checklist).
+
+### 21 Nov 2026 · Phase 8: Save to GitHub
+
+Asked for by the owner. Decisions §56.16 (to be confirmed).
+
+- **On the Apps screen, Save to GitHub** (private by default) puts the app in a repository in the user's own GitHub account, as the user, through our GitHub App's sign-in, with all its versions. After that, **each new version is pushed by itself** until Stop pushing; a failed push never stops a version being saved, and its reason shows on the screen.
+- **The repository:** made through GitHub's API once our GitHub App has the "Repository creation" (or "Administration") permission, which it doesn't have yet (owner checklist). Until then the screen links to GitHub's own new-repository page, filled in, and the next save uses that empty repository. A repository with commits is never used; the next free name is.
+- **Pushing** (`src/engine/lib/apps/github.ts`, `gitPushTo` and `gitRemoteSet` in `git.ts`): the token reaches git only as a header through its environment, never on a command line or in `.git/config`; never forced, so changes made on GitHub stop the push and nothing is overwritten. An app's own repository gets its `main` pushed (an exception to "never push to main", which stays for other repositories).
+- **Asks** every time, on the laptop only, when Titan does it (`app_github`, with its denial test); the screen's button is the user's own click.
+- **Fixed on the way:** errors on the Apps screen weren't shown (the window shows them only in the chat); they now show on the screen, by the button that caused them.
+- **Checks:** typecheck, lint, 374 tests (8 new: the repository found or made against a fake GitHub, a push into a local repository that keeps the token out of the settings and refuses to overwrite, the sync after each version), build and licences pass. In the built app, the GitHub section shows and, without a sign-in, says to sign in first. **Not yet tried against the real GitHub:** it needs the owner's sign-in and makes a repository in their account (owner checklist).
+
+### 21 Nov 2026 · Phase 8 started: the app builder for the web, first part
+
+Decisions §56 (to be confirmed). Branch `phase-8-app-builder`.
+
+- **The phase-start review:** the vendors' own pages were read for publishing (Cloudflare, Netlify, Vercel), Playwright's browser downloads and Node.js; their rows are in `external-services.md`. Publishing goes Cloudflare first, Netlify after our own OAuth app, and Vercel waits for its written answer (its Hobby plan is non-commercial and its API terms forbid receiving users' tokens). No GPL in anything new: Node.js MIT, npm Artistic 2.0 with permissive packages, the template's packages MIT/Apache/BSD/ISC plus MPL 2.0 (lightningcss), Firefox MPL 2.0, WebKit LGPL 2 and BSD, Playwright's ffmpeg LGPL 2.1 (all downloaded to the laptop and run unchanged, never shipped).
+- **Node.js 26.13.1** downloaded on first use from nodejs.org and checked against its SHA-256 (`src/engine/lib/apps/node.ts`); npm runs with our settings: public registry, no install scripts, no user or project `.npmrc`, its own cache (`runner.ts`).
+- **The web template** (`src/engine/lib/apps/templates/web`): React 19, TypeScript, Vite 8, Tailwind 4, small shadcn/ui-style components, a Vitest test, `AGENTS.md`, a lockfile, and **SEO built in** from `site.config.json` (title, description, language, canonical, Open Graph, structured data, `robots.txt`, `sitemap.xml`).
+- **Six tools** (`src/engine/tools/apps.ts`), each with denial tests: `app_create`, `app_build` (plan → the plan on an approval card → build → install, typecheck, build, tests and three browsers → up to three fixes, the fixer model after the first → a version), `app_check`, `app_preview`, `app_versions`, `app_restore`. A new `apps` permission; running an app asks like a command ("Always run this app"); **an approved plan covers that build's file changes and checks inside that app's folder, in that task only.**
+- **Browser tests** (`browsers.ts`): Chromium through the laptop's Edge or Chrome, Firefox and WebKit downloaded by Playwright itself; phone, tablet, desktop and desktop dark; screenshots, console and page errors, failed requests, sideways scroll; page checks (styles, title, description, language, viewport, one `<h1>`, alt text, Open Graph, structured data, form labels). A tested page reaches only its own preview.
+- **The Apps screen** (`src/renderer/src/Apps.tsx`): make an app, ask for a build, the live preview in a frame at phone, tablet or desktop size (scaled to fit), the test report with a screenshot per browser and size, versions with "Go back to this", and models for the planner, coder and fixer. The approval card shows the full plan. The window may now frame 127.0.0.1 (app previews) besides the artifact sandbox, never from an artifact's frame.
+- **Checks:** typecheck, lint, 366 tests, build and `pnpm check:licenses` pass. `pnpm eval:apps` (new, no model) passed for real: Node.js downloaded and matched its hash, install, typecheck, build and tests, 12 screenshots across the three engines, clean SEO, the preview on 127.0.0.1, and a planted second `<h1>` and outside font both caught. It also found a real bug, fixed: the template's stylesheet arrived empty (a bundler empties `.css` imports), so templates' stylesheets travel as text now and an unstyled page fails the report.
+- **Seen working in the built app** (Playwright driving it with a throwaway profile, no sign-in, Claude Haiku 5.5 on the development key): from the Apps screen, "Cluj Bakery" was made, its plan shown and approved, built (welcome, hours, three breads with prices, address), one fix round, **all checks passed** in Chromium, Firefox and WebKit at every size, and version 2 was saved, for about 2 cents. A second run confirmed 14 file changes approved by the plan alone and the scaled preview.
+- **Left in phase 8:** publishing (6.15), export (6.18), visual edit (6.9), templates per business type and the brand kit (6.8), the web specialist (6.5), the user's own Convex backend (6.1), slow network, offline and languages (6.21), and the check: five sample web apps build, pass their tests and publish.
 
 ### 21 Nov 2026 · Which coding tool is working is shown; tools found with an old PATH
 
