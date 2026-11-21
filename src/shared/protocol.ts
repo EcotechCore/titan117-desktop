@@ -174,7 +174,15 @@ export type EngineEvent =
   /** Memory, skills, past-task records or connectors changed: the window reloads that list. */
   | {
       type: 'changed'
-      what: 'memory' | 'skills' | 'records' | 'connectors' | 'artifacts' | 'reports' | 'documents'
+      what:
+        | 'memory'
+        | 'skills'
+        | 'records'
+        | 'connectors'
+        | 'artifacts'
+        | 'reports'
+        | 'documents'
+        | 'apps'
     }
   /** The engine went offline or came back online (1.22). */
   | { type: 'online'; online: boolean }

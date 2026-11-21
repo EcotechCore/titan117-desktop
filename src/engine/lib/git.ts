@@ -414,3 +414,56 @@ export async function openPullRequest(
     url: compareUrl(status.remote.github, base, status.branch, input.title, input.body)
   }
 }
+
+/** A new repository on `main`, for a new app project (6.13: its first version). */
+export async function gitInit(dir: string): Promise<void> {
+  const inside = await run('git', ['rev-parse', '--show-toplevel'], dir)
+  if (inside.code === 0) return
+  await git(dir, 'init', '-q', '-b', 'main')
+}
+
+export interface GitVersion {
+  sha: string
+  subject: string
+  /** Unix milliseconds. */
+  at: number
+}
+
+/** The latest commits on the current branch, newest first (an app's versions, 6.13). */
+export async function gitLog(dir: string, limit = 50): Promise<GitVersion[]> {
+  const result = await run(
+    'git',
+    ['log', `-${Math.min(Math.max(limit, 1), 500)}`, '--format=%h%x1f%s%x1f%ct'],
+    dir
+  )
+  if (result.code !== 0) return []
+  return result.stdout
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [sha, subject, at] = line.split('\x1f')
+      return { sha, subject, at: Number(at) * 1000 }
+    })
+}
+
+/**
+ * Put every file back as it was at `sha`, as a new commit on top (6.13:
+ * one-click rollback). History is kept, so the rollback can be undone too.
+ */
+export async function gitRestore(
+  dir: string,
+  sha: string,
+  input: { message: string; coAuthor: boolean }
+): Promise<{ sha: string }> {
+  if (!/^[0-9a-f]{4,40}$/i.test(sha)) throw new GitError(`"${sha}" isn’t a version.`)
+  const status = await gitStatus(dir)
+  if (status.changes.length)
+    throw new GitError(
+      'There are changes not saved as a version yet. Save or undo them first, then go back.'
+    )
+  await git(dir, 'cat-file', '-e', `${sha}^{commit}`)
+  await git(dir, 'restore', `--source=${sha}`, '--staged', '--worktree', '--', '.')
+  const after = await gitStatus(dir)
+  if (!after.changes.length) throw new GitError('That version is the same as the current one.')
+  return { sha: (await gitCommit(dir, { ...input })).sha }
+}

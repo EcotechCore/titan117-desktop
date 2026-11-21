@@ -61,7 +61,16 @@ const webImports = {
 
 export default defineConfig(
   // mockup/ is the design reference (design.md 0.2), not app code.
-  { ignores: ['**/node_modules', '**/dist', '**/out', 'mockup/**'] },
+  {
+    ignores: [
+      '**/node_modules',
+      '**/dist',
+      '**/out',
+      'mockup/**',
+      // Starting files for apps the builder makes: their own project, checked by their own scripts.
+      'src/engine/lib/apps/templates/**'
+    ]
+  },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],

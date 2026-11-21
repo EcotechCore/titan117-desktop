@@ -62,6 +62,8 @@ export interface ToolPermissions {
   git?: 'read' | 'write'
   /** Commands on the user's own servers over SSH (3.15). */
   servers?: boolean
+  /** The app builder's projects: create, check, preview, versions (§6, decisions §56). */
+  apps?: boolean
 }
 
 /** The user's own servers (3.15): only the ones they added in the app. */
@@ -94,6 +96,35 @@ export interface CodeAccess {
   run(
     job: import('../../lib/code/service').CodeJob
   ): Promise<import('../../lib/code/opencode').CodeResult & { costUsd: number; steps: number }>
+}
+
+/** The models for each role in an app build (6.10); null means the task's own model. */
+export interface AppModels {
+  planner: string | null
+  coder: string | null
+  fixer: string | null
+}
+
+/** The app builder (§6, decisions §56): running an app's code asks first, like a command. */
+export interface AppAccess {
+  create(input: {
+    folder: string
+    title: string
+    description: string
+    lang?: string
+  }): Promise<import('../../lib/apps/service').AppInfo>
+  info(folder: string): Promise<import('../../lib/apps/service').AppInfo>
+  /** Show the plan for approval (6.7). Approved: the build's file changes and the app's checks run without asking again in this task. */
+  approvePlan(folder: string, plan: string): Promise<boolean>
+  check(
+    folder: string,
+    options?: { browsers?: boolean }
+  ): Promise<import('../../lib/apps/service').AppReport>
+  preview(folder: string, action: 'start' | 'stop'): Promise<{ url: string | null }>
+  saveVersion(folder: string, message: string): Promise<{ sha: string } | null>
+  versions(folder: string): Promise<import('../../lib/git').GitVersion[]>
+  restore(folder: string, sha: string): Promise<{ sha: string }>
+  models(): AppModels
 }
 
 /** The folder agent's view of the document folders (§7, decisions §51). */
@@ -132,6 +163,7 @@ export interface ToolContext {
   code: CodeAccess
   git: GitAccess
   servers: ServerAccess
+  apps: AppAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.

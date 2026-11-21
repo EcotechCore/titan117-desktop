@@ -40,7 +40,15 @@ import { isNetworkFailure } from './lib/online'
 import type { DocumentsAccess, PageAccess } from './tools/lib/define-tool'
 import type { DocIndex } from './lib/doc-index'
 import type { CodeService } from './lib/code/service'
-import type { CodeAccess, GitAccess, ServerAccess } from './tools/lib/define-tool'
+import type {
+  AppAccess,
+  AppModels,
+  CodeAccess,
+  GitAccess,
+  ServerAccess
+} from './tools/lib/define-tool'
+import { AppError, type AppService } from './lib/apps/service'
+import { NodeDownloadError } from './lib/apps/node'
 import { runOnServer, SshError, type Server } from './lib/ssh'
 import {
   GitError,
@@ -102,6 +110,8 @@ export interface OutsideAction {
   tool: string
   input: Record<string, unknown>
   assessment: Assessment
+  /** The project folder it happens in (the real path), for a plan approved there (6.7). */
+  folder?: string
 }
 
 export type Decision =
@@ -142,6 +152,10 @@ export interface Services {
   githubToken?: () => string | null
   /** The servers the user added (3.15). */
   servers?: () => Server[]
+  /** The app builder's projects (§6, decisions §56). */
+  apps?: AppService
+  /** The models chosen for each role in an app build (6.10). */
+  appModels?: () => AppModels
 }
 
 interface Waiting {
@@ -183,6 +197,14 @@ export function createPermissionLayer(deps: {
   const services = deps.services ?? {}
   const waiting = new Map<string, Waiting>()
   const states = new Map<string, TaskState>()
+  /**
+   * App folders whose build plan the user approved, per task (6.7): the build's file changes
+   * and the app's checks there don't ask one by one. Only that folder, only that task, and
+   * only until the engine restarts.
+   */
+  const approvedPlans = new Map<string, Set<string>>()
+  const planCovers = (taskId: string, folder: string | undefined): boolean =>
+    !!folder && !!approvedPlans.get(taskId)?.has(folder)
 
   /** A task's privacy state; after a restart it's rebuilt from the conversation. */
   function stateOf(taskId: string): TaskState {
@@ -588,6 +610,98 @@ export function createPermissionLayer(deps: {
         }
       : denied<ServerAccess>('servers')
 
+    // The app builder (§6, decisions §56). Running an app (install, checks, preview) runs its code,
+    // so it asks like a command, with "always run this app"; an approved plan covers it for the task.
+    const appService = (): AppService => needService(services.apps, 'The app builder')
+    const appFolder = (folder: string): Promise<string> => checkWritable(policy, folder)
+    const mayRunApp = async (folder: string, real: string, what: string): Promise<void> => {
+      if (planCovers(ctx.taskId, real)) {
+        activity(ctx, 'approval', 'app_run', `Running the app in ${folder}`, 'you (the plan)')
+        return
+      }
+      const decision = await gate(
+        ctx,
+        `${callId}-run`,
+        'app_run',
+        { folder },
+        {
+          risk: 'write',
+          summary: `Run the app in ${folder}: ${what}`,
+          standing: { folder: real, command: 'app:run', label: 'Always run this app' }
+        },
+        false
+      )
+      if (!decision.allowed) throw new PermissionError(`Not run: ${decision.why}`)
+      activity(ctx, 'approval', 'app_run', `Running the app in ${folder}`, decision.approvedBy)
+    }
+    const apps: AppAccess = p.apps
+      ? {
+          async create(input) {
+            const parent = await appFolder(input.folder)
+            return appService().create(parent, input)
+          },
+          info: async (folder) => appService().info(await resolveAllowed(policy, folder)),
+          async approvePlan(folder, plan) {
+            const real = await appFolder(folder)
+            const name = appService().info(real).title
+            const answer = await waitFor(ctx, {
+              callId: `${callId}-plan`,
+              tool: 'app_plan',
+              risk: 'write',
+              summary: `Build this plan in "${name}"? Titan writes the code, installs the app's packages, runs its checks and tests, and saves a version. Each change still shows as a diff.`,
+              args: { plan: plan.slice(0, 20_000) },
+              canAlways: false,
+              laptopOnly: false
+            })
+            const approved = answer === 'approve' || answer === 'always'
+            activity(
+              ctx,
+              'approval',
+              'app_plan',
+              approved ? `Plan approved for ${name}` : `Plan not approved for ${name}`,
+              approved ? 'you' : null
+            )
+            if (approved) {
+              // The plan was the approval: its file changes and the app's checks in this app don't ask one by one.
+              const set = approvedPlans.get(ctx.taskId) ?? new Set<string>()
+              set.add(real)
+              approvedPlans.set(ctx.taskId, set)
+            }
+            return approved
+          },
+          async check(folder, options) {
+            const real = await appFolder(folder)
+            // Only an app made with the builder, and only then ask.
+            appService().info(real)
+            await mayRunApp(
+              folder,
+              real,
+              'install its packages from npm, typecheck, build, run its tests and open it in local browsers'
+            )
+            return appService().check(real, {
+              browsers: options?.browsers,
+              signal: ctx.signal,
+              onProgress: (note) => activity(ctx, 'tool', 'app_check', note)
+            })
+          },
+          async preview(folder, action) {
+            const real = await appFolder(folder)
+            if (action === 'stop') {
+              appService().stopPreview(real)
+              return { url: null }
+            }
+            appService().info(real)
+            await mayRunApp(folder, real, 'install its packages from npm and start its preview')
+            return appService().startPreview(real)
+          },
+          saveVersion: async (folder, message) =>
+            appService().saveVersion(await appFolder(folder), message),
+          versions: async (folder) => appService().versions(await resolveAllowed(policy, folder)),
+          restore: async (folder, sha) => appService().restore(await appFolder(folder), sha),
+          models: () => services.appModels?.() ?? { planner: null, coder: null, fixer: null }
+        }
+      : denied<AppAccess>('the app builder')
+
     return {
       taskId: ctx.taskId,
       agent: ctx.agent,
@@ -595,6 +709,7 @@ export function createPermissionLayer(deps: {
       code,
       git,
       servers,
+      apps,
       search,
       documents,
       pages,
@@ -669,7 +784,9 @@ export function createPermissionLayer(deps: {
           error instanceof DocumentError ||
           error instanceof SheetError ||
           error instanceof GitError ||
-          error instanceof SshError
+          error instanceof SshError ||
+          error instanceof AppError ||
+          error instanceof NodeDownloadError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }
@@ -729,6 +846,15 @@ export function createPermissionLayer(deps: {
     isLocalOnly: (taskId) => services.localOnlyTasks?.has(taskId) ?? false,
 
     async decide(ctx, request) {
+      // A file change inside an app whose plan the user approved in this task (6.7); refusals still apply.
+      if (
+        request.tool === 'code_edit' &&
+        !request.assessment.refuse &&
+        planCovers(ctx.taskId, request.folder)
+      ) {
+        activity(ctx, 'tool', request.tool, request.assessment.summary, 'you (the plan)')
+        return { allowed: true, approvedBy: 'you (the plan)' }
+      }
       const decision = await gate(
         ctx,
         request.callId,

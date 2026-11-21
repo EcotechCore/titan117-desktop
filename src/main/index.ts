@@ -18,7 +18,14 @@ import {
 import { join, normalize, sep } from 'path'
 import { allowedFolder, findEditors, openInEditor } from './lib/editors'
 import { GitHubSignIn } from './lib/github'
-import { SANDBOX_HOST, Staged, isSandboxUrl, safeName, writeChosenFile } from './lib/export'
+import {
+  SANDBOX_HOST,
+  Staged,
+  isLocalPreviewNavigation,
+  isSandboxUrl,
+  safeName,
+  writeChosenFile
+} from './lib/export'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -627,6 +634,8 @@ function createWindow(): void {
   // An artifact's frame stays on its sandbox page; its links open in the system browser.
   mainWindow.webContents.on('will-frame-navigate', (event) => {
     if (event.isMainFrame) return
+    // An app's live preview on this laptop (6.1) stays in its frame too.
+    if (isLocalPreviewNavigation(event.url, event.frame?.url ?? '', APP_SCHEME)) return
     if (!isSandboxUrl(event.url, APP_SCHEME)) {
       event.preventDefault()
       if (isSafeExternalUrl(event.url)) void shell.openExternal(event.url)

@@ -46,6 +46,8 @@ export interface CodeJob {
   readOnly?: boolean
   /** The user's own coding tool to use instead of our engine (13.14). */
   tool?: OwnToolId
+  /** A model for this job instead of the task's (the app builder's roles, 6.10). */
+  model?: string
 }
 
 export interface CodeService {
@@ -114,6 +116,7 @@ export function createCodeService(deps: {
           callId: ask.tool?.callID ?? ask.id,
           tool: assessed.tool,
           input: assessed.input,
+          folder: repo,
           assessment: asker
             ? { ...assessed.assessment, summary: `${asker}: ${assessed.assessment.summary}` }
             : assessed.assessment
@@ -182,7 +185,7 @@ export function createCodeService(deps: {
         async step({ system, messages, tools, signal, onText }) {
           const over = meter.beforeStep()
           if (over) return { refused: over }
-          const model = store.getTask(ctx.taskId)?.model ?? ctx.model
+          const model = job.model ?? store.getTask(ctx.taskId)?.model ?? ctx.model
           const route = deps.router.route(model)
           if (route.source !== 'local' && (localOnlyRepo || permissions.isLocalOnly(ctx.taskId)))
             return { refused: CODE_LOCAL_ONLY_NOTE }
