@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Phase 8 started (21 Nov 2026):** its first part works in the built app: make a web app, a plan you approve, the build, checks in Chromium, Firefox and WebKit at three sizes, fixes, a test report, versions and a live preview. **Next step:** the rest of phase 8 (publishing to Cloudflare first, export, visual edit, more templates, the five sample apps). Production waits (§52).
+**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Phase 8 started (21 Nov 2026):** its first part works in the built app: make a web app, a plan you approve, the build, checks in Chromium, Firefox and WebKit at three sizes, fixes, a test report, versions and a live preview. **Since then (21 Nov 2026):** Save to GitHub, ZIP export, more test conditions, starters and a brand kit, visual edit and Cloudflare publishing are built, and the five sample apps all pass. **Next step:** the owner's real Save to GitHub and Cloudflare publish (the last part of phase 8's check); Netlify waits for our OAuth app, Vercel and Convex for their written answers. Production waits (§52).
 
 ## Phases
 
@@ -31,6 +31,21 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 21 Nov 2026 · Phase 8: export, conditions, specialist, starters, brand, visual edit, publishing, five sample apps
+
+Asked for by the owner ("proceed with everything"). Decisions §56.17–§56.25 (to be confirmed).
+
+- **Download ZIP** of the current version (`git archive`: never packages, reports or `.env`).
+- **More test conditions:** phone on a slow network, desktop in Romanian, and "works offline" (nothing asked from other websites). 14 screenshots per test run now.
+- **The web specialist:** fixed rules on content, SEO, speed, accessibility, phones, privacy and dark mode, given with every plan, build and fix.
+- **Starters** (restaurant, shop, services, portfolio, landing page) and **Your brand** (colours, font, tone, logo) on the Apps screen, applied to each new app.
+- **Visual edit:** "Edit visually" over the preview; click an element, say the change, approve once. A quick change skips planning and uses a new "Quick edits" model role. The picker lives only in the app's preview, never in a built site. In the built app: the heading picked, recoloured, checks passing, a version saved, for under a cent.
+- **Publish to Cloudflare:** the user's own token under Your hosting (checked with Cloudflare, kept in the keychain), only a version that passes its checks, Cloudflare's documented static assets upload, asks every time. Tested against a fake Cloudflare; a real publish needs the owner's token.
+- **Convex backend: not built.** Convex's docs leave the OAuth secret question and an "application builders" clause in its terms open; the owner asks Convex.
+- **Phase 8's check, first part: five sample apps** (`pnpm eval:samples`) all built and passed with Claude Haiku 5.5, $0.21 in all (`test/live/results/apps-samples-haiku-2026-11-21.md`). Publishing them waits for the owner's Cloudflare token.
+- **Fixed on the way:** errors on the Apps screen now show there; two key tests list Cloudflare.
+- **Checks:** typecheck, lint, 387 tests, build and licences pass; `pnpm eval:apps` passes.
 
 ### 21 Nov 2026 · GitHub App: Repository creation permission
 
