@@ -138,6 +138,7 @@ describe('the Node.js download', () => {
     const dir = tempFolder('titan117-node-')
     const node = createNodeComponent({
       dir,
+      platform: 'win32-x64',
       fetch: (async () => new Response(new Uint8Array([1, 2, 3]))) as unknown as typeof fetch
     })
     await expect(node.ensure()).rejects.toThrow(/fingerprint/)

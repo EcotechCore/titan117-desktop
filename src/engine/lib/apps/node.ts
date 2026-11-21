@@ -15,7 +15,7 @@ import { unzipSync } from 'fflate'
 
 export const NODE_VERSION = '26.13.1'
 
-type Platform = 'win32-x64' | 'win32-arm64' | 'darwin-arm64' | 'darwin-x64'
+export type Platform = 'win32-x64' | 'win32-arm64' | 'darwin-arm64' | 'darwin-x64'
 
 const NODE: Record<Platform, { file: string; sha256: string; bytes: number }> = {
   'win32-x64': {
@@ -106,11 +106,13 @@ export function createNodeComponent(deps: {
   /** `<data>/components/node` */
   dir: string
   fetch?: typeof fetch
+  /** The laptop's system; tests name one. */
+  platform?: Platform | null
 }): NodeComponent {
-  const platform = platformOf()
+  const platform = deps.platform === undefined ? platformOf() : deps.platform
   const doFetch = deps.fetch ?? fetch
   const folder = join(deps.dir, NODE_VERSION)
-  const win = process.platform === 'win32'
+  const win = platform ? platform.startsWith('win32') : process.platform === 'win32'
   const runtime: NodeRuntime = {
     node: win ? join(folder, 'node.exe') : join(folder, 'bin', 'node'),
     npmCli: win
