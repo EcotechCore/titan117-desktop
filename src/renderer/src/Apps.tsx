@@ -968,7 +968,9 @@ export function AppsView({
               <h2 className="section">Models for builds</h2>
               <p className="muted">
                 A strong model plans, a cheaper one writes the code, and after repeated failures a
-                stronger one fixes. Empty means the task’s own model.
+                stronger one fixes. Empty means the task’s own model. Our test of five sample sites
+                (21 Nov 2026): Claude Haiku 5.5 and GLM 5.3 Flash built all five, for about 4 cents
+                a site; Haiku was the fastest.
               </p>
               <datalist id="app-models">
                 {cloud.map((m) => (

@@ -32,6 +32,12 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 21 Nov 2026 · Phase 8: publish from GitHub, and cheaper models compared
+
+- **Publish from GitHub** (decisions §56.26): once an app is on GitHub, the Apps screen shows Cloudflare's, Netlify's and Vercel's own steps for connecting the repository in their dashboards, with the app's values filled in; each pushed version is then published by the host. Titan117 never handles the host's sign-in. The template now has `.nvmrc` (22), `engines.node` and a `wrangler.jsonc` so every host builds it with Node 22 or newer. Checked in the built app; `pnpm eval:apps` passes with the new template.
+- **Cheaper models compared** (decisions §56.27): the five sample sites with DeepSeek V4.1 Flash (4 of 5, $0.22), GLM 5.3 Flash (5 of 5, $0.21, slower) and Qwen3 Coder Next (3 of 5, $0.52), against Claude Haiku 5.5 (5 of 5, $0.21, fastest). No cheaper default; the Apps screen names the two that passed everything. Reports in `test/live/results`.
+- **Checks:** typecheck, lint, tests, build and licences pass.
+
 ### 21 Nov 2026 · Phase 8: export, conditions, specialist, starters, brand, visual edit, publishing, five sample apps
 
 Asked for by the owner ("proceed with everything"). Decisions §56.17–§56.25 (to be confirmed).
