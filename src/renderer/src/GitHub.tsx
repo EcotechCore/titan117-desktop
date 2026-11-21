@@ -38,10 +38,21 @@ export function GitHubSection({
               Signed in to GitHub{status.login ? ` as ${status.login}` : ''}
             </p>
             <p className="muted">
-              Pull requests open as you. The sign-in stays in this laptop’s keychain; you can also
-              revoke it on GitHub at any time.
+              {status.repositories === 0
+                ? 'One more step: choose the repositories Titan may use, on GitHub’s page. Until then GitHub won’t let it open pull requests in them.'
+                : `Pull requests open as you${
+                    status.repositories
+                      ? `, in the ${status.repositories} repositor${status.repositories === 1 ? 'y' : 'ies'} you chose`
+                      : ''
+                  }. The sign-in stays in this laptop’s keychain; you can also revoke it on GitHub at any time.`}
             </p>
           </div>
+          <button
+            className={status.repositories === 0 ? 'btn btn-primary' : 'btn'}
+            onClick={() => void window.titan117.github.install().catch(onProblem)}
+          >
+            {status.repositories === 0 ? 'Choose repositories' : 'Change repositories'}
+          </button>
           <button
             className="btn"
             onClick={() => window.titan117.github.signOut().then(setStatus).catch(onProblem)}
@@ -57,8 +68,8 @@ export function GitHubSection({
               <code className="code-user">{status.pending.userCode}</code>
             </p>
             <p className="muted">
-              GitHub’s page is open in your browser ({status.pending.verificationUri}). Approve
-              Titan117 there and choose which repositories it may use.
+              GitHub’s page is open in your browser ({status.pending.verificationUri}). Enter the
+              code there and authorize “Titan117 by EcotechCore”.
             </p>
           </div>
           <button

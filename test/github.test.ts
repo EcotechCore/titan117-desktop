@@ -137,6 +137,39 @@ describe('Sign in with GitHub', () => {
   })
 })
 
+describe('the repositories the app may use', () => {
+  it('counts the repositories across the user’s installations, and says 0 when none', async () => {
+    const dir = tempFolder('t117-gh-')
+    let installations: { id: number }[] = []
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('https://github.com/login/device/code'))
+        return Response.json({ device_code: 'd', user_code: 'U-1', expires_in: 900, interval: 1 })
+      if (url.startsWith('https://github.com/login/oauth/access_token'))
+        return Response.json({
+          access_token: 'ghu_x',
+          expires_in: 28800,
+          refresh_token: 'ghr_x',
+          refresh_token_expires_in: 15897600
+        })
+      if (url.startsWith('https://api.github.com/user/installations/'))
+        return Response.json({ total_count: url.includes('/7/') ? 3 : 2 })
+      if (url.startsWith('https://api.github.com/user/installations'))
+        return Response.json({ installations })
+      return Response.json({ login: 'octo-user' })
+    }) as typeof fetch
+    const gh = new GitHubSignIn(dir, keychain, 'Iv1.client', fetchFn, () => undefined, noSleep)
+    await gh.start()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(await gh.checkRepositories()).toBe(0)
+    expect(gh.status().repositories).toBe(0)
+    installations = [{ id: 7 }, { id: 8 }]
+    expect(await gh.checkRepositories()).toBe(5)
+    gh.signOut()
+    expect(gh.status().repositories).toBeNull()
+  })
+})
+
 describe('pull requests through GitHub’s API', () => {
   it('opens one as the user, or finds the one already open for the branch', async () => {
     const seen: { url: string; auth: string | null; body: string | null }[] = []

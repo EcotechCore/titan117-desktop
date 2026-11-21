@@ -5,6 +5,8 @@ import { useEffect, useRef } from 'react'
 import type { Approval, ApprovalAnswer, TaskDetail, ToolCall } from '../../shared/protocol'
 import { diffCounts } from './code-lib'
 import { Diff } from './Diff'
+import { Linked } from './Linked'
+import { pullRequestUrl } from './links-lib'
 import { modelName } from './format'
 import { Eyes, Icon } from './ui'
 import type { EngineState } from '../../shared/protocol'
@@ -43,8 +45,17 @@ const TOOL_LABEL: Record<string, string> = {
   pull_request: 'Pull request'
 }
 
+/** The user's own coding tools (13.14), by the id code_task gets. */
+const OWN_TOOL_LABEL: Record<string, string> = {
+  'claude-code': 'Claude Code (your plan)',
+  codex: 'Codex (your plan)',
+  cursor: 'Cursor’s agent (your plan)',
+  grok: 'Grok (your plan)'
+}
+
 function stepLabel(call: ToolCall): string {
-  const what = TOOL_LABEL[call.name] ?? call.name.replace(/_/g, ' ')
+  const own = call.name === 'code_task' ? OWN_TOOL_LABEL[String(call.input.tool ?? '')] : undefined
+  const what = own ?? TOOL_LABEL[call.name] ?? call.name.replace(/_/g, ' ')
   const detail = [
     'path',
     'command',
@@ -129,7 +140,16 @@ export function ApprovalCard({
 
 type StepState = 'done' | 'running' | 'waiting' | 'refused'
 
-function Step({ call, state }: { call: ToolCall; state: StepState }): React.JSX.Element {
+function Step({
+  call,
+  state,
+  link
+}: {
+  call: ToolCall
+  state: StepState
+  /** Where the step's result lives, e.g. the pull request it opened. */
+  link?: { url: string; label: string } | null
+}): React.JSX.Element {
   return (
     <li className={`step step-${state}`}>
       <span className="step-mark" aria-hidden="true">
@@ -137,6 +157,11 @@ function Step({ call, state }: { call: ToolCall; state: StepState }): React.JSX.
         {state === 'refused' && <Icon name="x" />}
       </span>
       <span className="step-text">{stepLabel(call)}</span>
+      {link && (
+        <a className="step-link" href={link.url} target="_blank" rel="noreferrer" title={link.url}>
+          {link.label}
+        </a>
+      )}
       <span className="step-state">
         {state === 'done'
           ? 'Done'
@@ -169,9 +194,10 @@ export function TaskView({
     end.current?.scrollIntoView({ block: 'end' })
   }, [messages.length, streaming, approvals.length, task.status])
 
-  const results = new Map<string, { isError: boolean }>()
+  const results = new Map<string, { isError: boolean; output: string }>()
   for (const { message } of messages)
-    if (message.role === 'tool') results.set(message.callId, { isError: !!message.isError })
+    if (message.role === 'tool')
+      results.set(message.callId, { isError: !!message.isError, output: message.output })
   const pending = new Map(approvals.filter((a) => a.status === 'pending').map((a) => [a.callId, a]))
   const active = task.status === 'running' || task.status === 'waiting'
   const toolCallIds = new Set<string>()
@@ -211,7 +237,20 @@ export function TaskView({
                       : active
                         ? 'running'
                         : 'refused'
-                  return <Step key={call.id} call={call} state={state} />
+                  // A pull request it opened or prepared: a link to it (GitHub's page).
+                  const url =
+                    result && !result.isError && call.name === 'pull_request'
+                      ? (pullRequestUrl(result.output) ??
+                        /https:\/\/github\.com\/\S+\/compare\/\S+/.exec(result.output)?.[0] ??
+                        null)
+                      : null
+                  const link = url
+                    ? {
+                        url,
+                        label: /\/pull\/\d+/.test(url) ? 'Open on GitHub' : 'Create on GitHub'
+                      }
+                    : null
+                  return <Step key={call.id} call={call} state={state} link={link} />
                 })}
               </ul>
             )}
@@ -221,7 +260,11 @@ export function TaskView({
                 <ApprovalCard key={approval.id} approval={approval} onAnswer={onAnswer} />
               ) : null
             })}
-            {message.text && <div className="reply-text">{message.text}</div>}
+            {message.text && (
+              <div className="reply-text">
+                <Linked text={message.text} />
+              </div>
+            )}
             {message.text && onReadAloud && (
               <button className="read-aloud" onClick={() => onReadAloud(message.text)}>
                 <Icon name="speaker" /> Read aloud
@@ -241,7 +284,9 @@ export function TaskView({
       {active && (
         <div className="reply">
           {streaming ? (
-            <div className="reply-text">{streaming}</div>
+            <div className="reply-text">
+              <Linked text={streaming} />
+            </div>
           ) : (
             task.status === 'running' && <p className="working">Working</p>
           )}

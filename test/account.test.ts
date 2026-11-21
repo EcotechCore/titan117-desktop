@@ -177,6 +177,14 @@ describe('signing in on this laptop', () => {
     expect(stored).not.toContain('t117d_')
     // A restart reads it back.
     expect(account(server, dir).status()).toMatchObject({ signedIn: true, locked: false })
+
+    // The install's fingerprint goes with the sign-in, the same every time; the ID itself never does.
+    const fingerprint = server.opened()!.searchParams.get('install')
+    expect(fingerprint).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    const id = readFileSync(join(dir, 'account', 'install-id'), 'utf8')
+    expect(server.opened()!.toString()).not.toContain(id)
+    await account(server, dir).signIn()
+    expect(server.opened()!.searchParams.get('install')).toBe(fingerprint)
   })
 
   it('refreshes the lease, and locks when the account page signed this laptop out', async () => {

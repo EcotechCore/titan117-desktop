@@ -17,6 +17,8 @@ interface GitHubSignInStatus {
   login: string | null
   pending: { userCode: string; verificationUri: string; expiresAt: number } | null
   problem: string | null
+  /** How many repositories the app may use for this user; null when unknown (offline, signed out). */
+  repositories: number | null
 }
 
 declare global {
@@ -34,6 +36,8 @@ declare global {
         signIn(): Promise<GitHubSignInStatus>
         cancel(): Promise<GitHubSignInStatus>
         signOut(): Promise<GitHubSignInStatus>
+        /** Opens GitHub's page to choose the repositories Titan may use. */
+        install(): Promise<boolean>
         onChange(listener: () => void): void
       }
       /** Open a project in the user's editor (13.12); `folder` opens it in Explorer or Finder. */

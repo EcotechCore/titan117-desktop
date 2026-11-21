@@ -92,12 +92,15 @@ const PRODUCTION = {
   apiUrl: null as string | null,
   // Where signed releases are published (feature 1.10); set with code signing (decisions §50).
   updateUrl: null as string | null,
-  // Our GitHub App's client ID (not a secret; decisions §25, §55); set once the app is registered.
-  githubClientId: null as string | null
+  // Our GitHub App, "Titan117 by EcotechCore" (decisions §25, §55; registered 21 Nov 2026).
+  // The client ID isn't a secret: the device flow needs no secret at all.
+  githubClientId: 'Iv23liPxzFyagnONr6mT' as string | null,
+  githubAppUrl: 'https://github.com/apps/titan117-by-ecotechcore'
 }
 
+/** The GitHub App's client ID: the same app in development, unless `.env` names another. */
 function githubClientId(): string | null {
-  return is.dev ? process.env['TITAN117_GITHUB_CLIENT_ID'] || null : PRODUCTION.githubClientId
+  return (is.dev && process.env['TITAN117_GITHUB_CLIENT_ID']) || PRODUCTION.githubClientId
 }
 
 function accountConfig(): { webUrl: string | null; apiUrl: string | null } {
@@ -536,8 +539,9 @@ function registerBridge(): void {
   })
 
   // Sign in with GitHub (decisions §25, §55): GitHub's own page, our app's device flow.
-  ipcMain.handle('github:status', (event) => {
+  ipcMain.handle('github:status', async (event) => {
     if (!fromOurPage(event) || !github) throw new Error('Refused.')
+    if (github.status().signedIn) await github.checkRepositories()
     return github.status()
   })
   ipcMain.handle('github:signIn', async (event) => {
@@ -550,6 +554,12 @@ function registerBridge(): void {
     if (!fromOurPage(event) || !github) throw new Error('Refused.')
     github.cancel()
     return github.status()
+  })
+  // Choosing the repositories Titan may use happens on GitHub's own page for the app.
+  ipcMain.handle('github:install', async (event) => {
+    if (!fromOurPage(event)) throw new Error('Refused.')
+    await shell.openExternal(`${PRODUCTION.githubAppUrl}/installations/new`)
+    return true
   })
   ipcMain.handle('github:signOut', (event) => {
     if (!fromOurPage(event) || !github) throw new Error('Refused.')

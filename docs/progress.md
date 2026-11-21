@@ -32,6 +32,35 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 21 Nov 2026 · Which coding tool is working is shown; tools found with an old PATH
+
+- **Your own tools found reliably (Windows):** the engine looks in its own PATH, Windows' current user and system PATH settings (read from the registry), and the usual install folders (`~\.local\bin` for Claude Code's installer, `%APPDATA%\npm`). The tools run with that PATH too. Found when the owner installed Claude Code but the app, started from a terminal with the old PATH, still said "not installed".
+- **Which tool is working is shown:** the step says "Claude Code (your plan)" instead of "Coding engine", and its approval cards and activity lines start with "Claude Code:".
+- **The owner's first real Claude Code job:** formatPrice with tests in the sample shop. It ran on the owner's Claude Pro plan, every file change and `npm test` came to the approval screen, and the tests passed.
+- 344 tests pass.
+
+### 21 Nov 2026 · Links in answers are clickable; the Pull request step links to GitHub
+
+The owner's first real pull request through the GitHub sign-in worked (sample repo, pull request #6), but its address in the answer couldn't be clicked.
+
+- **Links in answers:** `https://` links in Titan's answers (and while they stream in) are now links. They open in the user's own browser, because the window sends https links there and nothing else; the sentence's punctuation stays outside the link.
+- **The Pull request step:** it now has **Open on GitHub**, or **Create on GitHub** when GitHub's page still needs the Create click.
+- **Checked:** 3 new tests. In the built app, an answer with the pull request's address showed a link, and clicking it handed exactly that address to the browser (stubbed during the check). No console errors.
+
+### 21 Nov 2026 · Fix: the same laptop signing in again no longer uses up a device place
+
+The app sends its install's fingerprint (the SHA-256 of a random ID kept in the account folder) with the sign-in. The web app then replaces the old device from the same install instead of refusing at the plan's limit (titan117-web). The account test checks that the fingerprint goes along, is stable, and never contains the ID. 340 tests pass.
+### 21 Nov 2026 · Phase 7: GitHub App registered, sign-in live
+
+The owner registered **Titan117 by EcotechCore** (client ID `Iv23liPxzFyagnONr6mT`).
+
+- **Checked against GitHub's API:** the device flow is on and gives a code, and the app is owned by EcotechCore with exactly contents write, pull requests write and metadata read, and no webhook events.
+- **In the app:** the client ID is in `PRODUCTION.githubClientId`; development uses the same app.
+- **Choosing repositories:** a user token reaches only repositories where the app is installed. After signing in, the GitHub section counts them through `/user/installations` and offers **Choose repositories** (GitHub's install page for the app); with none chosen, it says so. The wording of the code step was corrected (choosing repositories is a separate step).
+- **Tests:** 341 pass (one new, for the repository count).
+- **In the built app:** "Sign in with GitHub" got a real code from GitHub and was cancelled; nothing opened in the owner's browser during the check. No console errors.
+- **Left for the owner:** sign in for real and choose repositories (owner checklist).
+
 ### 21 Nov 2026 · Phase 7: your own coding tools, servers over SSH, GitHub sign-in, Seatbelt, JetBrains
 
 On `phase-7-own-tools`. Decisions §55 (to be confirmed).

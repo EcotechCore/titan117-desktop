@@ -37,6 +37,8 @@ export interface GitHubStatus {
   /** A sign-in waiting for the user to enter the code on GitHub. */
   pending: DeviceCode | null
   problem: string | null
+  /** How many repositories the app may use for this user; null when unknown. */
+  repositories: number | null
 }
 
 const REFRESH_MARGIN_MS = 10 * 60_000
@@ -66,6 +68,7 @@ export class GitHubSignIn {
   private pending: DeviceCode | null = null
   private problem: string | null = null
   private polling: AbortController | null = null
+  private repositories: number | null = null
 
   constructor(
     dataDir: string,
@@ -110,7 +113,44 @@ export class GitHubSignIn {
       signedIn: alive,
       login: alive ? (tokens?.login ?? null) : null,
       pending: this.pending && this.pending.expiresAt > Date.now() ? this.pending : null,
-      problem: this.problem
+      problem: this.problem,
+      repositories: alive ? this.repositories : null
+    }
+  }
+
+  /**
+   * How many repositories this user let the app use (GitHub: a user token
+   * reaches only repositories where the app is installed). Refreshed when
+   * the window asks; the count is all that's kept.
+   */
+  async checkRepositories(): Promise<number | null> {
+    const token = await this.token()
+    if (!token) return (this.repositories = null)
+    try {
+      const response = await this.fetchFn(
+        'https://api.github.com/user/installations?per_page=100',
+        {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }
+        }
+      )
+      if (!response.ok) return this.repositories
+      const body = (await response.json()) as {
+        installations?: { repository_selection?: string; id: number }[]
+      }
+      const installations = body.installations ?? []
+      if (!installations.length) return (this.repositories = 0)
+      let count = 0
+      for (const installation of installations) {
+        const repos = await this.fetchFn(
+          `https://api.github.com/user/installations/${installation.id}/repositories?per_page=1`,
+          { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } }
+        )
+        if (repos.ok)
+          count += Number(((await repos.json()) as { total_count?: number }).total_count ?? 0)
+      }
+      return (this.repositories = count)
+    } catch {
+      return this.repositories
     }
   }
 
