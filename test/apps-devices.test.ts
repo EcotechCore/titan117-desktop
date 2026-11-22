@@ -3,7 +3,7 @@
 // downloads, emulators or sandboxes.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 import {
   AVD_NAME,
@@ -20,6 +20,21 @@ import { storeGuide } from '../src/renderer/src/apps-lib'
 import { tempFolder } from './helpers'
 
 const EXE = process.platform === 'win32' ? '.exe' : ''
+
+// Git needs a name and email to save versions; a throwaway home gives it one (HOME only).
+beforeAll(() => {
+  const home = tempFolder('titan117-home-')
+  writeFileSync(
+    join(home, '.gitconfig'),
+    '[user]
+	name = Test User
+	email = test@example.com
+[core]
+	autocrlf = false
+'
+  )
+  process.env.HOME = home
+})
 
 describe('the Android emulator’s set-up', () => {
   it('throws away a download that doesn’t match its fingerprint', async () => {
