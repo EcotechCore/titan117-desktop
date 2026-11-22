@@ -45,7 +45,7 @@ describe('the sync core (6.12)', () => {
     const tampered = Buffer.from(raw)
     tampered[tampered.length - 1] ^= 1
     expect(() => open(key, tampered.toString('base64'))).toThrow(/changed/)
-    expect(() => open(key, 'bm90IGEgcGFja2FnZQ==')).toThrow(SyncError)
+    expect(() => open(key, Buffer.from('not a package').toString('base64'))).toThrow(SyncError)
     expect(() => seal(Buffer.alloc(8), 'crm', [])).toThrow(/32 bytes/)
   })
 
