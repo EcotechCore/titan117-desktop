@@ -77,7 +77,7 @@ Nothing here blocks other phases. Phase 11 is merged into `main` (22 Nov 2026) a
 
 ## Phase 12 · The QA and SEO agents (started 22 Nov 2026)
 
-Nothing here blocks other phases. The work is on the `phase-12-qa-seo` branch of the desktop repo until merged.
+Nothing here blocks other phases. Phase 12 is merged into `main` (22 Nov 2026); run the desktop app from `main` with `pnpm dev`.
 
 - [ ] **Add your own free Google API key for speed checks** (5 minutes): in [Google Cloud Console](https://console.cloud.google.com), pick or make a project, turn on the **PageSpeed Insights API** (APIs & Services → Library), then **Credentials → Create credentials → API key** (restrict it to that API). In Titan117: **Web search → Google PageSpeed Insights → Add**. Without it, Google's shared keyless limit is usually used up (it was when we tried).
 - [ ] **Try the QA tester:** in the sidebar under **Quality**, start a task: "Test https://your-site … on up to 5 pages, save a test that …, and run it." Approve the cards. Open **QA report** and **QA findings** beside the chat and download them (PDF, Word, Excel). The saved test is in the folder you allowed (`qa-tests/`).
