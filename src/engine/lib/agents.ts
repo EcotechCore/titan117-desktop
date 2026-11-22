@@ -371,6 +371,7 @@ export function toolGroup(tool: {
   const p = tool.permissions
   if (tool.name.startsWith('agent_')) return 'team'
   if (tool.rawSchema) return 'connectors'
+  if (p.media) return 'media'
   if (p.browser) return 'browser'
   if (p.shell) return 'shell'
   if (p.code || p.git) return 'code'

@@ -280,6 +280,7 @@ export type ToolGroup =
   | 'servers'
   | 'memory'
   | 'speech'
+  | 'media'
   | 'connectors'
 
 export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
@@ -294,6 +295,7 @@ export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
   { id: 'servers', label: 'Your servers' },
   { id: 'memory', label: 'Memory, skills and past tasks' },
   { id: 'speech', label: 'Speech' },
+  { id: 'media', label: 'Images and video (cost credits)' },
   { id: 'connectors', label: 'Your connectors' }
 ]
 

@@ -22,6 +22,7 @@ import { createSkillStore, type SkillStore } from './skills'
 import { createAgentStore, type AgentStore } from './agents'
 import { createTeamService } from '../team'
 import { createComparer } from '../compare'
+import { createMediaService, type MediaService } from './media'
 import { createSpeechEngine, type SpeechEngine } from './speech'
 import { createStore, type Store } from '../store'
 import { builtInTools, createRegistry, type AnyTool } from '../tools'
@@ -378,6 +379,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     return value
   }
   let runtimeRef: Runtime | null = null
+  let mediaRef: MediaService | null = null
 
   const artifacts = createArtifactStore(db, (artifact, byAgent) => {
     emit({ type: 'changed', what: 'artifacts' })
@@ -407,6 +409,16 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       memory,
       skills,
       records,
+      media: (mediaRef = createMediaService({
+        fetch: connectivity.track(
+          engineFetch(options.fetch, () =>
+            account.proxyUrl ? [new URL(account.proxyUrl).origin] : []
+          )
+        ),
+        access: () => cloud(),
+        chosen: (kind) =>
+          getMeta<Record<string, string | null>>(db, 'mediaModels', {})[kind] ?? null
+      })),
       team: createTeamService({
         store,
         agents,
@@ -1098,6 +1110,17 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     memory,
     skills,
     agents,
+    media: {
+      async get() {
+        const chosen = getMeta<Record<string, string | null>>(db, 'mediaModels', {})
+        const [images, videos] = await Promise.all([
+          mediaRef!.models('image').catch(() => []),
+          mediaRef!.models('video').catch(() => [])
+        ])
+        return { image: chosen.image ?? null, video: chosen.video ?? null, images, videos }
+      },
+      set: (next) => setMeta(db, 'mediaModels', next)
+    },
     compare: createComparer({
       router,
       locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),

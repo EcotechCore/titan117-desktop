@@ -109,6 +109,16 @@ export function createApi(deps: {
   agents?: AgentStore
   /** Compare models side by side (2.8). */
   compare?: (prompt: unknown, models: unknown) => Promise<CompareResult[]>
+  /** The models for images and video (2.7): OpenRouter's lists and the user's choice. */
+  media?: {
+    get(): Promise<{
+      image: string | null
+      video: string | null
+      images: { id: string; name: string }[]
+      videos: { id: string; name: string }[]
+    }>
+    set(next: { image: string | null; video: string | null }): void
+  }
   records?: RecordStore
   connectors?: ConnectorHub
   speech?: SpeechEngine
@@ -208,6 +218,20 @@ export function createApi(deps: {
     id: string | undefined,
     body: unknown
   ): Promise<unknown | null> {
+    if (key === 'GET media') return need(deps.media).get()
+    if (key === 'PUT media') {
+      const pickOne = (value: unknown): string | null => {
+        if (value === null || value === undefined || value === '') return null
+        if (typeof value !== 'string' || !/^[a-z0-9._-]+\/[A-Za-z0-9._:-]+$/.test(value))
+          throw new ApiError(400, 'BAD_REQUEST', 'That is not an OpenRouter model id.')
+        return value
+      }
+      need(deps.media).set({
+        image: pickOne(field(body, 'image')),
+        video: pickOne(field(body, 'video'))
+      })
+      return need(deps.media).get()
+    }
     if (!key.includes(' agents') && key !== 'POST compare') return null
     const agents = need(deps.agents)
     const found = (): ReturnType<AgentStore['get']> & object => {

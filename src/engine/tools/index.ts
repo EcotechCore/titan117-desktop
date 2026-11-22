@@ -18,6 +18,7 @@ import { serverTools } from './servers'
 import { appTools } from './apps'
 import { sidebarTools } from './sidebar'
 import { agentTools } from './agents'
+import { mediaTools } from './media'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyTool = ToolDefinition<any>
@@ -38,7 +39,8 @@ export const builtInTools: AnyTool[] = [
   ...sidebarTools,
   ...memoryTools,
   ...speechTools,
-  ...agentTools
+  ...agentTools,
+  ...mediaTools
 ]
 
 export interface ToolRegistry {

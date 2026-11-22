@@ -68,6 +68,25 @@ export interface ToolPermissions {
   sidebar?: 'read' | 'write'
   /** Other agents (decisions §59): handing them parts of a task, or also making new agents. */
   team?: 'delegate' | 'build'
+  /** Images and video through OpenRouter, which cost credits (2.7, decisions §59.10). */
+  media?: boolean
+}
+
+/** Images and video (2.7): the task's stop signal goes with every call. */
+export interface MediaAccess {
+  pick(kind: 'image' | 'video', asked?: string): Promise<string>
+  image(input: {
+    model: string
+    prompt: string
+    aspectRatio?: string
+    format?: 'png' | 'jpeg' | 'webp'
+  }): Promise<import('../../lib/media').MediaResult>
+  video(input: {
+    model: string
+    prompt: string
+    seconds?: number
+    aspectRatio?: string
+  }): Promise<import('../../lib/media').MediaResult>
 }
 
 /** What came back from one part handed to another agent (4.6). */
@@ -262,6 +281,7 @@ export interface ToolContext {
   apps: AppAccess
   sidebar: SidebarAccess
   team: TeamAccess
+  media: MediaAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.

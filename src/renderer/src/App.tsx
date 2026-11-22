@@ -37,6 +37,7 @@ import { SidebarAppView, type SidebarAppInfo } from './SidebarApp'
 import { AgentsView } from './Agents'
 import { byTeam } from './agents-lib'
 import { CompareView } from './Compare'
+import { MediaModelsView } from './Media'
 import type { ReportMode } from '../../shared/protocol'
 
 const PROMPTS = [
@@ -780,6 +781,7 @@ function App(): React.JSX.Element {
               onRemove={(id) => client.current?.send('DELETE', `/v1/models/${id}`).catch(fail)}
             />
           )}
+          {view.kind === 'models' && <MediaModelsView client={api} onProblem={fail} />}
           {view.kind === 'start' && (
             <div className="start">
               <Eyes state="working" size="large" />

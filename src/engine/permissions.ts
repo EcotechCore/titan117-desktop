@@ -38,7 +38,8 @@ import { convert, ConvertError, type ExportFormat } from './lib/convert'
 import { ReadError, type PageReader } from './lib/read'
 import { SearchError, type SearchAccess, type SearchService } from './lib/search'
 import { isNetworkFailure } from './lib/online'
-import type { DocumentsAccess, PageAccess, TeamAccess } from './tools/lib/define-tool'
+import type { DocumentsAccess, MediaAccess, PageAccess, TeamAccess } from './tools/lib/define-tool'
+import { MediaError, type MediaService } from './lib/media'
 import type { DocIndex } from './lib/doc-index'
 import type { CodeService } from './lib/code/service'
 import type {
@@ -172,6 +173,8 @@ export interface Services {
   sidebar?: SidebarService
   /** Agents working together and agents on request (4.6, 18.2; decisions §59). */
   team?: TeamService
+  /** Images and video through OpenRouter (2.7, decisions §59.10). */
+  media?: MediaService
 }
 
 /** The engine's side of the team tools; the layer hands each call its own task. */
@@ -484,6 +487,16 @@ export function createPermissionLayer(deps: {
           }
         }
       : denied<TeamAccess>('other agents')
+
+    const media: MediaAccess = p.media
+      ? {
+          pick: (kind, asked) => needService(services.media, 'Images and video').pick(kind, asked),
+          image: (input) =>
+            needService(services.media, 'Images and video').image({ ...input, signal: ctx.signal }),
+          video: (input) =>
+            needService(services.media, 'Images and video').video({ ...input, signal: ctx.signal })
+        }
+      : denied<MediaAccess>('images and video')
 
     const records: RecordAccess = p.records
       ? {
@@ -974,6 +987,7 @@ export function createPermissionLayer(deps: {
       apps,
       sidebar,
       team,
+      media,
       search,
       documents,
       pages,
@@ -1060,7 +1074,8 @@ export function createPermissionLayer(deps: {
           error instanceof NodeDownloadError ||
           error instanceof PublishError ||
           error instanceof DataError ||
-          error instanceof AgentError
+          error instanceof AgentError ||
+          error instanceof MediaError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }
