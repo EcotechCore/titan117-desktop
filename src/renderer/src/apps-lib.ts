@@ -12,19 +12,26 @@ export function appCreateRequest(
   description: string,
   request: string,
   kind = 'blank',
-  target: 'web' | 'mobile' | 'desktop' = 'web'
+  target: 'web' | 'mobile' | 'desktop' = 'web',
+  /** An internal tool for the Titan117 sidebar (6.2): web apps only. */
+  sidebar = false
 ): string {
   const first = request.trim()
-  const how =
-    target === 'web'
+  const forSidebar = sidebar && target === 'web'
+  const how = forSidebar
+    ? 'app_create, sidebar true'
+    : target === 'web'
       ? `app_create${kind !== 'blank' ? `, kind "${kind}"` : ''}`
       : `app_create, target "${target}"`
   return [
     `Make a new ${target} app called "${name.trim()}" in the folder ${folder}, with the description "${description.trim()}" (${how}).`,
     first
-      ? `Then build it with the app builder (app_build): ${first}`
-      : 'Then stop: I will say what to build.'
-  ].join(' ')
+      ? `Then build it with the app builder (app_build): ${first}${forSidebar ? ' Keep its data with titan.db (see its AGENTS.md) and list its collections in titan.json.' : ''}`
+      : 'Then stop: I will say what to build.',
+    forSidebar && first ? 'When it passes its checks, add it to the sidebar (sidebar_add).' : ''
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
 /** An element picked in the preview (6.9). */

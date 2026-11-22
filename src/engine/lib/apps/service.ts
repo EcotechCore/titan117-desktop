@@ -33,6 +33,7 @@ import {
 import { findOrMakeRepo, pushApp, type GitHubRepo } from './github'
 import { publishToCloudflare } from './cloudflare'
 import { openInSandbox } from './sandbox'
+import { AGENTS_NOTES, MANIFEST, manifestText, SDK_PATH, SDK_SOURCE } from './sdk'
 import {
   agentNotes,
   cleanBrand,
@@ -62,6 +63,8 @@ export interface NewApp {
   starter?: StarterId
   /** The brand kit; its logo, if any, is a real path already checked by the caller. */
   brand?: BrandKit
+  /** Ready for the Titan117 sidebar from the start (6.2): the titan SDK, titan.json and its notes. */
+  sidebar?: boolean
 }
 
 export interface AppMeta {
@@ -363,6 +366,11 @@ export function createAppService(deps: {
               description: input.description.trim() || title
             })
         files.set('site.config.json', JSON.stringify(site, null, 2) + '\n')
+      }
+      if (input.sidebar && kind === 'web') {
+        files.set(SDK_PATH, SDK_SOURCE)
+        files.set(MANIFEST, manifestText(title))
+        files.set('AGENTS.md', (files.get('AGENTS.md') ?? '') + AGENTS_NOTES)
       }
       for (const [path, content] of files) {
         const target = join(dir, path)

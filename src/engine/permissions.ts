@@ -42,12 +42,15 @@ import type { DocIndex } from './lib/doc-index'
 import type { CodeService } from './lib/code/service'
 import type {
   AppAccess,
+  SidebarAccess,
   AppModels,
   CodeAccess,
   GitAccess,
   ServerAccess
 } from './tools/lib/define-tool'
 import { AppError, type AppService } from './lib/apps/service'
+import { DataError } from './lib/apps/data'
+import type { SidebarService } from './lib/apps/sidebar'
 import { NodeDownloadError } from './lib/apps/node'
 import { PublishError } from './lib/apps/cloudflare'
 import { runOnServer, SshError, type Server } from './lib/ssh'
@@ -159,6 +162,8 @@ export interface Services {
   appModels?: () => AppModels
   /** The brand kit applied to new apps (6.8, 15.1). */
   brandKit?: () => import('./lib/apps/starters').BrandKit | null
+  /** Sidebar apps and their shared data (6.2, 6.11; decisions §58). */
+  sidebar?: SidebarService
 }
 
 interface Waiting {
@@ -785,6 +790,118 @@ export function createPermissionLayer(deps: {
         }
       : denied<AppAccess>('the app builder')
 
+    // Sidebar apps (decisions §58): reading their data is like reading memory; changing it is the
+    // tool's own approval; adding an app shows exactly what other apps' data it may reach, every time.
+    const sidebarService = (): SidebarService => needService(services.sidebar, 'Sidebar apps')
+    const sidebarWrite = (): void => {
+      if (p.sidebar !== 'write')
+        throw new PermissionError('This tool may read sidebar apps’ data, not change it.')
+    }
+    const knownApp = (app: string): void => {
+      if (!sidebarService().get(app))
+        throw new PermissionError(
+          `There's no sidebar app "${String(app).slice(0, 60)}". List them with sidebar_data (action "apps").`
+        )
+    }
+    const sidebar: SidebarAccess = p.sidebar
+      ? {
+          apps: () =>
+            sidebarService()
+              .list()
+              .map((a) => ({
+                id: a.id,
+                title: a.title,
+                folder: a.folder,
+                collections: sidebarService().data.collections(a.id),
+                reads: a.grants.reads,
+                writes: a.grants.writes,
+                error: a.error?.message ?? null
+              })),
+          list(app, collection, query) {
+            knownApp(app)
+            return sidebarService().data.list(app, collection, query)
+          },
+          count(app, collection, query) {
+            knownApp(app)
+            return sidebarService().data.count(app, collection, query)
+          },
+          get(app, collection, id) {
+            knownApp(app)
+            return sidebarService().data.get(app, collection, id)
+          },
+          insert(app, collection, data) {
+            sidebarWrite()
+            knownApp(app)
+            return sidebarService().data.insert(app, collection, data)
+          },
+          update(app, collection, id, data) {
+            sidebarWrite()
+            knownApp(app)
+            return sidebarService().data.update(app, collection, id, data)
+          },
+          remove(app, collection, id) {
+            sidebarWrite()
+            knownApp(app)
+            return sidebarService().data.remove(app, collection, id)
+          },
+          async add(folder) {
+            sidebarWrite()
+            const real = await appFolder(folder)
+            const review = sidebarService().review(real)
+            const name = (ref: string, app: string | null): string =>
+              `${app ?? ref.split('/')[0]}'s ${ref.split('/')[1] === '*' ? 'data' : ref.split('/')[1]}`
+            const reach = [
+              ...review.reads.map((r) => `read ${name(r.ref, r.app)}`),
+              ...review.writes.map((w) => `change ${name(w.ref, w.app)}`)
+            ]
+            // The user agrees to exactly what titan.json asks for (decisions §58): every time, on the laptop.
+            const decision = await gate(
+              ctx,
+              `${callId}-sidebar`,
+              'sidebar_add',
+              { folder, reads: review.manifest.reads, writes: review.manifest.writes },
+              {
+                risk: 'write',
+                alwaysAsks: true,
+                summary: `${review.added ? 'Update' : 'Add'} "${review.title}" ${review.added ? 'in' : 'to'} the Titan117 sidebar: Titan117 saves a version, runs its checks (its own code) and shows it with no network; it keeps its own data on this laptop${reach.length ? ` and may ${reach.join(', ')}` : ''}`
+              },
+              true
+            )
+            if (!decision.allowed) throw new PermissionError(`Not added: ${decision.why}`)
+            activity(
+              ctx,
+              'approval',
+              'sidebar_add',
+              `Adding ${review.title} to the sidebar`,
+              decision.approvedBy
+            )
+            return sidebarService().add(
+              real,
+              { reads: review.manifest.reads, writes: review.manifest.writes },
+              (note) => activity(ctx, 'tool', 'sidebar_add', note)
+            )
+          },
+          async refresh(folder) {
+            sidebarWrite()
+            const real = await appFolder(folder)
+            if (!sidebarService().byFolder(real))
+              throw new PermissionError('That app isn’t in the sidebar; adding it is sidebar_add.')
+            await mayRunApp(
+              folder,
+              real,
+              'save a version, run its checks and update it in the sidebar'
+            )
+            return sidebarService().update(real, (note) =>
+              activity(ctx, 'tool', 'sidebar_update', note)
+            )
+          },
+          async inSidebar(folder) {
+            const real = await resolveAllowed(policy, folder)
+            return !!services.sidebar?.byFolder(real)
+          }
+        }
+      : denied<SidebarAccess>('sidebar apps')
+
     return {
       taskId: ctx.taskId,
       agent: ctx.agent,
@@ -793,6 +910,7 @@ export function createPermissionLayer(deps: {
       git,
       servers,
       apps,
+      sidebar,
       search,
       documents,
       pages,
@@ -870,7 +988,8 @@ export function createPermissionLayer(deps: {
           error instanceof SshError ||
           error instanceof AppError ||
           error instanceof NodeDownloadError ||
-          error instanceof PublishError
+          error instanceof PublishError ||
+          error instanceof DataError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }

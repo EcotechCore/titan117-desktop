@@ -55,6 +55,13 @@ Nothing here blocks phase 8's last steps. The first part (mobile apps with Expo,
 - [ ] **Store publishing later needs your own developer accounts**, only when you want to publish a mobile app: Apple Developer Program ($99 a year; as a company it needs a free D-U-N-S number), Google Play ($25 once; a new personal account must run a closed test with 12 testers for 14 days, a company account needs a D-U-N-S number). Apple's rule 4.2.6 means **you** submit the app in your account; Titan117 prepares it.
 - [ ] **The licence review before launch also covers phase 9's downloads:** the Android emulator (Google's licence, which each user accepts; it contains QEMU under GPL v2, run unchanged), Eclipse Temurin for Maestro (GPL v2 with the Classpath Exception, run unchanged), and the mobile template's packages (MPL 2.0 lightningcss; node-forge used under BSD).
 
+## Phase 10 · Sidebar apps (started 22 Nov 2026)
+
+Nothing here blocks phases 8 and 9. The first part is on the `phase-10-sidebar-apps` branch of the desktop repo.
+
+- [ ] **Try two sidebar apps** (the desktop app from that branch, with `pnpm dev`): Apps → New app → Website or web app → tick **An internal tool for the Titan117 sidebar**. Make an **Inventory** first (items with quantities and prices), then a **CRM** whose orders pick items from the inventory (say so in what to build first). Approve the plan and the **Add to the sidebar** card, which lists what the app may reach. Both then show under **Your apps** in the sidebar. Add a few records, then ask Titan something that needs both, for example "Which customers ordered items that are low in stock?" (phase 10's check).
+- [ ] **Decisions §58** (to be confirmed): one local database per app as the shared data layer; an app reaches another app's data only as its `titan.json` asks and you agreed; the sidebar runs a checked build with no network; Titan reads the apps' data without asking and changes it with your OK; sync waits for phase 15 and will be end to end encrypted (Electric, Zero and PowerSync aren't used because their servers read the data; Evolu is the model); another target and `titan.ai` later in phase 10.
+
 ## Step 2 · Confirm the decisions (about an hour of reading)
 
 All confirmed by the owner on 18 Nov 2026 (decisions §44–§51), with one addition: Titan searches in the browser when asked to search on Google or another engine (§44.12).

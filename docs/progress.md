@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Phase 8 started (21 Nov 2026):** its first part works in the built app: make a web app, a plan you approve, the build, checks in Chromium, Firefox and WebKit at three sizes, fixes, a test report, versions and a live preview. **Since then (21 Nov 2026):** Save to GitHub, ZIP export, more test conditions, starters and a brand kit, visual edit and Cloudflare publishing are built, and the five sample apps all pass. **Phase 9 started (21 Nov 2026):** the phase-start review is recorded (decisions §57), and mobile apps with Expo work in the built app: made and built by Titan, previewed and tested at phone sizes, and opened on a phone with Expo Go; a laptop check says what's needed for the emulator, clean-Windows tests and desktop apps. **Next step:** the owner's real Save to GitHub and Cloudflare publish (phase 8's check), trying a mobile app on a phone, and turning on Windows Hypervisor Platform and Windows Sandbox; then the Android emulator and Tauri desktop apps. Netlify waits for our OAuth app; Vercel, Convex, Expo (EAS) and BrowserStack for written answers. Production waits (§52).
+**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Phase 8 started (21 Nov 2026):** its first part works in the built app: make a web app, a plan you approve, the build, checks in Chromium, Firefox and WebKit at three sizes, fixes, a test report, versions and a live preview. **Since then (21 Nov 2026):** Save to GitHub, ZIP export, more test conditions, starters and a brand kit, visual edit and Cloudflare publishing are built, and the five sample apps all pass. **Phase 9 started (21 Nov 2026):** the phase-start review is recorded (decisions §57), and mobile apps with Expo work in the built app: made and built by Titan, previewed and tested at phone sizes, and opened on a phone with Expo Go; a laptop check says what's needed for the emulator, clean-Windows tests and desktop apps. **Phase 10 started (22 Nov 2026):** sidebar apps work in the built app: Titan built an Inventory and a CRM that reads the inventory's items, both run sandboxed in the sidebar with their data on the laptop, and Titan answered a question across both (phase 10's check, seen working; decisions §58 to be confirmed). Sync waits for phase 15's device keys; another target and `titan.ai` come later in phase 10. **Next step:** the owner's real Save to GitHub and Cloudflare publish (phase 8's check), trying a mobile app on a phone, and turning on Windows Hypervisor Platform and Windows Sandbox; then the Android emulator and Tauri desktop apps. Netlify waits for our OAuth app; Vercel, Convex, Expo (EAS) and BrowserStack for written answers. Production waits (§52).
 
 ## Phases
 
@@ -18,7 +18,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 7 | Coding engine and code builder | Done (except what waits outside the code) | 20 Nov 2026 | 21 Nov 2026 |
 | 8 | App builder: web | In progress | 21 Nov 2026 | |
 | 9 | App builder: mobile and desktop | In progress | 21 Nov 2026 | |
-| 10 | Sidebar apps | Not started | | |
+| 10 | Sidebar apps | In progress | 22 Nov 2026 | |
 | 11 | Agent builder | Not started | | |
 | 12 | QA and SEO agents | Not started | | |
 | 13 | Automation | Not started | | |
@@ -31,6 +31,17 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 22 Nov 2026 · Phase 10 started: sidebar apps (6.2, 6.11, 6.14), first part
+
+- **The shared data layer** (`src/engine/lib/apps/data.ts`): one SQLite database per sidebar app in the data folder (`sidebar-apps/<app>/data.db`, Node's built-in driver), JSON records in collections, filters, search, sorting, limits, and a change log for sync later.
+- **Sidebar apps** (`src/engine/lib/apps/sidebar.ts`, `sdk.ts`): the `titan` SDK (`templates/sidebar/titan.ts.tmpl`: `db`, `auth`, `agent`; in-memory outside the sidebar so previews and tests work), `titan.json` (collections, other apps' `reads` and `writes`), add / update / remove, a checked build copied per version (three kept), the review of what an app reaches, and every SDK call checked against what the user agreed to. `app_create` takes `sidebar: true`.
+- **No network, own address only:** the main process serves `titan117://<app>.apps/` from the build with a content security policy without `connect-src` (`src/main/lib/sidebar-files.ts`); the window shows it in a frame sandboxed without same-origin and relays the SDK's messages only from that frame (`SidebarApp.tsx`); frames can't move to another app.
+- **Tools:** `sidebar_data` (read across apps, no asking, private and untrusted output), `sidebar_change` (asks), `sidebar_add` (asks every time, laptop only, naming what it reaches), `sidebar_update`; `app_build` updates a sidebar app after a passing version (6.14). Denial tests for all four, plus a read-only tool that can't write.
+- **The window:** "Your apps" in the sidebar, each app with Update and Change with Titan, its errors with Fix with Titan; on the Apps screen, the sidebar choice when making a web app and Add to the sidebar with the review.
+- **Seen working in the built app** (throwaway profile, Claude Haiku 5.5): Titan made an **Inventory** ($0.06) and a **CRM** that reads `inventory/items` ($0.07), each passing its checks and added through the approval card; both opened in the sidebar at their `titan117://…apps/` addresses with no console errors; items, customers and orders entered through the apps' own forms, the CRM's product list coming from the Inventory; then Titan answered "which customers ordered more than we have in stock, and which products are low" correctly from both apps, with four `sidebar_data` reads and no approval asked. **Phase 10's check passes.**
+- Tests: `test/sidebar.test.ts` (data layer, grants, builds, serving, navigation), denial tests; typecheck, lint, 441+ tests, build, build contents and licences pass.
+- **Left in phase 10:** another target per project (6.6), `titan.ai`, sync (6.12, after phase 15's device keys), the owner trying it.
 
 ### 22 Nov 2026 · Phase 9: the emulator's set-up, the installer, a clean Windows, store guides
 

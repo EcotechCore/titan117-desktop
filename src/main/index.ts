@@ -31,6 +31,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { Account, type AccountView } from './lib/account'
 import { startUpdates, type UpdateState } from './lib/updates'
+import { isSidebarNavigation, sidebarAppOf, sidebarResponse } from './lib/sidebar-files'
 import { Keys } from './lib/keys'
 import { ConnectorSecrets } from './lib/connector-secrets'
 import {
@@ -49,7 +50,11 @@ const rendererDir = join(__dirname, '../renderer')
 // In production the window's page is served from our own scheme, so it has a
 // real origin the local API can check (guardrails §6).
 protocol.registerSchemesAsPrivileged([
-  { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  {
+    scheme: APP_SCHEME,
+    // CORS: a sidebar app's frame is sandboxed (an opaque origin) and loads its own module scripts.
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true }
+  }
 ])
 
 // App crashes are caught and kept on the laptop (feature 19.1). Nothing is
@@ -636,6 +641,8 @@ function createWindow(): void {
     if (event.isMainFrame) return
     // An app's live preview on this laptop (6.1) stays in its frame too.
     if (isLocalPreviewNavigation(event.url, event.frame?.url ?? '', APP_SCHEME)) return
+    // A sidebar app (6.2) stays on its own address.
+    if (isSidebarNavigation(event.url, event.frame?.url ?? '')) return
     if (!isSandboxUrl(event.url, APP_SCHEME)) {
       event.preventDefault()
       if (isSafeExternalUrl(event.url)) void shell.openExternal(event.url)
@@ -671,6 +678,10 @@ function start(): void {
     const { host, pathname } = new URL(request.url)
     // Artifacts, in their sandbox (decisions §44).
     if (host === SANDBOX_HOST) return staged.respond(pathname)
+    // Sidebar apps' checked builds, from the engine's data folder (decisions §58).
+    const sidebarApp = sidebarAppOf(host)
+    if (sidebarApp)
+      return sidebarResponse(join(app.getPath('userData'), 'sidebar-apps'), sidebarApp, pathname)
     const file = normalize(join(rendererDir, decodeURIComponent(pathname)))
     if (host !== 'app' || !file.startsWith(rendererDir + sep))
       return new Response(null, { status: 404 })

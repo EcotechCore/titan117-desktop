@@ -156,9 +156,18 @@ Cloned on 21 Nov 2026 (shallow and sparse: the top folder and licences; check ou
 
 | Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
 |---|---|---|---|---|---|---|
-| [twentyhq/twenty](https://github.com/twentyhq/twenty) | CRM data model and UI ideas for templates | AGPL *to check* | Ideas | `apps/twenty` | AGPL (mostly): ideas only | `e7743ba77003` |
-| [nocodb/nocodb](https://github.com/nocodb/nocodb) | Shared tables and views | Sustainable Use (fair-code) | Ideas | `apps/nocodb` | Sustainable Use (fair-code): ideas only | `10f215665687` |
-| [electric-sql](https://github.com/electric-sql) or [rocicorp](https://github.com/rocicorp) sync engines | Local-first sync for sidebar apps | Apache 2.0 *to check* | Ideas | `apps/sync` | | |
+| [twentyhq/twenty](https://github.com/twentyhq/twenty) | CRM data model and UI ideas for templates | AGPL | Ideas | `apps/twenty` | AGPL v3 (mostly), some files under its commercial Enterprise licence, some packages MIT: ideas only | `cc90c95e40e0` |
+| [nocodb/nocodb](https://github.com/nocodb/nocodb) | Shared tables and views | Sustainable Use (fair-code) | Ideas | `apps/nocodb` | Sustainable Use License 1.0 (fair-code, updated 29 Jan 2026): ideas only | `ca2a62b160f6` |
+| [evoluhq/evolu](https://github.com/evoluhq/evolu) | **The model for sync (6.12):** SQLite on each device, changes end to end encrypted, relays that can't read them | MIT | Code | `apps/evolu` | MIT (`LICENSE`); its relay is MIT too (evolu.dev) | `4eedb2272841` |
+| [electric-sql/electric](https://github.com/electric-sql/electric) (now under neondatabase) | Sync from Postgres to clients (shapes) | Apache 2.0 | Ideas | `apps/electric` | Apache 2.0 (root and `packages/sync-service`). Not used: the server reads the data (decisions §58.7) | `3f9809fb0bd8` |
+| [rocicorp/mono](https://github.com/rocicorp/mono) (Zero, Replicache) | Query-driven sync, client cache | Apache 2.0 | Ideas | `apps/rocicorp-mono` | Apache 2.0 (one `LICENSE` for the monorepo). Not used: zero-cache replicates Postgres and reads it; the old `rocicorp/replicache` repo is archived | `d1bfa20cd9c1` |
+| [powersync-ja/powersync-service](https://github.com/powersync-ja/powersync-service) | Sync service for SQLite clients | Apache 2.0 | Ideas | `apps/powersync-service` | Apache 2.0 (root and every module checked). Not used: it reads the backend database | `b12e7776fd84` |
+| [vlcn-io/cr-sqlite](https://github.com/vlcn-io/cr-sqlite) | CRDTs inside SQLite (merging changes per column) | MIT | Ideas | `apps/cr-sqlite` | MIT | `43ab94cac537` |
+| [automerge/automerge](https://github.com/automerge/automerge) | CRDT documents | MIT | Ideas | `apps/automerge` | MIT | `09b19d5080a8` |
+| [yjs/yjs](https://github.com/yjs/yjs) | CRDT for shared editing | MIT | Ideas | `apps/yjs` | MIT | `ee37f0a0e23a` |
+| [tinyplex/tinybase](https://github.com/tinyplex/tinybase) | Reactive local store with sync | MIT | Ideas | `apps/tinybase` | MIT | `540cd40789a2` |
+
+Cloned on 22 Nov 2026 (shallow and sparse: the top folder and licences). Also checked and not used: **Triplit** (AGPL v3, GitHub's licence field). Phase 10's first part reuses no code from these; the data layer is our own on Node's built-in SQLite (decisions §58).
 
 ## Phase 11 · Agent builder
 

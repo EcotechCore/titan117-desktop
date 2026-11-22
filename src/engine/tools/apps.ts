@@ -177,6 +177,7 @@ export const appCreate = defineTool<{
   lang?: string
   kind?: StarterId
   target?: Kind
+  sidebar?: boolean
 }>({
   name: 'app_create',
   description: [
@@ -209,6 +210,11 @@ export const appCreate = defineTool<{
         enum: ['web', 'mobile', 'desktop'],
         description:
           'web (default): a website or web app. mobile: a phone app for iPhone and Android. desktop: a Windows and Mac app.'
+      },
+      sidebar: {
+        type: 'boolean',
+        description:
+          'Web apps only: an internal tool for the Titan117 sidebar (a CRM, inventory, invoices): it starts with the titan SDK, so its data stays on this laptop and Titan can read it. Add it with sidebar_add after building.'
       }
     },
     required: ['folder', 'name', 'description']
@@ -224,7 +230,8 @@ export const appCreate = defineTool<{
       description: input.description,
       lang: input.lang,
       starter: input.kind,
-      kind: targetOf(input.target)
+      kind: targetOf(input.target),
+      ...(input.sidebar && targetOf(input.target) === 'web' ? { sidebar: true } : {})
     })
     return {
       output: `Made the ${app.kind} app "${app.title}" in ${app.folder} (version 1, from the template). Build it with app_build.`,
@@ -255,7 +262,7 @@ export const appBuild = defineTool<{ folder: string; request: string; quick?: bo
   },
   // Starting changes nothing: the plan is approved by the user, and every step asks through the same layer.
   risk: 'read',
-  permissions: { code: true, apps: true },
+  permissions: { code: true, apps: true, sidebar: 'write' },
   untrustedOutput: true,
   privateOutput: true,
   describe: (input) => `Build in ${input.folder}: ${String(input.request ?? '').slice(0, 80)}`,
@@ -338,9 +345,23 @@ export const appBuild = defineTool<{ folder: string; request: string; quick?: bo
       `${report.passed ? 'Built' : 'Built (checks failing)'}: ${input.request.trim().split('\n')[0].slice(0, 70)}`
     )
     const status = report.passed ? 'All checks pass.' : 'Some checks still fail.'
+    // An app in the sidebar gets its new version there once it passes (6.14).
+    let sidebarNote = ''
+    if (report.passed && (await ctx.sidebar.inSidebar(input.folder))) {
+      try {
+        const updated = await ctx.sidebar.refresh(input.folder)
+        sidebarNote =
+          updated.status === 'updated'
+            ? `The sidebar now runs this version.`
+            : `It now asks for more of other apps' data, so the sidebar keeps the old version until the user adds it again (Apps screen, or sidebar_add).`
+      } catch (error) {
+        sidebarNote = `Not updated in the sidebar: ${error instanceof Error ? error.message : String(error)}`
+      }
+    }
     return {
       output: [
         `${status} ${version ? `Saved as a new version (${version.sha}).` : 'Nothing changed, so no new version.'}`,
+        sidebarNote,
         version?.pushed ? `Pushed to ${version.pushed}.` : '',
         version?.pushError ? `Not pushed to GitHub: ${version.pushError}` : '',
         notes.join(' '),

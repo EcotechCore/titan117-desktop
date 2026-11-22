@@ -63,6 +63,8 @@ import { createNodeComponent } from './apps/node'
 import { createRunner } from './apps/runner'
 import { createBrowserTests } from './apps/browsers'
 import { AppError, createAppService, type GitHubLink, type Published } from './apps/service'
+import { createDataLayer, DataError } from './apps/data'
+import { createSidebarService, type Grants, type SidebarApp } from './apps/sidebar'
 import { PublishError } from './apps/cloudflare'
 import { cleanBrand, STARTERS, type BrandKit } from './apps/starters'
 import { assess, probeDevice, type DeviceCheck } from './apps/devices'
@@ -566,6 +568,18 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       setPublished: (next) => setMeta(db, 'appPublished', next)
     }
   })
+  // Sidebar apps (6.2, 6.11; decisions §58): a local database per app and the checked builds,
+  // in the app's data folder (out of every agent's reach, like the rest of it).
+  const sidebarRoot = join(options.dataDir ?? scratchRoot, 'sidebar-apps')
+  const sidebarData = createDataLayer(sidebarRoot)
+  const sidebar = createSidebarService({
+    root: sidebarRoot,
+    apps,
+    data: sidebarData,
+    registry: () => getMeta<SidebarApp[]>(db, 'sidebarApps', []),
+    setRegistry: (next) => setMeta(db, 'sidebarApps', next),
+    onChange: () => emit({ type: 'changed', what: 'sidebar' })
+  })
   const brandKit = (): BrandKit | null => {
     const saved = getMeta<BrandKit | null>(db, 'brandKit', null)
     return saved ? cleanBrand(saved) : null
@@ -581,7 +595,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     code,
     apps,
     appModels,
-    brandKit
+    brandKit,
+    sidebar
   })
 
   // Setup and health (1.12, 1.20, 1.21): facts from every part of the engine.
@@ -923,6 +938,55 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       setMeta(db, 'appModels', next)
     }
   }
+  /** Runs adding or updating a sidebar app in the background, like a test run. */
+  function sidebarJob(
+    real: string,
+    label: string,
+    job: (progress: (note: string) => void) => Promise<unknown>
+  ): { started: boolean } {
+    if (appChecks.has(real)) return { started: false }
+    appChecks.set(real, label)
+    appProblems.delete(real)
+    emit({ type: 'changed', what: 'apps' })
+    void job((note) => {
+      appChecks.set(real, note)
+      emit({ type: 'changed', what: 'apps' })
+    })
+      .catch((error) => {
+        appProblems.set(real, error instanceof Error ? error.message : String(error))
+        if (!(error instanceof AppError) && !(error instanceof DataError))
+          log.capture('apps', error, {})
+      })
+      .finally(() => {
+        appChecks.delete(real)
+        emit({ type: 'changed', what: 'apps' })
+        emit({ type: 'changed', what: 'sidebar' })
+      })
+    return { started: true }
+  }
+  const sidebarView = {
+    list: () => ({ apps: sidebar.list() }),
+    review: async (folder: string) => sidebar.review(await realWritable(folder)),
+    /** The user's click after reading the review: exactly those grants. */
+    async add(folder: string, grants: Grants) {
+      const real = await realWritable(folder)
+      return sidebarJob(real, 'Adding to the sidebar…', (progress) =>
+        sidebar.add(real, grants, progress)
+      )
+    },
+    async update(folder: string) {
+      const real = await realWritable(folder)
+      return sidebarJob(real, 'Updating in the sidebar…', async (progress) => {
+        const result = await sidebar.update(real, progress)
+        if (result.status === 'review')
+          throw new AppError(
+            'This version asks for more of other apps’ data: look at it and add it again.'
+          )
+      })
+    },
+    remove: (id: string, deleteData: boolean) => sidebar.remove(id, { deleteData }),
+    call: (id: string, method: string, args: unknown) => sidebar.call(id, method, args)
+  }
   const handle = createApi({
     appVersion: options.appVersion,
     store,
@@ -953,6 +1017,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     documents,
     code: codeView,
     apps: appView,
+    sidebar: sidebarView,
     notifications: {
       get: () => getMeta<boolean>(db, 'notifications', true),
       set: (on) => setMeta(db, 'notifications', on)
@@ -1065,6 +1130,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       await connectors.close()
       await codeEngine.shutdown()
       apps.stopAll()
+      sidebarData.close()
       await codeBridge.stop()
       await toolApprovals.stop()
       await local.dispose()

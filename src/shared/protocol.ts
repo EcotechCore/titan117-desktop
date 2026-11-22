@@ -183,6 +183,7 @@ export type EngineEvent =
         | 'reports'
         | 'documents'
         | 'apps'
+        | 'sidebar'
     }
   /** The engine went offline or came back online (1.22). */
   | { type: 'online'; online: boolean }

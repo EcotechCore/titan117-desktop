@@ -39,6 +39,7 @@ import { SearchError, DEFAULT_SEARCH_SETTINGS, siteOf } from './lib/search'
 import { ShareError, type ShareService } from './lib/share'
 import { ReportError, type ReportService } from './lib/reports'
 import { AppError } from './lib/apps/service'
+import { DataError } from './lib/apps/data'
 import { NodeDownloadError } from './lib/apps/node'
 import { AndroidError } from './lib/apps/android'
 import { GitError } from './lib/git'
@@ -162,6 +163,18 @@ export function createApi(deps: {
     zip(folder: string): Promise<{ name: string; base64: string }>
     publish(folder: string): Promise<{ started: boolean }>
     setModels(next: import('./tools/lib/define-tool').AppModels): void
+  }
+  /** Sidebar apps (6.2, 6.11; decisions §58): the user's clicks, and the calls apps make through the window. */
+  sidebar?: {
+    list(): unknown
+    review(folder: string): Promise<unknown>
+    add(
+      folder: string,
+      grants: { reads: string[]; writes: string[] }
+    ): Promise<{ started: boolean }>
+    update(folder: string): Promise<{ started: boolean }>
+    remove(id: string, deleteData: boolean): Promise<void>
+    call(id: string, method: string, args: unknown): unknown
   }
   setup?: {
     state(): Promise<SetupState>
@@ -405,6 +418,50 @@ export function createApi(deps: {
           const sha = field(body, 'version')
           if (typeof sha !== 'string') throw new ApiError(400, 'BAD_REQUEST', 'Which version?')
           return a.restore(folder, sha)
+        }
+        throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+      }
+      case 'GET sidebar':
+        return need(deps.sidebar).list()
+      case 'GET sidebar/:id': {
+        // `/v1/sidebar/review?folder=…`
+        if (id !== 'review' || !query.folder) throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        return { review: await need(deps.sidebar).review(query.folder) }
+      }
+      case 'POST sidebar/:id': {
+        const s = need(deps.sidebar)
+        if (id === 'call') {
+          // A sidebar app's own call, relayed by the window from that app's frame only.
+          const app = field(body, 'app')
+          const method = field(body, 'method')
+          if (typeof app !== 'string' || typeof method !== 'string')
+            throw new ApiError(400, 'BAD_REQUEST', 'Which app and call?')
+          try {
+            return { value: s.call(app, method, field(body, 'args')) ?? null }
+          } catch (error) {
+            if (error instanceof DataError || error instanceof AppError)
+              return { error: error.message }
+            throw error
+          }
+        }
+        if (id === 'remove') {
+          const app = field(body, 'app')
+          if (typeof app !== 'string') throw new ApiError(400, 'BAD_REQUEST', 'Which app?')
+          await s.remove(app, field(body, 'deleteData') === true)
+          return s.list()
+        }
+        const folder = field(body, 'folder')
+        if (typeof folder !== 'string') throw new ApiError(400, 'BAD_REQUEST', 'Which app?')
+        if (id === 'update') return s.update(folder)
+        if (id === 'add') {
+          const grants = field(body, 'grants')
+          const refs = (name: string): string[] => {
+            const v = field(grants, name)
+            if (!Array.isArray(v) || !v.every((x) => typeof x === 'string'))
+              throw new ApiError(400, 'BAD_REQUEST', 'Which data may it reach?')
+            return v as string[]
+          }
+          return s.add(folder, { reads: refs('reads'), writes: refs('writes') })
         }
         throw new ApiError(404, 'NOT_FOUND', 'Not found.')
       }

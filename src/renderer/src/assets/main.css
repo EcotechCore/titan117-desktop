@@ -1911,3 +1911,60 @@ textarea.edit {
   padding: 10px;
   background: var(--panel);
 }
+
+/* ---------- sidebar apps (6.2) ---------- */
+.sidebar-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.sidebar-app-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--white);
+}
+.sidebar-app-bar h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+}
+.sidebar-app-bar .grow {
+  flex: 1;
+}
+.sidebar-app-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fff4f1;
+  color: var(--ink);
+}
+.sidebar-app-error span {
+  flex: 1;
+  min-width: 0;
+}
+.sidebar-app-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: var(--white);
+}
+.sidebar-review {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+}
+.sidebar-review ul {
+  margin: 6px 0;
+  padding-left: 18px;
+}
