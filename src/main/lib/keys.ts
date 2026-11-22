@@ -46,6 +46,16 @@ async function tryKey(provider: KeyProvider, key: string, fetchFn: typeof fetch)
     if ([400, 401, 403].includes(res.status)) return false
     throw new Error(`Cloudflare answered ${res.status}.`)
   }
+  // Google's PageSpeed Insights (decisions §60): one small run; the key goes in a header, never the address.
+  if (provider === 'pagespeed') {
+    const res = await fetchFn(
+      'https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed?url=https%3A%2F%2Fexample.com%2F&category=SEO',
+      { headers: { 'X-goog-api-key': key, Accept: 'application/json' } }
+    )
+    if (res.ok) return true
+    if ([400, 401, 403].includes(res.status)) return false
+    throw new Error(`Google answered ${res.status}.`)
+  }
   // Search keys (decisions §44): one small search, the only check these providers offer.
   if (provider === 'brave') {
     const res = await fetchFn('https://api.search.brave.com/res/v1/web/search?q=titan117&count=1', {

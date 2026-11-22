@@ -191,13 +191,15 @@ Cloned or updated on 22 Nov 2026 (shallow and sparse: the top folder and licence
 | [browser-use/browser-use](https://github.com/browser-use/browser-use) | AI browser exploration | MIT | Code | `qa/browser-use` | MIT | `ccd22fef47a1` |
 | [browserbase/stagehand](https://github.com/browserbase/stagehand) | AI browser actions in TypeScript | MIT | Code | `qa/stagehand` | MIT | `10418f988312` |
 | [microsoft/playwright-mcp](https://github.com/microsoft/playwright-mcp) | Browser control through MCP | Apache 2.0 | Lib | `qa/playwright-mcp` | Apache 2.0 | `b8b4183e099f` |
-| [dequelabs/axe-core](https://github.com/dequelabs/axe-core) | Accessibility checks | MPL 2.0 | Lib | `qa/axe-core` | | |
-| [GoogleChrome/lighthouse](https://github.com/GoogleChrome/lighthouse) | Speed and SEO scores | Apache 2.0 | Lib | `qa/lighthouse` | | |
+| [dequelabs/axe-core](https://github.com/dequelabs/axe-core) | Accessibility checks | MPL 2.0 | Lib | `qa/axe-core` | MPL 2.0 (22 Nov 2026); shipped unchanged from npm 4.14.1, no dependencies (decisions §60.4) | `e80f6b797b32` |
+| [GoogleChrome/lighthouse](https://github.com/GoogleChrome/lighthouse) | Speed and SEO scores | Apache 2.0 | Ideas | `qa/lighthouse` | Apache 2.0 (22 Nov 2026); npm 13.6.0 is about 19 MB with `@sentry/node`, `puppeteer-core` and axe-core inside, so not shipped: Google's PageSpeed Insights runs it instead (decisions §60.5) | `f482542ae0c5` |
 | [harlan-zw/unlighthouse](https://github.com/harlan-zw/unlighthouse) | Lighthouse across a whole site | MIT | Code | `seo/unlighthouse` | MIT | `c3d5c5f6357a` |
 | [StJudeWasHere/seonaut](https://github.com/StJudeWasHere/seonaut) | Site audit checks | MIT | Code | `seo/seonaut` | MIT | `a67387fe63a2` |
 | [janreges/siteone-crawler](https://github.com/janreges/siteone-crawler) | Site crawler and reports | MIT | Code | `seo/siteone-crawler` | MIT | `f3d967b190a7` |
 | [towfiqi/serpbear](https://github.com/towfiqi/serpbear) | Rank tracking | MIT | Code | `seo/serpbear` | MIT | `a1328fb4142d` |
 | Skyvern | AI browser automation | AGPL | Ideas | — | | |
+
+Checked on 22 Nov 2026 (axe-core and Lighthouse cloned shallow and sparse). Phase 12's first part reuses no code from these: the crawler, its checks, the QA run and the reports are our own (decisions §60); axe-core is a library used unchanged. SerpBear's rank data comes from third-party scrapers of Google, so only its ideas (tracking positions over time) apply, with positions from Search Console.
 
 ## Phase 13 · Automation
 

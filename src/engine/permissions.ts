@@ -38,7 +38,14 @@ import { convert, ConvertError, type ExportFormat } from './lib/convert'
 import { ReadError, type PageReader } from './lib/read'
 import { SearchError, type SearchAccess, type SearchService } from './lib/search'
 import { isNetworkFailure } from './lib/online'
-import type { DocumentsAccess, MediaAccess, PageAccess, TeamAccess } from './tools/lib/define-tool'
+import type {
+  DocumentsAccess,
+  MediaAccess,
+  PageAccess,
+  SiteAccess,
+  TeamAccess
+} from './tools/lib/define-tool'
+import { SiteError, type SiteService } from './lib/sites/service'
 import { MediaError, type MediaService } from './lib/media'
 import type { DocIndex } from './lib/doc-index'
 import type { CodeService } from './lib/code/service'
@@ -175,6 +182,8 @@ export interface Services {
   team?: TeamService
   /** Images and video through OpenRouter (2.7, decisions §59.10). */
   media?: MediaService
+  /** Site checks for the QA tester and the SEO agent (5.2, 5.8; decisions §60). */
+  sites?: SiteService
 }
 
 /** The engine's side of the team tools; the layer hands each call its own task. */
@@ -497,6 +506,27 @@ export function createPermissionLayer(deps: {
             needService(services.media, 'Images and video').video({ ...input, signal: ctx.signal })
         }
       : denied<MediaAccess>('images and video')
+
+    const sites: SiteAccess = p.sites
+      ? (() => {
+          const service = (): SiteService => needService(services.sites, 'Site checks')
+          const reader = (): PageReader => needService(services.pages, 'Reading pages')
+          return {
+            audit: (url, maxPages) =>
+              service().audit(url, maxPages, {
+                net,
+                robots: (u) => reader().allowedByRobots(u, net, ctx.signal),
+                signal: ctx.signal
+              }),
+            qa: (urls, options = {}) => service().qa(urls, options, { net, signal: ctx.signal }),
+            runTests: (tests) => service().runTests(tests, { net, signal: ctx.signal }),
+            speed: (url, strategy) => service().speed(url, strategy, net, ctx.signal),
+            visibility: (input) => service().visibility(input, ctx.signal),
+            history: (site) => service().history(site),
+            remember: (audit) => service().remember(audit)
+          }
+        })()
+      : denied<SiteAccess>('site checks')
 
     const records: RecordAccess = p.records
       ? {
@@ -988,6 +1018,7 @@ export function createPermissionLayer(deps: {
       sidebar,
       team,
       media,
+      sites,
       search,
       documents,
       pages,
@@ -1075,7 +1106,8 @@ export function createPermissionLayer(deps: {
           error instanceof PublishError ||
           error instanceof DataError ||
           error instanceof AgentError ||
-          error instanceof MediaError
+          error instanceof MediaError ||
+          error instanceof SiteError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }

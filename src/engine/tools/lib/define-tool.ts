@@ -70,6 +70,32 @@ export interface ToolPermissions {
   team?: 'delegate' | 'build'
   /** Images and video through OpenRouter, which cost credits (2.7, decisions §59.10). */
   media?: boolean
+  /** Site checks for QA and SEO: the audit crawler, QA runs, PageSpeed, AI visibility (5.2, 5.8; decisions §60). */
+  sites?: boolean
+}
+
+/** Site checks (5.2, 5.8): every request goes through the task's network policy. */
+export interface SiteAccess {
+  audit(url: string, maxPages?: number): Promise<import('../../lib/sites/audit').SiteAudit>
+  qa(
+    urls: string[],
+    options?: { screenshots?: boolean }
+  ): Promise<import('../../lib/sites/qa').QaPage[]>
+  runTests(
+    tests: import('../../lib/sites/qa').SavedTest[]
+  ): Promise<import('../../lib/sites/qa').TestRun[]>
+  speed(
+    url: string,
+    strategy: 'mobile' | 'desktop'
+  ): Promise<import('../../lib/sites/service').SpeedResult>
+  visibility(input: {
+    brand: string
+    domain: string
+    questions: string[]
+    models?: string[]
+  }): Promise<import('../../lib/sites/service').VisibilityAnswer[]>
+  history(site: string): import('../../lib/sites/service').AuditHistory[]
+  remember(audit: import('../../lib/sites/audit').SiteAudit): void
 }
 
 /** Images and video (2.7): the task's stop signal goes with every call. */
@@ -282,6 +308,7 @@ export interface ToolContext {
   sidebar: SidebarAccess
   team: TeamAccess
   media: MediaAccess
+  sites: SiteAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.
