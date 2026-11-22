@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
 import type {
+  AgentDef,
   ApprovalAnswer,
   CloudModel,
   EngineState,
@@ -33,6 +34,10 @@ import { DocumentsView } from './Documents'
 import { CodeView } from './Code'
 import { AppsView } from './Apps'
 import { SidebarAppView, type SidebarAppInfo } from './SidebarApp'
+import { AgentsView } from './Agents'
+import { byTeam } from './agents-lib'
+import { CompareView } from './Compare'
+import { MediaModelsView } from './Media'
 import type { ReportMode } from '../../shared/protocol'
 
 const PROMPTS = [
@@ -66,6 +71,37 @@ function App(): React.JSX.Element {
   // Sidebar apps (6.2): read again whenever the engine says they changed.
   const [sidebarApps, setSidebarApps] = useState<SidebarAppInfo[]>([])
   const sidebarChanged = state.changed.sidebar ?? 0
+  // The team (4.2): agents in the sidebar under their teams; the one a new task goes to.
+  const [agents, setAgents] = useState<AgentDef[]>([])
+  const [agentName, setAgentName] = useState('Titan')
+  const agentsChanged = state.changed.agents ?? 0
+  useEffect(() => {
+    if (!api) return
+    api
+      .get<{ agents: AgentDef[] }>('/v1/agents')
+      .then((r) => setAgents(r.agents))
+      .catch(() => undefined)
+  }, [api, agentsChanged])
+  const draftAgent = agents.find((a) => a.name === agentName) ?? null
+  // Teams fold up in the sidebar, so the task list keeps its room; remembered on this laptop.
+  const [folded, setFolded] = useState<string[]>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem('titan117.foldedTeams') ?? '[]')
+      return Array.isArray(saved) ? saved.filter((x): x is string => typeof x === 'string') : []
+    } catch {
+      return []
+    }
+  })
+  const toggleTeam = (team: string): void =>
+    setFolded((now) => {
+      const next = now.includes(team) ? now.filter((x) => x !== team) : [...now, team]
+      try {
+        localStorage.setItem('titan117.foldedTeams', JSON.stringify(next))
+      } catch {
+        // Not kept; it still folds for now.
+      }
+      return next
+    })
   useEffect(() => {
     if (!api) return
     api
@@ -143,6 +179,22 @@ function App(): React.JSX.Element {
       .catch(fail)
   }, [taskId, state.status, fail])
 
+  // Parts handed to other agents (4.6) come and go as task events; the team talk (4.7)
+  // is read again whenever one of them, or the task itself, changes state.
+  const parts = taskId ? state.tasks.filter((t) => t.parentId === taskId) : []
+  const partsKey = parts.map((p) => `${p.id}:${p.status}`).join('|')
+  const openStatus = taskId ? state.tasks.find((t) => t.id === taskId)?.status : undefined
+  useEffect(() => {
+    if (!taskId || state.status !== 'ready' || (!partsKey && openStatus === 'running')) return
+    const timer = setTimeout(() => {
+      client.current
+        ?.get<TaskDetail>(`/v1/tasks/${taskId}`)
+        .then((d) => dispatch({ type: 'detail', detail: d }))
+        .catch(() => undefined)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [taskId, partsKey, openStatus, state.status])
+
   // Cost shown before a task runs (feature 2.5).
   useEffect(() => {
     if (!model || state.status !== 'ready') return
@@ -186,7 +238,8 @@ function App(): React.JSX.Element {
         const { task: created } = await api.send<{ task: Task }>('POST', '/v1/tasks', {
           text: message,
           model,
-          mode: research || /^research\b/i.test(message) ? 'research' : 'normal'
+          mode: research || /^research\b/i.test(message) ? 'research' : 'normal',
+          agent: agentName
         })
         setResearch(false)
         dispatch({
@@ -439,21 +492,88 @@ function App(): React.JSX.Element {
           <Icon name="chip" /> Models
         </button>
         <button
+          className={view.kind === 'compare' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'compare' } })}
+        >
+          <Icon name="chart" /> Compare models
+        </button>
+        <button
           className={view.kind === 'setup' ? 'nav on' : 'nav'}
           onClick={() => dispatch({ type: 'view', view: { kind: 'setup' } })}
         >
           <Icon name="check" /> Setup
         </button>
 
-        <p className="label">Agents</p>
+        <p className="label">
+          Agents
+          <button
+            className={view.kind === 'agents' ? 'label-btn on' : 'label-btn'}
+            onClick={() => dispatch({ type: 'view', view: { kind: 'agents' } })}
+          >
+            <Icon name="users" /> Manage
+          </button>
+        </p>
         <button
-          className={view.kind === 'start' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'start' } })}
+          className={view.kind === 'start' && agentName === 'Titan' ? 'nav on' : 'nav'}
+          onClick={() => {
+            setAgentName('Titan')
+            dispatch({ type: 'view', view: { kind: 'start' } })
+          }}
         >
           <Eyes state={titan} /> Titan
           {titan === 'needs-you' && <span className="pill">Needs you</span>}
           {titan === 'working' && <span className="shimmer">Working</span>}
         </button>
+        {byTeam(agents).map(([team, list]) => (
+          <div key={team} className="team">
+            {(() => {
+              const isFolded = folded.includes(team)
+              const names = new Set(list.map((a) => a.name))
+              const teamTasks = state.tasks.filter((t) => names.has(t.agent))
+              const teamNeeds = state.approvals.some((ap) =>
+                teamTasks.some((t) => t.id === ap.taskId)
+              )
+              const teamBusy = teamTasks.some((t) => t.status === 'running')
+              return (
+                <button
+                  className={isFolded ? 'team-label folded' : 'team-label'}
+                  aria-expanded={!isFolded}
+                  onClick={() => toggleTeam(team)}
+                >
+                  <Icon name="chevron" />
+                  <span className="nav-text">{team}</span>
+                  {isFolded && teamNeeds && <span className="pill">Needs you</span>}
+                  {isFolded && !teamNeeds && teamBusy && <span className="shimmer">Working</span>}
+                  {isFolded && !teamNeeds && !teamBusy && (
+                    <span className="team-count">{list.length}</span>
+                  )}
+                </button>
+              )
+            })()}
+            {!folded.includes(team) &&
+              list.map((a) => {
+                const mine = state.tasks.filter((t) => t.agent === a.name)
+                const needs = state.approvals.some((ap) => mine.some((t) => t.id === ap.taskId))
+                const busyNow = mine.some((t) => t.status === 'running')
+                return (
+                  <button
+                    key={a.id}
+                    className={view.kind === 'start' && agentName === a.name ? 'nav on' : 'nav'}
+                    onClick={() => {
+                      setAgentName(a.name)
+                      dispatch({ type: 'view', view: { kind: 'start' } })
+                      setTimeout(() => input.current?.focus(), 0)
+                    }}
+                  >
+                    <span className="agent-dot" style={{ background: a.color }} />
+                    <span className="nav-text">{a.name}</span>
+                    {needs && <span className="pill">Needs you</span>}
+                    {!needs && busyNow && <span className="shimmer">Working</span>}
+                  </button>
+                )
+              })}
+          </div>
+        ))}
 
         {sidebarApps.length > 0 && <p className="label">Your apps</p>}
         {sidebarApps.map((a) => (
@@ -471,16 +591,18 @@ function App(): React.JSX.Element {
         <p className="label">Tasks</p>
         <div className="scroll">
           {state.tasks.length === 0 && <p className="hint">No tasks yet.</p>}
-          {state.tasks.map((t) => (
-            <button
-              key={t.id}
-              className={taskId === t.id ? 'nav on' : 'nav'}
-              onClick={() => dispatch({ type: 'view', view: { kind: 'task', id: t.id } })}
-            >
-              <span className={`dot dot-${t.status}`} aria-label={t.status} />
-              <span className="nav-text">{t.title}</span>
-            </button>
-          ))}
+          {state.tasks
+            .filter((t) => !t.parentId)
+            .map((t) => (
+              <button
+                key={t.id}
+                className={taskId === t.id ? 'nav on' : 'nav'}
+                onClick={() => dispatch({ type: 'view', view: { kind: 'task', id: t.id } })}
+              >
+                <span className={`dot dot-${t.status}`} aria-label={t.status} />
+                <span className="nav-text">{t.title}</span>
+              </button>
+            ))}
         </div>
 
         <p className="label">Folders Titan may use</p>
@@ -664,6 +786,29 @@ function App(): React.JSX.Element {
           {view.kind === 'connectors' && (
             <ConnectorsView client={api} changed={state.changed.connectors ?? 0} onProblem={fail} />
           )}
+          {view.kind === 'agents' && (
+            <AgentsView
+              client={api}
+              engine={engine}
+              cloud={state.cloud}
+              changed={agentsChanged + (state.changed.skills ?? 0)}
+              onStart={(name) => {
+                setAgentName(name)
+                dispatch({ type: 'view', view: { kind: 'start' } })
+                setTimeout(() => input.current?.focus(), 0)
+              }}
+              onProblem={fail}
+            />
+          )}
+          {view.kind === 'compare' && (
+            <CompareView
+              client={api}
+              engine={engine}
+              cloud={state.cloud}
+              model={model}
+              onProblem={fail}
+            />
+          )}
           {view.kind === 'models' && (
             <ModelsView
               engine={engine}
@@ -679,16 +824,18 @@ function App(): React.JSX.Element {
               onRemove={(id) => client.current?.send('DELETE', `/v1/models/${id}`).catch(fail)}
             />
           )}
+          {view.kind === 'models' && <MediaModelsView client={api} onProblem={fail} />}
           {view.kind === 'start' && (
             <div className="start">
               <Eyes state="working" size="large" />
-              <h1>What should Titan do?</h1>
+              <h1>What should {agentName} do?</h1>
               <p className="muted">
-                Titan works on this laptop with files, the shell, the browser and your connectors.
-                It reads only the folders you allow, and asks before it changes anything.
+                {draftAgent && agentName !== 'Titan'
+                  ? `${draftAgent.role} It asks before it changes anything.`
+                  : 'Titan works on this laptop with files, the shell, the browser and your connectors. It reads only the folders you allow, and asks before it changes anything.'}
               </p>
               <div className="prompts">
-                {PROMPTS.map((prompt) => (
+                {(agentName === 'Titan' ? PROMPTS : []).map((prompt) => (
                   <button key={prompt} className="prompt" onClick={() => void send(prompt)}>
                     {prompt}
                   </button>
@@ -703,6 +850,7 @@ function App(): React.JSX.Element {
               engine={engine}
               onAnswer={answer}
               onReadAloud={readAloud}
+              client={api}
             />
           )}
         </div>
@@ -788,7 +936,7 @@ function App(): React.JSX.Element {
                 style={voice !== 'off' ? { display: 'none' } : undefined}
                 ref={input}
                 rows={2}
-                placeholder={task ? 'Reply to Titan' : 'Describe a task'}
+                placeholder={task ? `Reply to ${task.agent}` : `Describe a task for ${agentName}`}
                 aria-label="Message"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -823,6 +971,22 @@ function App(): React.JSX.Element {
                     <option value="more">More models…</option>
                   </select>
                 </label>
+                {!task && (
+                  <label className="chip">
+                    <span
+                      className="agent-dot"
+                      style={{ background: draftAgent?.color ?? '#ff6347' }}
+                    />
+                    <span className="sr">Agent</span>
+                    <select value={agentName} onChange={(e) => setAgentName(e.target.value)}>
+                      {(agents.length ? agents : [{ name: 'Titan', id: 'titan' }]).map((a) => (
+                        <option key={a.id} value={a.name}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 {!task && (
                   <button
                     className={research ? 'chip chip-on' : 'chip'}
@@ -957,6 +1121,49 @@ function App(): React.JSX.Element {
             >
               Send a report about this
             </button>
+          )}
+          {parts.length > 0 && (
+            <>
+              <p className="label">Parts handed out</p>
+              <ul className="parts">
+                {parts.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      className="link"
+                      onClick={() => dispatch({ type: 'view', view: { kind: 'task', id: p.id } })}
+                    >
+                      <span className={`dot dot-${p.status}`} aria-label={p.status} /> {p.agent}
+                    </button>
+                    <span className="mono muted"> {usd(p.costUsd)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {detail.task.parentId && (
+            <button
+              className="link"
+              onClick={() =>
+                dispatch({ type: 'view', view: { kind: 'task', id: detail.task.parentId! } })
+              }
+            >
+              ← The task this is a part of
+            </button>
+          )}
+          {(detail.talk?.length ?? 0) > 0 && (
+            <>
+              <p className="label">Team talk</p>
+              <ol className="talk">
+                {detail.talk!.map((m) => (
+                  <li key={m.id} className={`talk-${m.kind}`}>
+                    <span className="talk-who">
+                      {m.from} → {m.to}
+                    </span>
+                    <span className="talk-text">{m.text}</span>
+                  </li>
+                ))}
+              </ol>
+            </>
           )}
           <p className="label">Activity</p>
           <ol className="log">

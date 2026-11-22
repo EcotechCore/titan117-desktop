@@ -2,7 +2,7 @@
 
 Everything waiting on the owner, in the order to do it. Gathered from every repo's progress log; last rewritten 15 Nov 2026 after phase 4's leftovers and the first part of phase 5. Shared doc: edited in `titan117-web`, copied to the other repos. When an item is done, tick it here and add a line to `progress.md`; when the build adds a new one, it goes here in the same commit.
 
-**Where the code is:** everything up to phase 10 is merged into `main` in all three repos (22 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
+**Where the code is:** everything up to phase 11 is merged into `main` in all three repos (22 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
 
 ## Step 1 · Push and review
 
@@ -62,6 +62,18 @@ Nothing here blocks phases 8 and 9. Phase 10 is merged into `main` (22 Nov 2026)
 - [ ] **Try two sidebar apps** (the desktop app from `main`, with `pnpm dev`): Apps → New app → Website or web app → tick **An internal tool for the Titan117 sidebar**. Make an **Inventory** first (items with quantities and prices), then a **CRM** whose orders pick items from the inventory (say so in what to build first). Approve the plan and the **Add to the sidebar** card, which lists what the app may reach. Both then show under **Your apps** in the sidebar. Add a few records, then ask Titan something that needs both, for example "Which customers ordered items that are low in stock?" (phase 10's check).
 - [ ] **Try the rest of phase 10:** ask Titan to give the CRM a "Draft follow-up" button that uses `titan.ai`; then on the Apps screen open the CRM, press **Review what it reaches** and **Update it** (the card says the AI costs credits). On the Inventory, press **Add a mobile app** and look at the new linked app.
 - [ ] **Decisions §58** (to be confirmed): one local database per app as the shared data layer; an app reaches another app's data only as its `titan.json` asks and you agreed; the sidebar runs a checked build with no network; Titan reads the apps' data without asking and changes it with your OK; sync waits for phase 15 and will be end to end encrypted (Electric, Zero and PowerSync aren't used because their servers read the data; Evolu is the model); `titan.ai` limited to 100 questions a day per app, only with your OK; another target as a linked app sharing `src/shared/`; the sync core with AES-256-GCM, its transport after phase 15.
+
+## Phase 11 · The agent builder (started 22 Nov 2026)
+
+Nothing here blocks other phases. Phase 11 is merged into `main` (22 Nov 2026) and done; run the desktop app from `main` with `pnpm dev`.
+
+- [ ] **Try the three parts of phase 11's check:** (1) **Agents** (the **Manage** link beside "Agents" in the sidebar) → **New agent**: give it a name, a team, what it does, its tools and instructions, press **Make the agent**, then **Start a task**. (2) Ask Titan for a task with two separate parts, for example "Researcher should find X and Writer should draft Y; give me both": the task's details show **Parts handed out** and **Team talk**. (3) Ask Titan "I need an agent that …, with a skill for …": approve the card, and the agent appears in the sidebar under its team.
+- [ ] **Try Compare models** (sidebar): one prompt on two to four models, with each answer's time and cost.
+- [ ] **Decisions §59** (to be confirmed): agents as files with a header, built-ins cloned to change, a definition only narrows what an agent may do, parts handed to other agents (at most three at once, one level deep, their cost counted in the first task), the message bus kept on the laptop, smart routing (a fast model for the steps after the plan), Compare, Titan making agents and skills after one approval every time, and media (images and video through OpenRouter) as the next part.
+- [ ] **Try images (2.7):** with the local web app running and the desktop signed in (so it uses credits), ask Titan "Make a square picture of … and save it as picture.png", approve the card, and check the file and the cost in the task's details. Models → **Images and video** picks the models. This path hasn't been tried end to end through credits yet; with the development key a real image cost $0.03.
+- [ ] **Decide when to try a video clip:** a short clip can cost $0.25–$2 in credits, so none was made while building. The client, the proxy's job routes and the charging are tested with a fake provider.
+- [ ] **Look at the small extras:** an image Titan makes now shows in the chat; team names in the sidebar fold up (click one) so the task list keeps its room.
+- [ ] **Before production (video charging):** in OpenRouter's **workspace settings**, press **Generate signing secret** under *Webhook signing secret*, then set two settings on the production web app: `OPENROUTER_WEBHOOK_SECRET` (that secret) and `PROXY_WEBHOOK_URL` = `https://titan117.com/api/v1/videos/webhook`. The code is built and tested; it needs a public address, so it can't run locally. Until then a video is charged when the app checks on it, which it does to the end.
 
 ## Step 2 · Confirm the decisions (about an hour of reading)
 

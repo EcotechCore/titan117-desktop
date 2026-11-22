@@ -173,10 +173,16 @@ Cloned on 22 Nov 2026 (shallow and sparse: the top folder and licences). Also ch
 
 | Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
 |---|---|---|---|---|---|---|
-| [langchain-ai/langgraphjs](https://github.com/langchain-ai/langgraphjs) | Multi-agent graphs, hand-offs | MIT | Code | `agents/langgraphjs` | MIT | `cc29753d529c` |
-| [openai/openai-agents-js](https://github.com/openai/openai-agents-js) | Agents, hand-offs, guardrails patterns | MIT *to check* | Code | `agents/openai-agents-js` | MIT | `9687b544c8c8` |
-| [activepieces/activepieces](https://github.com/activepieces/activepieces) | Connector catalogue and builder UI | MIT (community edition) *to check* | Code | `agents/activepieces` | MIT, except `packages/ee` (commercial): don't copy from ee | `860ce5b87c43` |
-| [n8n-io/n8n](https://github.com/n8n-io/n8n) | Workflow builder UX | Fair-code (Sustainable Use) | Ideas | `agents/n8n` | Sustainable Use (fair-code), `.ee` files enterprise: ideas only | `936349a9c77c` |
+| [langchain-ai/langgraphjs](https://github.com/langchain-ai/langgraphjs) | Multi-agent graphs, hand-offs, a supervisor | MIT | Code | `agents/langgraphjs` | MIT (GitHub's licence field, 22 Nov 2026) | `62a57df594f1` |
+| [openai/openai-agents-js](https://github.com/openai/openai-agents-js) | Agents as tools, hand-offs, guardrails | MIT | Code | `agents/openai-agents-js` | MIT (22 Nov 2026) | `d447a78e313f` |
+| [crewAIInc/crewAI](https://github.com/crewAIInc/crewAI) | Role, goal and backstory per agent; a manager delegating to coworkers | MIT | Code | `agents/crewai` | MIT (22 Nov 2026) | `56c26a7fb3ec` |
+| [VoltAgent/voltagent](https://github.com/VoltAgent/voltagent) | Supervisor and sub-agents in TypeScript | MIT | Code | `agents/voltagent` | MIT (22 Nov 2026) | `e9fc599f6059` |
+| [mastra-ai/mastra](https://github.com/mastra-ai/mastra) | Agent networks, routing between agents | Apache 2.0 | Code | `agents/mastra` | Apache 2.0, except every `ee/` folder (its own commercial licence): don't copy from ee (22 Nov 2026) | `3b6d29c8ae20` |
+| [activepieces/activepieces](https://github.com/activepieces/activepieces) | Connector catalogue and builder UI | MIT (community edition) | Code | `agents/activepieces` | MIT, except `packages/ee` and `packages/server/api/src/app/ee` (commercial): don't copy from ee (22 Nov 2026) | `860ce5b87c43` |
+| [n8n-io/n8n](https://github.com/n8n-io/n8n) | Workflow builder UX | Fair-code (Sustainable Use) | Ideas | `agents/n8n` | Sustainable Use (fair-code), `.ee` files enterprise: ideas only (22 Nov 2026) | `936349a9c77c` |
+| Claude Agent SDK (TypeScript) | Sub-agent files with a header and instructions | Anthropic's Commercial Terms | Ideas | not cloned | "All rights reserved", commercial terms (22 Nov 2026): ideas only | |
+
+Cloned or updated on 22 Nov 2026 (shallow and sparse: the top folder and licences). Also checked: **microsoft/autogen** is archived (GitHub says so; its successor is Microsoft's Agent Framework). Phase 11's first part reuses no code from these; agent files, hand-offs and the message bus are our own (decisions §59).
 
 ## Phase 12 · QA and SEO agents
 

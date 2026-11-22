@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Phase 8 started (21 Nov 2026):** its first part works in the built app: make a web app, a plan you approve, the build, checks in Chromium, Firefox and WebKit at three sizes, fixes, a test report, versions and a live preview. **Since then (21 Nov 2026):** Save to GitHub, ZIP export, more test conditions, starters and a brand kit, visual edit and Cloudflare publishing are built, and the five sample apps all pass. **Phase 9 started (21 Nov 2026):** the phase-start review is recorded (decisions §57), and mobile apps with Expo work in the built app: made and built by Titan, previewed and tested at phone sizes, and opened on a phone with Expo Go; a laptop check says what's needed for the emulator, clean-Windows tests and desktop apps. **Phase 10 started (22 Nov 2026):** sidebar apps work in the built app: Titan built an Inventory and a CRM that reads the inventory's items, both run sandboxed in the sidebar with their data on the laptop, and Titan answered a question across both (phase 10's check, seen working; decisions §58 to be confirmed). **Since then (22 Nov 2026):** `titan.ai`, another target per project and the sync core are built and seen working; phase 10 is done apart from sync's transport, which needs phase 15's device keys. **Next step:** the owner's real Save to GitHub and Cloudflare publish (phase 8's check), trying a mobile app on a phone, and turning on Windows Hypervisor Platform and Windows Sandbox; then the Android emulator and Tauri desktop apps. Netlify waits for our OAuth app; Vercel, Convex, Expo (EAS) and BrowserStack for written answers. Production waits (§52).
+**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Phase 8 started (21 Nov 2026):** its first part works in the built app: make a web app, a plan you approve, the build, checks in Chromium, Firefox and WebKit at three sizes, fixes, a test report, versions and a live preview. **Since then (21 Nov 2026):** Save to GitHub, ZIP export, more test conditions, starters and a brand kit, visual edit and Cloudflare publishing are built, and the five sample apps all pass. **Phase 9 started (21 Nov 2026):** the phase-start review is recorded (decisions §57), and mobile apps with Expo work in the built app: made and built by Titan, previewed and tested at phone sizes, and opened on a phone with Expo Go; a laptop check says what's needed for the emulator, clean-Windows tests and desktop apps. **Phase 10 started (22 Nov 2026):** sidebar apps work in the built app: Titan built an Inventory and a CRM that reads the inventory's items, both run sandboxed in the sidebar with their data on the laptop, and Titan answered a question across both (phase 10's check, seen working; decisions §58 to be confirmed). **Since then (22 Nov 2026):** `titan.ai`, another target per project and the sync core are built and seen working; phase 10 is done apart from sync's transport, which needs phase 15's device keys. **Phase 11 started (22 Nov 2026):** agents as files, built-ins with clone and edit, the Agents form, parts handed between agents, Titan making agents and skills, smart routing and Compare work in the built app (phase 11's check seen working; decisions §59 to be confirmed); images and video are built too, a real image seen made; phase 11 is done and merged. **Next step:** phase 12 (QA and SEO agents) or 13 (automation) can start. Waiting on the owner: the real Save to GitHub and Cloudflare publish (phase 8's check), trying a mobile app on a phone, and turning on Windows Hypervisor Platform and Windows Sandbox; then the Android emulator and Tauri desktop apps. Netlify waits for our OAuth app; Vercel, Convex, Expo (EAS) and BrowserStack for written answers. Production waits (§52).
 
 ## Phases
 
@@ -19,7 +19,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 8 | App builder: web | In progress | 21 Nov 2026 | |
 | 9 | App builder: mobile and desktop | In progress | 21 Nov 2026 | |
 | 10 | Sidebar apps | Done (except sync's transport, which waits for phase 15) | 22 Nov 2026 | 22 Nov 2026 |
-| 11 | Agent builder | Not started | | |
+| 11 | Agent builder | Done | 22 Nov 2026 | 22 Nov 2026 |
 | 12 | QA and SEO agents | Not started | | |
 | 13 | Automation | Not started | | |
 | 14 | Marketing and video | Not started | | |
@@ -31,6 +31,35 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 22 Nov 2026 · Phase 11 done and merged
+
+- **Images in the chat:** an image `image_create` saved shows under its step (`GET /v1/tasks/{id}/image?call=…`, read only from the file that task's tool saved, inside the allowed folders; PNG, JPEG, WebP or GIF, never SVG; 15 MB at most).
+- **Teams fold in the sidebar:** click a team's name; a folded team shows its number of agents, or Working / Needs you; remembered on this laptop.
+- **Seen in the built app:** the croissant picture shows in its task; Build and Knowledge folded.
+- **Merged:** the phase 11 pull requests in all three repos. Phase 11 is done (its check seen working: an agent made in the form, a task split between two agents, an agent and its skill made by Titan); decisions §59 waits for the owner. Agent triggers come with phase 13.
+- Typecheck, lint, 470 tests, build, build contents and licences pass.
+
+### 22 Nov 2026 · Phase 11: images and video (2.7)
+
+- **The media client** (`src/engine/lib/media.ts`): OpenRouter's Images API and asynchronous Videos API (a job, polled every 15 seconds for up to 20 minutes, then downloaded), through credits, the user's own OpenRouter key or the development key; models from OpenRouter's public list, a sensible one picked unless the user chose one.
+- **Tools:** `image_create` (asks, with "always in this task") and `video_create` (asks every time, laptop only); the prompt is checked for private content before anyone is asked; the file is saved in an allowed folder; the cost counts in the task's budget. New tool group "Images and video". Denial tests for both.
+- **Models screen:** "Images and video" picks the models (`GET`/`PUT /v1/media`).
+- **Seen working in the built app** (development key, Claude Haiku 5.5): Titan made a croissant picture with `google/gemini-3.1-flash-lite-image` after the approval card, saved as `croissant.jpg` for $0.03 (the model answers JPEG even when PNG is asked, and Titan said so instead of renaming). No video made (cost); tested with a fake provider. Not tried through credits end to end yet.
+- Tests: `test/media.test.ts`; typecheck, lint, 470 tests, build, build contents and licences pass.
+
+### 22 Nov 2026 · Phase 11 started: the agent builder
+
+- **Agent files (4.1, `src/engine/lib/agents.ts`):** `agents/<id>.md` in the data folder (out of every agent's file tools' reach), a header (name, role, team, colour, model, fast model, tool groups, memory, manager, always-ask tools, skills) and the instructions. Checked on read and save; a broken file is skipped.
+- **Built-in agents (4.2):** Titan, Researcher, Writer, Folder agent and Builder, in our code; **clone and edit (4.3)**; a built-in's models are a setting.
+- **Only an agent's own tools (§59.3):** groups follow what each tool declares (`toolGroup`), a tool outside them is refused and logged, "always asks" in a file makes a tool ask every time (never less); scripts (4.10) get only the agent's tools; "own memory only" hides shared memory.
+- **Agents working together (4.6, 4.7):** `agent_delegate` hands up to three parts at once to other agents, each its own task linked to the first (`tasks.parent_id`), one level deep, stopped with the manager, its cost counted in the manager's budget; briefs and answers in `agent_messages`, shown as **Parts handed out** and **Team talk** in the task's details.
+- **Agents and skills on request (18.1, 18.2):** `agent_create` (Titan only) writes the agent and its skills after one approval, every time, laptop only; nothing is written before the yes.
+- **Smart routing (2.4):** an agent's fast model takes the steps after the plan; the main model plans each turn and steps after a failure. **Compare models (2.8):** `POST /v1/compare` and a Compare screen, up to four models, no tools, nothing kept.
+- **Screens:** Agents (list by team, the form, Advanced: the file), agents in the sidebar under their teams with Working / Needs you, an agent picker in the composer, Compare models.
+- **Seen working in the built app** (throwaway profile, Claude Haiku 5.5): the form made "Invoice clerk" (Finance), which totalled `invoices.csv` per client (Acme 1,500.00, Brasov Logistics 850.50, total 2,350.50 EUR) with only its tools; Titan handed a research part to Researcher and an email to Writer at the same time and combined them ($0.02 for the parts); Titan made "Supplier chaser" (Operations) with the skill `late-delivery-reminder` after one approval with no "Always", and it appeared in the sidebar; Compare ran Haiku 5.5 (0.9 s) next to Hy4 flash (16.4 s). Phase 11's check, all three parts.
+- Tests: `test/agents.test.ts` (12) and denial tests for `agent_delegate` and `agent_create`; typecheck, lint, 463 tests, build, build contents and licences pass.
+- **Left in phase 11:** media (2.7; built the same day, entry above), agent triggers (schedules come with phase 13).
 
 ### 22 Nov 2026 · Phase 10 merged
 

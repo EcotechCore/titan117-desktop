@@ -66,6 +66,57 @@ export interface ToolPermissions {
   apps?: boolean
   /** Sidebar apps' data (6.11): reading it, or also changing it and adding apps (decisions §58). */
   sidebar?: 'read' | 'write'
+  /** Other agents (decisions §59): handing them parts of a task, or also making new agents. */
+  team?: 'delegate' | 'build'
+  /** Images and video through OpenRouter, which cost credits (2.7, decisions §59.10). */
+  media?: boolean
+}
+
+/** Images and video (2.7): the task's stop signal goes with every call. */
+export interface MediaAccess {
+  pick(kind: 'image' | 'video', asked?: string): Promise<string>
+  image(input: {
+    model: string
+    prompt: string
+    aspectRatio?: string
+    format?: 'png' | 'jpeg' | 'webp'
+  }): Promise<import('../../lib/media').MediaResult>
+  video(input: {
+    model: string
+    prompt: string
+    seconds?: number
+    aspectRatio?: string
+  }): Promise<import('../../lib/media').MediaResult>
+}
+
+/** What came back from one part handed to another agent (4.6). */
+export interface PartResult {
+  agent: string
+  taskId: string
+  status: import('../../../shared/protocol').TaskStatus
+  /** The agent's last message, or why the part stopped. */
+  answer: string
+  costUsd: number
+}
+
+/** A new agent and the skills it needs, as Titan writes them (18.2). */
+export interface NewAgent {
+  name: string
+  role: string
+  team: string
+  tools: string[]
+  instructions: string
+  manager?: boolean
+  memory?: 'shared' | 'own'
+  color?: string
+  skills: { name: string; description: string; steps: string }[]
+}
+
+/** Other agents, for a manager (4.6) and for Titan making agents (18.2). */
+export interface TeamAccess {
+  /** Each part runs as its own task with that agent; resolves when all are over. */
+  delegate(parts: { agent: string; brief: string }[]): Promise<PartResult[]>
+  create(input: NewAgent): import('../../../shared/protocol').AgentDef
 }
 
 /** The user's own servers (3.15): only the ones they added in the app. */
@@ -229,6 +280,8 @@ export interface ToolContext {
   servers: ServerAccess
   apps: AppAccess
   sidebar: SidebarAccess
+  team: TeamAccess
+  media: MediaAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.

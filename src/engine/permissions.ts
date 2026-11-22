@@ -38,7 +38,8 @@ import { convert, ConvertError, type ExportFormat } from './lib/convert'
 import { ReadError, type PageReader } from './lib/read'
 import { SearchError, type SearchAccess, type SearchService } from './lib/search'
 import { isNetworkFailure } from './lib/online'
-import type { DocumentsAccess, PageAccess } from './tools/lib/define-tool'
+import type { DocumentsAccess, MediaAccess, PageAccess, TeamAccess } from './tools/lib/define-tool'
+import { MediaError, type MediaService } from './lib/media'
 import type { DocIndex } from './lib/doc-index'
 import type { CodeService } from './lib/code/service'
 import type {
@@ -67,6 +68,7 @@ import {
 } from './lib/git'
 import { querySheet, SheetError } from './lib/sheets'
 import { DocumentError } from './lib/documents'
+import { AgentError } from './lib/agents'
 
 export interface CallContext {
   taskId: string
@@ -75,6 +77,10 @@ export interface CallContext {
   signal: AbortSignal
   /** Where the call came from: the agent itself, or a script it wrote (feature 4.10). */
   via?: 'agent' | 'script'
+  /** Tools that ask every time for this agent (its definition, decisions §59.3). */
+  alwaysAsk?: string[]
+  /** The agent reads only its own memory, not the shared one (§59.4). */
+  ownMemory?: boolean
 }
 
 export type CallOutcome =
@@ -165,6 +171,22 @@ export interface Services {
   brandKit?: () => import('./lib/apps/starters').BrandKit | null
   /** Sidebar apps and their shared data (6.2, 6.11; decisions §58). */
   sidebar?: SidebarService
+  /** Agents working together and agents on request (4.6, 18.2; decisions §59). */
+  team?: TeamService
+  /** Images and video through OpenRouter (2.7, decisions §59.10). */
+  media?: MediaService
+}
+
+/** The engine's side of the team tools; the layer hands each call its own task. */
+export interface TeamService {
+  delegate(
+    ctx: CallContext,
+    parts: { agent: string; brief: string }[]
+  ): Promise<import('./tools/lib/define-tool').PartResult[]>
+  create(
+    ctx: CallContext,
+    input: import('./tools/lib/define-tool').NewAgent
+  ): import('../shared/protocol').AgentDef
 }
 
 interface Waiting {
@@ -426,6 +448,7 @@ export function createPermissionLayer(deps: {
           taskId: ctx.taskId,
           taskTitle: () => store.getTask(ctx.taskId)?.title ?? '',
           mode: p.memory,
+          ownOnly: !!ctx.ownMemory,
           // A project's memory is written only for a folder the user allowed (13.8).
           projectRoot: async (folder) => projectRootOf(await resolveAllowed(policy, folder))
         })
@@ -450,6 +473,30 @@ export function createPermissionLayer(deps: {
           }
         }
       : denied<SkillAccess>('skills')
+
+    const team: TeamAccess = p.team
+      ? {
+          async delegate(parts) {
+            if (p.team !== 'delegate' && p.team !== 'build')
+              throw new PermissionError('This tool may not hand work to other agents.')
+            return needService(services.team, 'Agents working together').delegate(ctx, parts)
+          },
+          create(input) {
+            if (p.team !== 'build') throw new PermissionError('This tool may not make agents.')
+            return needService(services.team, 'Making agents').create(ctx, input)
+          }
+        }
+      : denied<TeamAccess>('other agents')
+
+    const media: MediaAccess = p.media
+      ? {
+          pick: (kind, asked) => needService(services.media, 'Images and video').pick(kind, asked),
+          image: (input) =>
+            needService(services.media, 'Images and video').image({ ...input, signal: ctx.signal }),
+          video: (input) =>
+            needService(services.media, 'Images and video').video({ ...input, signal: ctx.signal })
+        }
+      : denied<MediaAccess>('images and video')
 
     const records: RecordAccess = p.records
       ? {
@@ -939,6 +986,8 @@ export function createPermissionLayer(deps: {
       servers,
       apps,
       sidebar,
+      team,
+      media,
       search,
       documents,
       pages,
@@ -977,6 +1026,13 @@ export function createPermissionLayer(deps: {
       } catch {
         assessment = { risk: tool.risk, summary: `Run ${tool.name}` }
       }
+      // The agent's definition may make a tool ask every time; never ask less (decisions §59.3).
+      if (ctx.alwaysAsk?.includes(tool.name))
+        assessment = {
+          ...assessment,
+          risk: assessment.risk === 'read' ? 'write' : assessment.risk,
+          alwaysAsks: true
+        }
       const gated = await gate(ctx, call.id, tool.name, call.input, assessment, !!tool.laptopOnly)
       if (!gated.allowed) return refuse(call, ctx, gated.why)
       const approvedBy = gated.approvedBy
@@ -1017,7 +1073,9 @@ export function createPermissionLayer(deps: {
           error instanceof AppError ||
           error instanceof NodeDownloadError ||
           error instanceof PublishError ||
-          error instanceof DataError
+          error instanceof DataError ||
+          error instanceof AgentError ||
+          error instanceof MediaError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }

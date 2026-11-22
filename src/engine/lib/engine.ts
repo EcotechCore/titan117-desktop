@@ -5,7 +5,8 @@
  */
 import { randomBytes } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, extname, join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
 
 import type { EngineEvent } from '../../shared/protocol'
 import { createApi } from '../api'
@@ -13,12 +14,16 @@ import type { Budget } from '../budgets'
 import { createPermissionLayer, type PermissionLayer } from '../permissions'
 import { registerSecret } from '../redact'
 import { createRouter } from '../router'
-import { AGENT, createRuntime, type Runtime } from '../runtime'
+import { createRuntime, type Runtime } from '../runtime'
 import { createMemoryStore, type MemoryStore } from '../memory'
 import { createRecordStore, type RecordStore } from '../records'
 import { createBrowserHost, type BrowserHost } from './browser'
 import { createConnectorHub, type ConnectorHub } from './mcp'
 import { createSkillStore, type SkillStore } from './skills'
+import { createAgentStore, type AgentStore } from './agents'
+import { createTeamService } from '../team'
+import { createComparer } from '../compare'
+import { createMediaService, type MediaService } from './media'
 import { createSpeechEngine, type SpeechEngine } from './speech'
 import { createStore, type Store } from '../store'
 import { builtInTools, createRegistry, type AnyTool } from '../tools'
@@ -119,6 +124,15 @@ export interface EngineOptions {
   embedder?: Embedder | null
 }
 
+/** Images the chat may show (2.7); never SVG, which can carry scripts. */
+const IMAGE_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif'
+}
+
 /** A task is resumed by itself at most this many times, and only this soon after it stopped (1.6). */
 export const AUTO_RESUME_LIMIT = 2
 export const AUTO_RESUME_WITHIN_MS = 60 * 60 * 1000
@@ -147,6 +161,7 @@ export interface Engine {
     events: EngineEvent[]
     memory: MemoryStore
     skills: SkillStore
+    agents: AgentStore
     records: RecordStore
     connectors: ConnectorHub
     artifacts: ArtifactStore
@@ -278,13 +293,28 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     }
   }
 
-  const changed = (what: 'memory' | 'skills' | 'records' | 'connectors' | 'reports') => (): void =>
-    emit({ type: 'changed', what })
+  const changed =
+    (what: 'memory' | 'skills' | 'records' | 'connectors' | 'reports' | 'agents') => (): void =>
+      emit({ type: 'changed', what })
   const memory = createMemoryStore(db, changed('memory'))
   const skills = createSkillStore(
     options.dataDir ? join(options.dataDir, 'skills') : null,
     changed('skills')
   )
+  // Agents (4.1-4.3, decisions §59): files in the data folder, out of every agent's file tools' reach.
+  const agents = createAgentStore({
+    dir: options.dataDir ? join(options.dataDir, 'agents') : null,
+    onChange: changed('agents'),
+    models: {
+      get: () =>
+        getMeta<Record<string, { model: string | null; fastModel: string | null }>>(
+          db,
+          'agentModels',
+          {}
+        ),
+      set: (next) => setMeta(db, 'agentModels', next)
+    }
+  })
   const records = createRecordStore({
     db,
     store,
@@ -359,6 +389,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     return value
   }
   let runtimeRef: Runtime | null = null
+  let mediaRef: MediaService | null = null
 
   const artifacts = createArtifactStore(db, (artifact, byAgent) => {
     emit({ type: 'changed', what: 'artifacts' })
@@ -388,6 +419,25 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       memory,
       skills,
       records,
+      media: (mediaRef = createMediaService({
+        fetch: connectivity.track(
+          engineFetch(options.fetch, () =>
+            account.proxyUrl ? [new URL(account.proxyUrl).origin] : []
+          )
+        ),
+        access: () => cloud(),
+        chosen: (kind) =>
+          getMeta<Record<string, string | null>>(db, 'mediaModels', {})[kind] ?? null
+      })),
+      team: createTeamService({
+        store,
+        agents,
+        skills,
+        runtime: () => {
+          if (!runtimeRef) throw new Error('The runtime is not ready.')
+          return runtimeRef
+        }
+      }),
       browser,
       speech: (files) => speech.access(files),
       scratchRoot,
@@ -670,7 +720,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     budget: options.budget,
     memory,
     skills,
-    records
+    records,
+    agents
   })
   runtimeRef = runtime
 
@@ -1068,6 +1119,44 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     memory,
     skills,
+    agents,
+    async taskImage(taskId, callId) {
+      const message = store
+        .listMessages(taskId)
+        .map((m) => m.message)
+        .find((m) => m.role === 'tool' && m.callId === callId)
+      if (!message || message.role !== 'tool' || message.isError || message.name !== 'image_create')
+        return null
+      const saved = /^Saved the image to (.+?) \(/.exec(message.output)?.[1]
+      if (!saved) return null
+      try {
+        // Only inside the allowed folders, as the tool wrote it.
+        const real = await resolveAllowed(policy(), saved)
+        const type = IMAGE_TYPES[extname(real).toLowerCase()]
+        if (!type) return null
+        const info = await stat(real)
+        if (!info.isFile() || info.size > 15 * 1024 * 1024) return null
+        return { dataUrl: `data:${type};base64,${(await readFile(real)).toString('base64')}` }
+      } catch {
+        return null
+      }
+    },
+    media: {
+      async get() {
+        const chosen = getMeta<Record<string, string | null>>(db, 'mediaModels', {})
+        const [images, videos] = await Promise.all([
+          mediaRef!.models('image').catch(() => []),
+          mediaRef!.models('video').catch(() => [])
+        ])
+        return { image: chosen.image ?? null, video: chosen.video ?? null, images, videos }
+      },
+      set: (next) => setMeta(db, 'mediaModels', next)
+    },
+    compare: createComparer({
+      router,
+      locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
+      online: () => connectivity.online()
+    }),
     records,
     connectors,
     speech,
@@ -1078,13 +1167,28 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         return { status: 'refused', output: 'Refused: the task is not running.' }
       if (name === 'run_code')
         return { status: 'refused', output: "Refused: a script can't start another script." }
+      // A script has only its agent's tools (decisions §59.3).
+      const agent = runtime.agentOf(taskId)
+      if (!agent || !runtime.mayUse(taskId, String(name)))
+        return {
+          status: 'refused',
+          output: `Refused: ${task.agent} wasn't given ${String(name)}.`
+        }
       return permissions.execute(
         {
           id: `script-${randomBytes(6).toString('hex')}`,
           name: String(name),
           input: (input ?? {}) as Record<string, unknown>
         },
-        { taskId, agent: AGENT, model: task.model, signal, via: 'script' }
+        {
+          taskId,
+          agent: agent.def.name,
+          model: task.model,
+          signal,
+          via: 'script',
+          alwaysAsk: agent.def.alwaysAsk,
+          ownMemory: agent.def.memory === 'own'
+        }
       )
     }
   })
@@ -1178,6 +1282,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       events,
       memory,
       skills,
+      agents,
       records,
       connectors,
       artifacts,
