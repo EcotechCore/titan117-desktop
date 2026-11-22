@@ -25,6 +25,7 @@ import {
 } from './apps-lib'
 import type { EngineClient } from './engine'
 import { folderName } from './format'
+import { SidebarControls, type SidebarAppInfo } from './SidebarApp'
 import { Icon } from './ui'
 import { OwnKeys } from './Keys'
 import type { KeyProvider } from '../../shared/protocol'
@@ -44,6 +45,8 @@ interface AppInfo {
   problem: string | null
   published: { host: 'cloudflare'; url: string; at: number } | null
   github: { owner: string; repo: string; url: string; sync: boolean; error: string | null } | null
+  /** The project's other targets (6.6). */
+  linked: { kind: 'web' | 'mobile' | 'desktop'; title: string; folder: string }[]
 }
 
 type GitHubSave =
@@ -448,6 +451,17 @@ export function AppsView({
       .catch(() => setEmulatorRunning(false))
   }, [client, changed])
   const [newTarget, setNewTarget] = useState<'web' | 'mobile' | 'desktop'>('web')
+  // An internal tool for the sidebar (6.2), and what's in the sidebar now.
+  const [newSidebar, setNewSidebar] = useState(false)
+  const [sidebarApps, setSidebarApps] = useState<SidebarAppInfo[]>([])
+  const [sidebarTick, setSidebarTick] = useState(0)
+  useEffect(() => {
+    if (!client) return
+    client
+      .get<{ apps: SidebarAppInfo[] }>('/v1/sidebar')
+      .then((r) => setSidebarApps(r.apps))
+      .catch(() => undefined)
+  }, [client, changed, sidebarTick])
   const [busy, setBusy] = useState(false)
   // Visual edit (6.9): pick an element in the preview, then say what to change.
   const frame = useRef<HTMLIFrameElement | null>(null)
@@ -673,7 +687,18 @@ export function AppsView({
                   ))}
                 </select>
               </label>
-              {state && newTarget === 'web' && (
+              {newTarget === 'web' && (
+                <label className="choice">
+                  <input
+                    type="checkbox"
+                    checked={newSidebar}
+                    onChange={(e) => setNewSidebar(e.target.checked)}
+                  />{' '}
+                  An internal tool for the Titan117 sidebar (a CRM, stock, invoices): its data stays
+                  on this laptop, where Titan can read it
+                </label>
+              )}
+              {state && newTarget === 'web' && !newSidebar && (
                 <label className="field">
                   Kind of site
                   <select
@@ -734,7 +759,8 @@ export function AppsView({
                         newDescription,
                         newRequest,
                         newKind,
-                        newTarget
+                        newTarget,
+                        newSidebar
                       )
                     )
                     setCreating(false)
@@ -839,6 +865,76 @@ export function AppsView({
                   {app.checking ? 'Testing…' : 'Test it'}
                 </button>
               </div>
+
+              {client && (
+                <div className="sidebar-review">
+                  <p className="row-title">Other targets of this project</p>
+                  {app.linked.length ? (
+                    <ul>
+                      {app.linked.map((t) => (
+                        <li key={t.folder}>
+                          <button className="link" onClick={() => setChosen(t.folder)}>
+                            {t.title}
+                          </button>{' '}
+                          <span className="muted">
+                            (
+                            {t.kind === 'mobile'
+                              ? 'mobile app'
+                              : t.kind === 'desktop'
+                                ? 'desktop app'
+                                : 'website'}
+                            )
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">
+                      One target per app. If you also want, for example, a mobile app next to this
+                      one, add it: it gets its own folder and screens, and the logic both use stays
+                      in src/shared/.
+                    </p>
+                  )}
+                  <div className="code-actions">
+                    {(['web', 'mobile', 'desktop'] as const)
+                      .filter((k) => k !== app.kind && !app.linked.some((t) => t.kind === k))
+                      .map((k) => (
+                        <button
+                          key={k}
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => act('/v1/apps/target', { folder: app.folder, kind: k })}
+                        >
+                          Add a {k === 'web' ? 'website' : `${k} app`}
+                        </button>
+                      ))}
+                    {app.linked.length > 0 && (
+                      <button
+                        className="btn"
+                        disabled={busy}
+                        onClick={() => act('/v1/apps/share', { folder: app.folder })}
+                      >
+                        Copy shared code to the others
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {app.kind === 'web' && client && (
+                <SidebarControls
+                  key={app.folder}
+                  client={client}
+                  folder={app.folder}
+                  added={sidebarApps.find((s) => s.folder === app.folder) ?? null}
+                  working={!!app.checking}
+                  onChanged={() => {
+                    setSidebarTick((n) => n + 1)
+                    load()
+                  }}
+                  onProblem={fail}
+                />
+              )}
 
               {app.phone && (
                 <div className="apps-phone">

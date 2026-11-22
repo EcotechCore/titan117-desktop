@@ -12,3 +12,9 @@ regexes = [
   '''pk_test_Y2xlcmsuZXhhbXBsZS5jb20k''',
   '''sk_test_placeholder''',
 ]
+
+[[allowlists]]
+description = "Base64 of the words 'not a package', a test input for the sidebar sync core (test/sidebar-more.test.ts, commit d9916b1)"
+regexes = [
+  '''bm90IGEgcGFja2FnZQ==''',
+]

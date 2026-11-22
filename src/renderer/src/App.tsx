@@ -32,6 +32,7 @@ import { SetupView, SetupWizard, type FixHandler } from './Setup'
 import { DocumentsView } from './Documents'
 import { CodeView } from './Code'
 import { AppsView } from './Apps'
+import { SidebarAppView, type SidebarAppInfo } from './SidebarApp'
 import type { ReportMode } from '../../shared/protocol'
 
 const PROMPTS = [
@@ -62,6 +63,16 @@ function App(): React.JSX.Element {
   const [wizard, setWizard] = useState(false)
   // A downloaded update waiting for a restart (1.10).
   const [update, setUpdate] = useState<string | null>(null)
+  // Sidebar apps (6.2): read again whenever the engine says they changed.
+  const [sidebarApps, setSidebarApps] = useState<SidebarAppInfo[]>([])
+  const sidebarChanged = state.changed.sidebar ?? 0
+  useEffect(() => {
+    if (!api) return
+    api
+      .get<{ apps: SidebarAppInfo[] }>('/v1/sidebar')
+      .then((r) => setSidebarApps(r.apps))
+      .catch(() => undefined)
+  }, [api, sidebarChanged])
 
   const { engine, view, model } = state
   const taskId = view.kind === 'task' ? view.id : null
@@ -444,6 +455,19 @@ function App(): React.JSX.Element {
           {titan === 'working' && <span className="shimmer">Working</span>}
         </button>
 
+        {sidebarApps.length > 0 && <p className="label">Your apps</p>}
+        {sidebarApps.map((a) => (
+          <button
+            key={a.id}
+            className={view.kind === 'sidebar-app' && view.id === a.id ? 'nav on' : 'nav'}
+            onClick={() => dispatch({ type: 'view', view: { kind: 'sidebar-app', id: a.id } })}
+          >
+            <Icon name={a.icon} />
+            <span className="nav-text">{a.title}</span>
+            {a.error && <span className="dot dot-error" aria-label="reported an error" />}
+          </button>
+        ))}
+
         <p className="label">Tasks</p>
         <div className="scroll">
           {state.tasks.length === 0 && <p className="hint">No tasks yet.</p>}
@@ -579,6 +603,25 @@ function App(): React.JSX.Element {
               onProblem={fail}
             />
           )}
+          {view.kind === 'sidebar-app' &&
+            (() => {
+              const shown = sidebarApps.find((a) => a.id === view.id)
+              return shown && api ? (
+                <SidebarAppView
+                  client={api}
+                  app={shown}
+                  onAsk={(request) => {
+                    setText(request)
+                    dispatch({ type: 'view', view: { kind: 'start' } })
+                    setTimeout(() => input.current?.focus(), 0)
+                  }}
+                  onFix={(request) => void startNew(request)}
+                  onProblem={fail}
+                />
+              ) : (
+                <p className="hint">This app isn&apos;t in the sidebar any more.</p>
+              )
+            })()}
           {view.kind === 'apps' && (
             <AppsView
               client={api}

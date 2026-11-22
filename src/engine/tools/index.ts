@@ -16,6 +16,7 @@ import { codeReview, codeTask } from './code'
 import { gitTools } from './git'
 import { serverTools } from './servers'
 import { appTools } from './apps'
+import { sidebarTools } from './sidebar'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyTool = ToolDefinition<any>
@@ -33,6 +34,7 @@ export const builtInTools: AnyTool[] = [
   ...gitTools,
   ...serverTools,
   ...appTools,
+  ...sidebarTools,
   ...memoryTools,
   ...speechTools
 ]

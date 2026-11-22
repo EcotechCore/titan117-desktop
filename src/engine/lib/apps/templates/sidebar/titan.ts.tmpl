@@ -1,0 +1,209 @@
+/**
+ * The Titan117 SDK for sidebar apps (written by Titan117; don't edit).
+ *
+ * Inside the Titan117 sidebar, `titan.db` keeps records in this app's own
+ * local database on the laptop, and can read other sidebar apps' data when
+ * titan.json asks for it and the user agreed. Anywhere else (the preview,
+ * tests) it keeps records in this browser only, so the app still works.
+ *
+ *   import { titan } from './titan'
+ *   const contacts = await titan.db.list('contacts', { where: { city: 'Cluj' } })
+ *   await titan.db.insert('contacts', { name: 'Ana', city: 'Cluj' })
+ *   const items = await titan.db.list('inventory/items')   // another app's collection
+ *   titan.agent.ask('Draft a follow-up email to Ana')       // opens Titan with this request
+ *   const text = await titan.ai.ask('Summarise these notes: …')  // needs "ai": true in titan.json
+ */
+
+export type FieldValue = string | number | boolean | null
+
+/** A stored record: your fields plus its id and when it was made and changed. */
+export type Row = { id: string; _created: number; _updated: number } & Record<string, unknown>
+
+export interface Query {
+  /** Fields that must equal these values. */
+  where?: Record<string, FieldValue>
+  /** Text anywhere in the record (case-insensitive). */
+  search?: string
+  orderBy?: string
+  desc?: boolean
+  /** 100 by default, 500 at most. */
+  limit?: number
+  offset?: number
+}
+
+export interface CollectionInfo {
+  name: string
+  count: number
+  fields: string[]
+}
+
+type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void }
+
+/** Inside the Titan117 sidebar, the app is served from Titan117's own address. */
+export const inSidebar = typeof location !== 'undefined' && location.protocol === 'titan117:'
+
+let nextId = 0
+const pending = new Map<number, Pending>()
+
+if (inSidebar) {
+  window.addEventListener('message', (event) => {
+    if (event.source !== window.parent) return
+    const m = event.data as { titan117?: string; id?: number; ok?: boolean; value?: unknown; error?: string }
+    if (!m || m.titan117 !== 'reply' || typeof m.id !== 'number') return
+    const waiting = pending.get(m.id)
+    if (!waiting) return
+    pending.delete(m.id)
+    if (m.ok) waiting.resolve(m.value)
+    else waiting.reject(new Error(m.error ?? 'Titan117 refused that.'))
+  })
+  // Errors go to Titan117, so the user can ask Titan to fix the app.
+  const report = (message: string): void => {
+    void call('app.error', { message: message.slice(0, 2000) }).catch(() => undefined)
+  }
+  window.addEventListener('error', (e) => report(e.message || 'An error'))
+  window.addEventListener('unhandledrejection', (e) =>
+    report(e.reason instanceof Error ? e.reason.message : String(e.reason))
+  )
+}
+
+function call(method: string, args: Record<string, unknown>): Promise<unknown> {
+  if (!inSidebar) return Promise.resolve(local(method, args))
+  const id = ++nextId
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject })
+    window.parent.postMessage({ titan117: 'call', id, method, args }, '*')
+  })
+}
+
+// ---------------------------------------------------------------- outside the sidebar
+
+const memory = new Map<string, Row[]>()
+const KEY = 'titan117-db:'
+
+function rows(collection: string): Row[] {
+  let list = memory.get(collection)
+  if (!list) {
+    list = []
+    try {
+      const saved = globalThis.localStorage?.getItem(KEY + collection)
+      if (saved) list = JSON.parse(saved) as Row[]
+    } catch {
+      /* no storage here */
+    }
+    memory.set(collection, list)
+  }
+  return list
+}
+
+function save(collection: string): void {
+  try {
+    globalThis.localStorage?.setItem(KEY + collection, JSON.stringify(rows(collection)))
+  } catch {
+    /* no storage here */
+  }
+}
+
+function matches(row: Row, query: Query | undefined): boolean {
+  for (const [k, v] of Object.entries(query?.where ?? {})) if ((row[k] ?? null) !== v) return false
+  if (query?.search && !JSON.stringify(row).toLowerCase().includes(query.search.toLowerCase()))
+    return false
+  return true
+}
+
+function local(method: string, args: Record<string, unknown>): unknown {
+  const collection = String(args.collection ?? '')
+  const query = args.query as Query | undefined
+  const now = Date.now()
+  switch (method) {
+    case 'db.collections':
+      return [...memory.keys()].map((name) => ({ name, count: rows(name).length, fields: [] }))
+    case 'db.list': {
+      const found = rows(collection).filter((r) => matches(r, query))
+      const key = query?.orderBy ?? '_updated'
+      found.sort((a, b) => {
+        const x = a[key] as number | string
+        const y = b[key] as number | string
+        return (x < y ? -1 : x > y ? 1 : 0) * (query?.orderBy && !query.desc ? 1 : -1)
+      })
+      const offset = query?.offset ?? 0
+      return found.slice(offset, offset + Math.min(500, query?.limit ?? 100))
+    }
+    case 'db.count':
+      return rows(collection).filter((r) => matches(r, query)).length
+    case 'db.get':
+      return rows(collection).find((r) => r.id === args.id) ?? null
+    case 'db.insert': {
+      const data = { ...(args.data as Record<string, unknown>) }
+      const id = typeof data.id === 'string' ? data.id : Math.random().toString(36).slice(2, 14)
+      const row = { ...data, id, _created: now, _updated: now } as Row
+      rows(collection).push(row)
+      save(collection)
+      return row
+    }
+    case 'db.update': {
+      const row = rows(collection).find((r) => r.id === args.id)
+      if (!row) throw new Error(`There's no record "${String(args.id)}" in ${collection}.`)
+      for (const [k, v] of Object.entries(args.data as Record<string, unknown>)) {
+        if (k === 'id' || k.startsWith('_')) continue
+        if (v === null) delete row[k]
+        else row[k] = v
+      }
+      row._updated = now
+      save(collection)
+      return row
+    }
+    case 'db.remove': {
+      const list = rows(collection)
+      const at = list.findIndex((r) => r.id === args.id)
+      if (at < 0) return false
+      list.splice(at, 1)
+      save(collection)
+      return true
+    }
+    case 'auth.user':
+      return { name: null }
+    case 'agent.ask':
+      return { opened: false }
+    case 'ai.ask':
+      return { text: '(In the Titan117 sidebar, the AI model answers here.)' }
+    default:
+      return null
+  }
+}
+
+// ---------------------------------------------------------------- the SDK
+
+export const titan = {
+  /** Records in this app's local database. "other-app/collection" reads another sidebar app's data. */
+  db: {
+    collections: () => call('db.collections', {}) as Promise<CollectionInfo[]>,
+    list: (collection: string, query?: Query) =>
+      call('db.list', { collection, query }) as Promise<Row[]>,
+    count: (collection: string, query?: Query) =>
+      call('db.count', { collection, query }) as Promise<number>,
+    get: (collection: string, id: string) => call('db.get', { collection, id }) as Promise<Row | null>,
+    insert: (collection: string, data: Record<string, unknown>) =>
+      call('db.insert', { collection, data }) as Promise<Row>,
+    /** Change some fields; a field set to null is removed. */
+    update: (collection: string, id: string, data: Record<string, unknown>) =>
+      call('db.update', { collection, id, data }) as Promise<Row>,
+    remove: (collection: string, id: string) =>
+      call('db.remove', { collection, id }) as Promise<boolean>
+  },
+  /** Who is using Titan117 on this laptop. */
+  auth: {
+    user: () => call('auth.user', {}) as Promise<{ name: string | null }>
+  },
+  /**
+   * One question to the user's AI model; the answer is plain text (no tools). Needs "ai": true in titan.json
+   * and the user's OK; it costs credits, 100 a day at most.
+   */
+  ai: {
+    ask: async (prompt: string): Promise<string> =>
+      ((await call('ai.ask', { prompt })) as { text: string }).text
+  },
+  /** Ask Titan for something: Titan117 opens a new task with this request for the user to send. */
+  agent: {
+    ask: (request: string) => call('agent.ask', { request }) as Promise<{ opened: boolean }>
+  }
+}

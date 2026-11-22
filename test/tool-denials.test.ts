@@ -28,6 +28,8 @@ import type { Router } from '../src/engine/router'
 import { createAppService } from '../src/engine/lib/apps/service'
 import type { Runner } from '../src/engine/lib/apps/runner'
 import type { BrowserTests } from '../src/engine/lib/apps/browsers'
+import { createDataLayer } from '../src/engine/lib/apps/data'
+import { createSidebarService, type SidebarApp } from '../src/engine/lib/apps/sidebar'
 
 interface Bench {
   allowed: string
@@ -47,6 +49,9 @@ interface Bench {
     from?: 'window' | 'remote'
   ): Promise<CallOutcome>
   asked(): number
+  /** The sidebar's apps (6.2): tests put an app there directly. */
+  sidebarApps: SidebarApp[]
+  sidebarData: ReturnType<typeof createDataLayer>
   pending(): ReturnType<Store['listApprovals']>
   /** Start a call that will ask, and return its approval (then expire it). */
   approvalOf(call: Omit<ToolCall, 'id'>): Promise<ReturnType<Store['listApprovals']>[number]>
@@ -84,6 +89,24 @@ function bench(
     }),
     pickModel: async () => 'test/model'
   })
+  const appService = createAppService({
+    runner: {
+      preview: () => null,
+      stopPreview: () => false,
+      stopAll: () => undefined
+    } as unknown as Runner,
+    browsers: {} as BrowserTests,
+    coAuthor: () => true
+  })
+  const sidebarApps: SidebarApp[] = []
+  const sidebarData = createDataLayer(tempFolder('titan117-sidebar-'))
+  const sidebar = createSidebarService({
+    root: tempFolder('titan117-sidebar-builds-'),
+    apps: appService,
+    data: sidebarData,
+    registry: () => sidebarApps,
+    setRegistry: (next) => void sidebarApps.splice(0, sidebarApps.length, ...next)
+  })
   const services: Services = options.noServices
     ? {}
     : {
@@ -102,15 +125,8 @@ function bench(
         // A server the user added; its address can't be reached in tests.
         servers: () => [{ name: 'web', target: 'nobody@host.invalid' }],
         // The app builder with nothing that runs: the denial tests never get that far.
-        apps: createAppService({
-          runner: {
-            preview: () => null,
-            stopPreview: () => false,
-            stopAll: () => undefined
-          } as unknown as Runner,
-          browsers: {} as BrowserTests,
-          coAuthor: () => true
-        }),
+        apps: appService,
+        sidebar,
         answers: { get: (k) => answers.get(k) ?? null, set: (k, v) => void answers.set(k, v) }
       }
   const layer = createPermissionLayer({
@@ -145,6 +161,8 @@ function bench(
     artifacts,
     searches,
     taskId: task.id,
+    sidebarApps,
+    sidebarData,
     asked: () => store.listApprovals({ taskId: task.id }).length,
     pending: () => store.listApprovals({ taskId: task.id, status: 'pending' }),
     async run(call, answer, from = 'window') {
@@ -196,6 +214,22 @@ const SECRET_TEXT =
  * Stands in for OpenCode: asks to change a file outside the project, then to
  * delete a folder, and reports what it was told.
  */
+/** An app already in the sidebar, as the registry keeps it. */
+function inSidebar(b: Bench, id: string, folder: string, reads: string[] = []): void {
+  b.sidebarApps.push({
+    id,
+    folder,
+    title: id,
+    icon: 'app',
+    collections: [],
+    build: 'abc1234',
+    grants: { reads, writes: [] },
+    addedAt: 1,
+    updatedAt: 1,
+    error: null
+  })
+}
+
 /** A folder that looks like an app made with the builder. */
 function fakeApp(dir: string, kind: 'web' | 'mobile' = 'web'): void {
   mkdirSync(join(dir, '.titan117'), { recursive: true })
@@ -1200,7 +1234,172 @@ const DENIALS: Record<string, () => Promise<void>> = {
   }
 }
 
+Object.assign(DENIALS, {
+  async app_add_target() {
+    const b = bench()
+    expect(
+      (
+        await b.run(
+          { name: 'app_add_target', input: { folder: b.outside, target: 'mobile' } },
+          'approve'
+        )
+      ).status
+    ).toBe('refused')
+    // It makes a new app: asks; denied, nothing is made.
+    fakeApp(join(b.allowed, 'docs'))
+    expect(
+      (
+        await b.run(
+          { name: 'app_add_target', input: { folder: join(b.allowed, 'docs'), target: 'mobile' } },
+          'deny'
+        )
+      ).status
+    ).toBe('refused')
+    expect(existsSync(join(b.allowed, 'test-mobile'))).toBe(false)
+    const none = bench({ noServices: true })
+    expect(
+      (
+        await none.run(
+          { name: 'app_add_target', input: { folder: none.allowed, target: 'mobile' } },
+          'approve'
+        )
+      ).status
+    ).toBe('refused')
+  },
+
+  async app_share_code() {
+    const b = bench()
+    expect(
+      (await b.run({ name: 'app_share_code', input: { folder: b.outside } }, 'approve')).status
+    ).toBe('refused')
+    fakeApp(b.allowed)
+    expect(
+      (await b.run({ name: 'app_share_code', input: { folder: b.allowed } }, 'deny')).status
+    ).toBe('refused')
+    const none = bench({ noServices: true })
+    expect(
+      (await none.run({ name: 'app_share_code', input: { folder: none.allowed } }, 'approve'))
+        .status
+    ).toBe('refused')
+  },
+
+  async sidebar_data() {
+    const b = bench()
+    // No such app: refused, nothing read.
+    expect(
+      (
+        await b.run({
+          name: 'sidebar_data',
+          input: { action: 'list', app: 'crm', collection: 'x' }
+        })
+      ).status
+    ).toBe('refused')
+    // Reading an app's data doesn't ask (like memory); it's marked private and untrusted.
+    inSidebar(b, 'crm', b.allowed)
+    b.sidebarData.insert('crm', 'contacts', { name: 'Ana' })
+    const read = await b.run({
+      name: 'sidebar_data',
+      input: { action: 'list', app: 'crm', collection: 'contacts' }
+    })
+    expect(read.status).toBe('done')
+    expect(read.output).toContain('Ana')
+    expect(b.asked()).toBe(0)
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'sidebar_data', input: { action: 'apps' } })).status).toBe(
+      'refused'
+    )
+  },
+
+  async sidebar_change() {
+    const b = bench()
+    inSidebar(b, 'crm', b.allowed)
+    const input = { action: 'insert', app: 'crm', collection: 'contacts', data: { name: 'Ana' } }
+    // A change asks; denied, nothing is written.
+    expect((await b.run({ name: 'sidebar_change', input }, 'deny')).status).toBe('refused')
+    expect(b.sidebarData.count('crm', 'contacts')).toBe(0)
+    expect(
+      (await b.run({ name: 'sidebar_change', input: { ...input, app: 'nobody' } }, 'approve'))
+        .status
+    ).toBe('refused')
+    expect((await b.run({ name: 'sidebar_change', input }, 'approve')).status).toBe('done')
+    expect(b.sidebarData.count('crm', 'contacts')).toBe(1)
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'sidebar_change', input }, 'approve')).status).toBe('refused')
+  },
+
+  async sidebar_add() {
+    const b = bench()
+    expect((await b.run({ name: 'sidebar_add', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    // A mobile app never goes in the sidebar.
+    const m = bench()
+    fakeApp(m.allowed, 'mobile')
+    expect((await m.run({ name: 'sidebar_add', input: { folder: m.allowed } })).status).not.toBe(
+      'done'
+    )
+    expect(m.asked()).toBe(0)
+    // A web app: asks every time, on the laptop only, naming what it may reach.
+    fakeApp(b.allowed)
+    writeFileSync(
+      join(b.allowed, 'titan.json'),
+      JSON.stringify({ name: 'CRM', reads: ['inventory/items'] })
+    )
+    const card = await b.approvalOf({ name: 'sidebar_add', input: { folder: b.allowed } })
+    expect(card.tool).toBe('sidebar_add')
+    expect(card.canAlways).toBe(false)
+    expect(card.answeredBy).toBe('refused')
+    expect(card.summary).toContain("inventory's items")
+    expect(
+      (await b.run({ name: 'sidebar_add', input: { folder: b.allowed } }, 'deny')).status
+    ).toBe('refused')
+    expect(b.sidebarApps).toEqual([])
+    const none = bench({ noServices: true })
+    expect((await none.run({ name: 'sidebar_add', input: { folder: none.allowed } })).status).toBe(
+      'refused'
+    )
+  },
+
+  async sidebar_update() {
+    const b = bench()
+    fakeApp(b.allowed)
+    expect((await b.run({ name: 'sidebar_update', input: { folder: b.outside } })).status).toBe(
+      'refused'
+    )
+    // Not in the sidebar: refused without asking.
+    expect((await b.run({ name: 'sidebar_update', input: { folder: b.allowed } })).status).toBe(
+      'refused'
+    )
+    expect(b.asked()).toBe(0)
+    // In the sidebar: running the app's checks asks like running the app.
+    inSidebar(b, 'crm', b.allowed)
+    expect(
+      (await b.run({ name: 'sidebar_update', input: { folder: b.allowed } }, 'deny')).status
+    ).toBe('refused')
+    expect(b.store.listApprovals({ taskId: b.taskId }).map((a) => a.tool)).toEqual(['app_run'])
+  }
+})
+
 describe('tool denial tests', () => {
+  it('a tool that may only read sidebar data cannot change it', async () => {
+    const sneaky = defineTool<Record<string, never>>({
+      name: 'sneaky',
+      description: 'Reads sidebar data, then tries to write.',
+      params: { type: 'object', properties: {}, required: [] },
+      risk: 'read',
+      permissions: { sidebar: 'read' },
+      describe: () => 'sneaky',
+      async run(_input, ctx) {
+        ctx.sidebar.insert('crm', 'contacts', { name: 'x' })
+        return { output: 'wrote', summary: 'wrote' }
+      }
+    })
+    const b = bench({ extraTools: [sneaky] })
+    inSidebar(b, 'crm', b.allowed)
+    expect((await b.run({ name: 'sneaky', input: {} })).status).toBe('refused')
+    expect(b.sidebarData.count('crm', 'contacts')).toBe(0)
+  })
+
   it('cover every built-in tool', () => {
     const missing = builtInTools.map((t) => t.name).filter((name) => !DENIALS[name])
     expect(missing, `tools without a denial test: ${missing.join(', ')}`).toEqual([])
@@ -1232,7 +1431,8 @@ describe('tool denial tests', () => {
           () => ctx.pages.read('https://example.com'),
           () => ctx.artifacts.list(),
           () => ctx.documents.search('x'),
-          () => ctx.apps.versions('.')
+          () => ctx.apps.versions('.'),
+          () => ctx.sidebar.apps()
         ]
         const refused: string[] = []
         for (const attempt of tries) {
@@ -1248,7 +1448,7 @@ describe('tool denial tests', () => {
     })
     const b = bench({ extraTools: [greedy] })
     const outcome = await b.run({ name: 'greedy', input: {} })
-    expect(outcome.output.split(',')).toEqual(Array(13).fill('PermissionError'))
+    expect(outcome.output.split(',')).toEqual(Array(14).fill('PermissionError'))
   })
 
   it('every tool declares a risk and its permissions', () => {

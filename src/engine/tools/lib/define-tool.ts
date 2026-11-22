@@ -64,6 +64,8 @@ export interface ToolPermissions {
   servers?: boolean
   /** The app builder's projects: create, check, preview, versions (§6, decisions §56). */
   apps?: boolean
+  /** Sidebar apps' data (6.11): reading it, or also changing it and adding apps (decisions §58). */
+  sidebar?: 'read' | 'write'
 }
 
 /** The user's own servers (3.15): only the ones they added in the app. */
@@ -116,6 +118,8 @@ export interface AppAccess {
     lang?: string
     starter?: import('../../lib/apps/starters').StarterId
     kind?: import('../../lib/apps/template').AppKind
+    /** Ready for the Titan117 sidebar (6.2). */
+    sidebar?: boolean
   }): Promise<import('../../lib/apps/service').AppInfo>
   info(folder: string): Promise<import('../../lib/apps/service').AppInfo>
   /** Show the plan for approval (6.7). Approved: the build's file changes and the app's checks run without asking again in this task. */
@@ -133,6 +137,13 @@ export interface AppAccess {
   ): Promise<{ sha: string; pushed: string | null; pushError: string | null } | null>
   versions(folder: string): Promise<import('../../lib/git').GitVersion[]>
   restore(folder: string, sha: string): Promise<{ sha: string }>
+  /** Another target for the same project (6.6), made beside the app. */
+  addTarget(
+    folder: string,
+    kind: import('../../lib/apps/template').AppKind
+  ): Promise<import('../../lib/apps/service').AppInfo>
+  /** Copy the app's `src/shared/` to its other targets. */
+  shareCode(folder: string): Promise<{ updated: string[] }>
   /** Save to the user's own GitHub (6.18): asks every time, on the laptop only. */
   saveToGitHub(
     folder: string,
@@ -141,6 +152,43 @@ export interface AppAccess {
   /** Publish to the user's own hosting (6.15): asks every time, on the laptop only. */
   publish(folder: string): Promise<import('../../lib/apps/service').Published>
   models(): AppModels
+}
+
+/** Sidebar apps and their shared data (6.2, 6.11, 6.14; decisions §58). */
+export interface SidebarAccess {
+  /** The apps in the sidebar, each with its collections. */
+  apps(): {
+    id: string
+    title: string
+    folder: string
+    collections: import('../../lib/apps/data').CollectionInfo[]
+    reads: string[]
+    writes: string[]
+    error: string | null
+  }[]
+  list(
+    app: string,
+    collection: string,
+    query?: import('../../lib/apps/data').Query
+  ): import('../../lib/apps/data').Row[]
+  count(app: string, collection: string, query?: import('../../lib/apps/data').Query): number
+  get(app: string, collection: string, id: string): import('../../lib/apps/data').Row | null
+  insert(app: string, collection: string, data: unknown): import('../../lib/apps/data').Row
+  update(
+    app: string,
+    collection: string,
+    id: string,
+    data: unknown
+  ): import('../../lib/apps/data').Row
+  remove(app: string, collection: string, id: string): boolean
+  /** Add a web app to the sidebar: asks every time, on the laptop only, showing what data it may reach. */
+  add(folder: string): Promise<import('../../lib/apps/sidebar').SidebarApp>
+  /** A new build of a sidebar app; runs its checks (asks like running the app). */
+  refresh(folder: string): Promise<import('../../lib/apps/sidebar').UpdateResult>
+  /** Whether the app in this folder is in the sidebar. */
+  inSidebar(folder: string): Promise<boolean>
+  /** A sidebar app gets the current SDK before it's built (inside its own folder). */
+  refreshSdk(folder: string): Promise<boolean>
 }
 
 /** The folder agent's view of the document folders (§7, decisions §51). */
@@ -180,6 +228,7 @@ export interface ToolContext {
   git: GitAccess
   servers: ServerAccess
   apps: AppAccess
+  sidebar: SidebarAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.

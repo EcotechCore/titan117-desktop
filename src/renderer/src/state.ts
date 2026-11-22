@@ -25,6 +25,8 @@ export type View =
   | { kind: 'documents' }
   | { kind: 'code' }
   | { kind: 'apps' }
+  /** A sidebar app (6.2), by its id. */
+  | { kind: 'sidebar-app'; id: string }
 
 export interface AppState {
   status: 'connecting' | 'ready' | 'lost'

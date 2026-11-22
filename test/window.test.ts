@@ -115,7 +115,9 @@ describe('artifacts in the window (decisions §44)', () => {
   it('lets the page frame only the artifact sandbox and app previews on 127.0.0.1', () => {
     const html = readFileSync(join(__dirname, '../src/renderer/index.html'), 'utf8')
     // Phase 8: an app's live preview runs on this laptop's 127.0.0.1 only.
-    expect(html).toMatch(/frame-src titan117:\/\/sandbox http:\/\/127\.0\.0\.1:\*;/)
+    expect(html).toMatch(
+      /frame-src titan117:\/\/sandbox titan117:\/\/\*\.apps http:\/\/127\.0\.0\.1:\*;/
+    )
     expect(html).toMatch(/default-src 'none'/)
   })
 })
