@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 22 Nov 2026 · Phase 10 merged
+
+The phase 10 pull requests are merged into `main` in all three repos (web #38, desktop #36, pop #33). The owner checklist now says to run the desktop app from `main` for phases 9 and 10, and its "Where the code is" line is current. Secret scanning flagged a fake base64 test value in the sync test; it's built at run time now and allowlisted with its reason in the desktop repo's `.gitleaks.toml`.
+
 ### 22 Nov 2026 · Phase 10: titan.ai, another target, the sync core
 
 - **`titan.ai`** (decisions §58.10): `await titan.ai.ask("…")` returns text from the user's default model, no tools; only with `"ai": true` in `titan.json` and the user's OK (the review and the approval card name the cost); 100 questions a day per app; today's questions and cost in the sidebar's header. `app_build` now brings a sidebar app's SDK up to date before building (found in the built app: an app made earlier still had the old SDK).
