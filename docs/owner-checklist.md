@@ -2,7 +2,7 @@
 
 Everything waiting on the owner, in the order to do it. Gathered from every repo's progress log; last rewritten 15 Nov 2026 after phase 4's leftovers and the first part of phase 5. Shared doc: edited in `titan117-web`, copied to the other repos. When an item is done, tick it here and add a line to `progress.md`; when the build adds a new one, it goes here in the same commit.
 
-**Where the code is:** everything up to phase 6's first part is merged into `main` in all three repos (16 Nov 2026). **Production waits** (decisions §52): everything is checked locally first.
+**Where the code is:** everything up to phase 10 is merged into `main` in all three repos (22 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
 
 ## Step 1 · Push and review
 
@@ -39,9 +39,9 @@ Nothing here blocks the next part of phase 8 except where it says so.
 
 ## Phase 9 · The app builder for mobile and desktop (started 21 Nov 2026)
 
-Nothing here blocks phase 8's last steps. The first part (mobile apps with Expo, Expo Go on your phone, the laptop check, and desktop apps with Tauri up to the installer) is on the `phase-9-app-builder` branch of the desktop repo.
+Nothing here blocks phase 8's last steps. What's built (mobile apps with Expo, Expo Go on your phone, the laptop check, and desktop apps with Tauri up to the installer) is merged into `main`.
 
-- [ ] **Try a mobile app** (the desktop app from that branch, with `pnpm dev`): Apps → New app → **Mobile app (iPhone and Android)**, a name, a sentence and what to build first. Approve the plan, then look at the Preview and the Test report (phone sizes in Chromium and WebKit).
+- [ ] **Try a mobile app** (the desktop app from `main`, with `pnpm dev`): Apps → New app → **Mobile app (iPhone and Android)**, a name, a sentence and what to build first. Approve the plan, then look at the Preview and the Test report (phone sizes in Chromium and WebKit).
 - [ ] **Try a desktop app:** Apps → New app → **Desktop app (Windows and Mac)**, then Preview (Desktop size) and Test it. Making its Windows installer needs the two installs below.
 - [ ] **Try it on your phone:** install **Expo Go** (free, App Store or Google Play), put the phone on the same Wi-Fi as the laptop, press **Open on your phone** and scan the code (Android: in Expo Go; iPhone: with the Camera). If Windows asks whether Node.js may use networks, allow **private networks** only. Tell Claude whether it opened on Android and on an iPhone (that's half of phase 9's check).
 - [ ] **Decisions §57** (to be confirmed): Expo for mobile apps with no Expo account and nothing sent to Expo; Expo Go on the same Wi-Fi only, asking every time, never Expo's public tunnel; the laptop check; the plan for the emulator, Tauri (NSIS installers, not WiX), Windows Sandbox, Podman before Docker, Maestro with its own Java; Expo EAS, store publishing and device farms only after written answers.
@@ -57,9 +57,9 @@ Nothing here blocks phase 8's last steps. The first part (mobile apps with Expo,
 
 ## Phase 10 · Sidebar apps (started 22 Nov 2026)
 
-Nothing here blocks phases 8 and 9. The first part is on the `phase-10-sidebar-apps` branch of the desktop repo.
+Nothing here blocks phases 8 and 9. Phase 10 is merged into `main` (22 Nov 2026) and done, except sync between devices, which waits for phase 15.
 
-- [ ] **Try two sidebar apps** (the desktop app from that branch, with `pnpm dev`): Apps → New app → Website or web app → tick **An internal tool for the Titan117 sidebar**. Make an **Inventory** first (items with quantities and prices), then a **CRM** whose orders pick items from the inventory (say so in what to build first). Approve the plan and the **Add to the sidebar** card, which lists what the app may reach. Both then show under **Your apps** in the sidebar. Add a few records, then ask Titan something that needs both, for example "Which customers ordered items that are low in stock?" (phase 10's check).
+- [ ] **Try two sidebar apps** (the desktop app from `main`, with `pnpm dev`): Apps → New app → Website or web app → tick **An internal tool for the Titan117 sidebar**. Make an **Inventory** first (items with quantities and prices), then a **CRM** whose orders pick items from the inventory (say so in what to build first). Approve the plan and the **Add to the sidebar** card, which lists what the app may reach. Both then show under **Your apps** in the sidebar. Add a few records, then ask Titan something that needs both, for example "Which customers ordered items that are low in stock?" (phase 10's check).
 - [ ] **Try the rest of phase 10:** ask Titan to give the CRM a "Draft follow-up" button that uses `titan.ai`; then on the Apps screen open the CRM, press **Review what it reaches** and **Update it** (the card says the AI costs credits). On the Inventory, press **Add a mobile app** and look at the new linked app.
 - [ ] **Decisions §58** (to be confirmed): one local database per app as the shared data layer; an app reaches another app's data only as its `titan.json` asks and you agreed; the sidebar runs a checked build with no network; Titan reads the apps' data without asking and changes it with your OK; sync waits for phase 15 and will be end to end encrypted (Electric, Zero and PowerSync aren't used because their servers read the data; Evolu is the model); `titan.ai` limited to 100 questions a day per app, only with your OK; another target as a linked app sharing `src/shared/`; the sync core with AES-256-GCM, its transport after phase 15.
 
