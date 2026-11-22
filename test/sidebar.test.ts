@@ -226,7 +226,8 @@ describe('sidebar apps', () => {
       icon: 'app',
       collections: [],
       reads: [],
-      writes: []
+      writes: [],
+      ai: false
     })
     writeFileSync(join(dir, 'titan.json'), JSON.stringify({ reads: ['../../etc'] }))
     expect(() => readManifest(dir, 'x')).toThrow(/isn't another app's collection/)

@@ -1235,6 +1235,54 @@ const DENIALS: Record<string, () => Promise<void>> = {
 }
 
 Object.assign(DENIALS, {
+  async app_add_target() {
+    const b = bench()
+    expect(
+      (
+        await b.run(
+          { name: 'app_add_target', input: { folder: b.outside, target: 'mobile' } },
+          'approve'
+        )
+      ).status
+    ).toBe('refused')
+    // It makes a new app: asks; denied, nothing is made.
+    fakeApp(join(b.allowed, 'docs'))
+    expect(
+      (
+        await b.run(
+          { name: 'app_add_target', input: { folder: join(b.allowed, 'docs'), target: 'mobile' } },
+          'deny'
+        )
+      ).status
+    ).toBe('refused')
+    expect(existsSync(join(b.allowed, 'test-mobile'))).toBe(false)
+    const none = bench({ noServices: true })
+    expect(
+      (
+        await none.run(
+          { name: 'app_add_target', input: { folder: none.allowed, target: 'mobile' } },
+          'approve'
+        )
+      ).status
+    ).toBe('refused')
+  },
+
+  async app_share_code() {
+    const b = bench()
+    expect(
+      (await b.run({ name: 'app_share_code', input: { folder: b.outside } }, 'approve')).status
+    ).toBe('refused')
+    fakeApp(b.allowed)
+    expect(
+      (await b.run({ name: 'app_share_code', input: { folder: b.allowed } }, 'deny')).status
+    ).toBe('refused')
+    const none = bench({ noServices: true })
+    expect(
+      (await none.run({ name: 'app_share_code', input: { folder: none.allowed } }, 'approve'))
+        .status
+    ).toBe('refused')
+  },
+
   async sidebar_data() {
     const b = bench()
     // No such app: refused, nothing read.

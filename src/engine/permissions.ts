@@ -11,6 +11,7 @@
  * It also keeps what each task has seen (security.md A3): private output
  * makes the task private, and its passages may not leave in a web request.
  */
+import { dirname } from 'node:path'
 import type { ApprovalAnswer, Risk, ToolCall } from '../shared/protocol'
 import type { BrowserAccess, BrowserHost } from './lib/browser'
 import {
@@ -739,6 +740,18 @@ export function createPermissionLayer(deps: {
             appService().saveVersion(await appFolder(folder), message),
           versions: async (folder) => appService().versions(await resolveAllowed(policy, folder)),
           restore: async (folder, sha) => appService().restore(await appFolder(folder), sha),
+          async addTarget(folder, kind) {
+            const real = await appFolder(folder)
+            // The new app is made beside this one: that folder must be writable too.
+            await checkWritable(policy, dirname(real))
+            return appService().addTarget(real, kind)
+          },
+          async shareCode(folder) {
+            const real = await appFolder(folder)
+            for (const target of appService().info(real).linked)
+              await checkWritable(policy, target.folder)
+            return appService().shareCode(real)
+          },
           async publish(folder) {
             const real = await appFolder(folder)
             const app = appService().info(real)
@@ -859,11 +872,16 @@ export function createPermissionLayer(deps: {
               ctx,
               `${callId}-sidebar`,
               'sidebar_add',
-              { folder, reads: review.manifest.reads, writes: review.manifest.writes },
+              {
+                folder,
+                reads: review.manifest.reads,
+                writes: review.manifest.writes,
+                ai: review.manifest.ai
+              },
               {
                 risk: 'write',
                 alwaysAsks: true,
-                summary: `${review.added ? 'Update' : 'Add'} "${review.title}" ${review.added ? 'in' : 'to'} the Titan117 sidebar: Titan117 saves a version, runs its checks (its own code) and shows it with no network; it keeps its own data on this laptop${reach.length ? ` and may ${reach.join(', ')}` : ''}`
+                summary: `${review.added ? 'Update' : 'Add'} "${review.title}" ${review.added ? 'in' : 'to'} the Titan117 sidebar: Titan117 saves a version, runs its checks (its own code) and shows it with no network; it keeps its own data on this laptop${reach.length ? ` and may ${reach.join(', ')}` : ''}${review.manifest.ai ? '. It may also send questions to your default AI model (costs credits, at most 100 a day)' : ''}`
               },
               true
             )
@@ -877,7 +895,11 @@ export function createPermissionLayer(deps: {
             )
             return sidebarService().add(
               real,
-              { reads: review.manifest.reads, writes: review.manifest.writes },
+              {
+                reads: review.manifest.reads,
+                writes: review.manifest.writes,
+                ai: review.manifest.ai
+              },
               (note) => activity(ctx, 'tool', 'sidebar_add', note)
             )
           },
@@ -894,6 +916,12 @@ export function createPermissionLayer(deps: {
             return sidebarService().update(real, (note) =>
               activity(ctx, 'tool', 'sidebar_update', note)
             )
+          },
+          async refreshSdk(folder) {
+            sidebarWrite()
+            // No sidebar here (tests, an engine without it): nothing to refresh.
+            if (!services.sidebar) return false
+            return services.sidebar.refreshSdk(await appFolder(folder))
           },
           async inSidebar(folder) {
             const real = await resolveAllowed(policy, folder)

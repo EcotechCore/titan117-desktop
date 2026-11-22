@@ -45,6 +45,8 @@ interface AppInfo {
   problem: string | null
   published: { host: 'cloudflare'; url: string; at: number } | null
   github: { owner: string; repo: string; url: string; sync: boolean; error: string | null } | null
+  /** The project's other targets (6.6). */
+  linked: { kind: 'web' | 'mobile' | 'desktop'; title: string; folder: string }[]
 }
 
 type GitHubSave =
@@ -863,6 +865,61 @@ export function AppsView({
                   {app.checking ? 'Testing…' : 'Test it'}
                 </button>
               </div>
+
+              {client && (
+                <div className="sidebar-review">
+                  <p className="row-title">Other targets of this project</p>
+                  {app.linked.length ? (
+                    <ul>
+                      {app.linked.map((t) => (
+                        <li key={t.folder}>
+                          <button className="link" onClick={() => setChosen(t.folder)}>
+                            {t.title}
+                          </button>{' '}
+                          <span className="muted">
+                            (
+                            {t.kind === 'mobile'
+                              ? 'mobile app'
+                              : t.kind === 'desktop'
+                                ? 'desktop app'
+                                : 'website'}
+                            )
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">
+                      One target per app. If you also want, for example, a mobile app next to this
+                      one, add it: it gets its own folder and screens, and the logic both use stays
+                      in src/shared/.
+                    </p>
+                  )}
+                  <div className="code-actions">
+                    {(['web', 'mobile', 'desktop'] as const)
+                      .filter((k) => k !== app.kind && !app.linked.some((t) => t.kind === k))
+                      .map((k) => (
+                        <button
+                          key={k}
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => act('/v1/apps/target', { folder: app.folder, kind: k })}
+                        >
+                          Add a {k === 'web' ? 'website' : `${k} app`}
+                        </button>
+                      ))}
+                    {app.linked.length > 0 && (
+                      <button
+                        className="btn"
+                        disabled={busy}
+                        onClick={() => act('/v1/apps/share', { folder: app.folder })}
+                      >
+                        Copy shared code to the others
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {app.kind === 'web' && client && (
                 <SidebarControls

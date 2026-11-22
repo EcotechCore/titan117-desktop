@@ -7,7 +7,7 @@
  */
 import { randomBytes } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 
 import {
@@ -72,6 +72,15 @@ export interface AppMeta {
   title: string
   template: string
   createdAt: number
+  /** Other targets of the same project (6.6): folder names beside this one. */
+  targets?: string[]
+}
+
+/** Another target of the same project, as the Apps screen shows it. */
+export interface LinkedTarget {
+  kind: AppKind
+  title: string
+  folder: string
 }
 
 export interface AppInfo extends AppMeta {
@@ -84,6 +93,8 @@ export interface AppInfo extends AppMeta {
   github: GitHubLink | null
   /** Where it was last published (6.15). */
   published: Published | null
+  /** The project's other targets (6.6), when it has any. */
+  linked: LinkedTarget[]
 }
 
 export interface Published {
@@ -200,6 +211,10 @@ export interface AppService {
   zip(dir: string): Promise<{ name: string; data: Buffer }>
   versions(dir: string): Promise<GitVersion[]>
   restore(dir: string, sha: string): Promise<{ sha: string }>
+  /** Another target for the same project (6.6): a new app beside this one, sharing `src/shared/`. */
+  addTarget(dir: string, kind: AppKind): Promise<AppInfo>
+  /** Copy this app's `src/shared/` to its other targets, saved as a version in each that changed. */
+  shareCode(dir: string): Promise<{ updated: string[] }>
   stopAll(): void
 }
 
@@ -240,8 +255,25 @@ export function createAppService(deps: {
       preview: runner.preview(dir)?.url ?? null,
       phone: runner.preview(dir)?.phone ?? null,
       github: deps.github?.links()[dir] ?? null,
-      published: deps.hosting?.published()[dir] ?? null
+      published: deps.hosting?.published()[dir] ?? null,
+      linked: linkedOf(dir, meta)
     }
+  }
+
+  /** The project's other targets that still exist beside this app. */
+  function linkedOf(dir: string, meta: AppMeta): LinkedTarget[] {
+    const out: LinkedTarget[] = []
+    for (const name of meta.targets ?? []) {
+      if (!/^[a-z0-9][a-z0-9-]{0,80}$/.test(name)) continue
+      const folder = join(dirname(dir), name)
+      const other = readMeta(folder)
+      if (other) out.push({ kind: other.kind, title: other.title, folder })
+    }
+    return out
+  }
+
+  async function writeMeta(dir: string, meta: AppMeta): Promise<void> {
+    await writeFile(join(dir, META), JSON.stringify(meta, null, 2) + '\n')
   }
 
   function setLink(dir: string, link: GitHubLink | null): void {
@@ -696,6 +728,78 @@ export function createAppService(deps: {
     },
 
     versions: (dir: string): Promise<GitVersion[]> => gitLog(dir, 100),
+
+    async addTarget(dir, kind) {
+      const main = info(dir)
+      if (!APP_KINDS.includes(kind)) throw new AppError('A target is web, mobile or desktop.')
+      if (main.kind === kind) throw new AppError(`"${main.title}" is already a ${kind} app.`)
+      if (main.linked.some((t) => t.kind === kind))
+        throw new AppError(`"${main.title}" already has a ${kind} app.`)
+      const label = { web: 'web', mobile: 'mobile', desktop: 'desktop' }[kind]
+      const made = await this.create(dirname(dir), {
+        kind,
+        title: `${main.title} ${label}`,
+        description: `The ${label} app of ${main.title}.`
+      })
+      const shared = join(dir, 'src', 'shared')
+      if (existsSync(shared))
+        await cp(shared, join(made.folder, 'src', 'shared'), { recursive: true, force: true })
+      const note = (other: string, otherKind: AppKind): string =>
+        [
+          '',
+          '## Another target of the same project',
+          '',
+          `This project also has a ${otherKind} app in \`../${basename(other)}\`. Logic both use (types, calculations, validation, data shapes) lives in \`src/shared/\`: plain TypeScript with no React, React Native, browser or Node APIs, so it runs in both. Change it here and Titan117 copies it to the other app; keep each app's screens in its own code.`,
+          ...(otherKind === 'web' && existsSync(join(other, 'titan.json'))
+            ? [
+                `The web app keeps its data in the Titan117 sidebar on the laptop, which this app can't reach yet (sync comes later): keep this app's data on the device for now, in the same shapes as \`src/shared/\`.`
+              ]
+            : []),
+          ''
+        ].join('\n')
+      for (const [target, other, otherKind] of [
+        [made.folder, dir, main.kind],
+        [dir, made.folder, kind]
+      ] as const) {
+        const agents = join(target, 'AGENTS.md')
+        const text = existsSync(agents) ? await readFile(agents, 'utf8') : ''
+        await writeFile(agents, text + note(other, otherKind))
+        await mkdir(join(target, 'src', 'shared'), { recursive: true })
+        const readme = join(target, 'src', 'shared', 'README.md')
+        if (!existsSync(readme))
+          await writeFile(
+            readme,
+            '# Shared code\n\nLogic every target of this project uses. Plain TypeScript only (no React, React Native, browser or Node APIs). Titan117 copies this folder between the targets.\n'
+          )
+        const meta = readMeta(target) as AppMeta
+        await writeMeta(target, {
+          ...meta,
+          targets: [...new Set([...(meta.targets ?? []), basename(other)])]
+        })
+      }
+      await gitCommit(made.folder, {
+        message: `Linked to ${main.title} (${main.kind}), with its shared code`,
+        coAuthor: deps.coAuthor()
+      })
+      await saveVersion(dir, `Linked to its new ${label} app`)
+      deps.onChange?.()
+      return info(made.folder)
+    },
+
+    async shareCode(dir) {
+      const app = info(dir)
+      const shared = join(dir, 'src', 'shared')
+      if (!existsSync(shared)) throw new AppError(`"${app.title}" has no src/shared folder.`)
+      const updated: string[] = []
+      for (const target of app.linked) {
+        const to = join(target.folder, 'src', 'shared')
+        await rm(to, { recursive: true, force: true })
+        await cp(shared, to, { recursive: true })
+        if (await saveVersion(target.folder, `Shared code from ${app.title}`))
+          updated.push(target.folder)
+      }
+      return { updated }
+    },
 
     async restore(dir: string, sha: string): Promise<{ sha: string }> {
       const versions = await gitLog(dir, 500)

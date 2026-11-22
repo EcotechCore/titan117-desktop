@@ -26,6 +26,8 @@ This app runs in the Titan117 sidebar. Keep its data with the \`titan\` SDK in \
 - Collection names: lowercase letters, digits and \`_\` (\`contacts\`, \`order_lines\`). List every collection the app keeps in \`titan.json\` under "collections".
 - Another sidebar app's data: \`titan.db.list('inventory/items')\` (that app's id, a slash, its collection). Name it in \`titan.json\` under "reads" (or "writes" to change it); the user agrees before the app gets it.
 - \`titan.agent.ask('…')\` opens Titan with a request the user can send.
+- \`const text = await titan.ai.ask('…')\` gives a short answer as a string from the user's AI model (summaries, drafts, sorting text). Only when the request needs it: set \`"ai": true\` in \`titan.json\`; it costs credits and the user agrees first. Show a loading state and the error if it fails.
+- Look: use the theme colours in \`src/index.css\` (the brand kit) for buttons and accents, never black buttons; quiet borders, white cards, compact tables.
 - No \`fetch\`, no other websites, no localStorage: inside the sidebar the app has no network and its data lives only in \`titan.db\`. Outside the sidebar (preview, tests) \`titan.db\` keeps records in memory, so tests work.
 - Show a short message while data loads and when a list is empty; catch errors from \`titan.db\` and show them.
 - The sidebar is about 900 pixels wide or more: a compact layout with a table or list and a form works well.
@@ -34,7 +36,10 @@ This app runs in the Titan117 sidebar. Keep its data with the \`titan\` SDK in \
 /** A new `titan.json`. */
 export function manifestText(title: string): string {
   return (
-    JSON.stringify({ name: title, icon: 'app', collections: [], reads: [], writes: [] }, null, 2) +
-    '\n'
+    JSON.stringify(
+      { name: title, icon: 'app', collections: [], reads: [], writes: [], ai: false },
+      null,
+      2
+    ) + '\n'
   )
 }

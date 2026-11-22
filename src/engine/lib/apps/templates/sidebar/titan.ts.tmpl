@@ -11,6 +11,7 @@
  *   await titan.db.insert('contacts', { name: 'Ana', city: 'Cluj' })
  *   const items = await titan.db.list('inventory/items')   // another app's collection
  *   titan.agent.ask('Draft a follow-up email to Ana')       // opens Titan with this request
+ *   const text = await titan.ai.ask('Summarise these notes: …')  // needs "ai": true in titan.json
  */
 
 export type FieldValue = string | number | boolean | null
@@ -163,6 +164,8 @@ function local(method: string, args: Record<string, unknown>): unknown {
       return { name: null }
     case 'agent.ask':
       return { opened: false }
+    case 'ai.ask':
+      return { text: '(In the Titan117 sidebar, the AI model answers here.)' }
     default:
       return null
   }
@@ -190,6 +193,14 @@ export const titan = {
   /** Who is using Titan117 on this laptop. */
   auth: {
     user: () => call('auth.user', {}) as Promise<{ name: string | null }>
+  },
+  /**
+   * One question to the user's AI model; the answer is plain text (no tools). Needs "ai": true in titan.json
+   * and the user's OK; it costs credits, 100 a day at most.
+   */
+  ai: {
+    ask: async (prompt: string): Promise<string> =>
+      ((await call('ai.ask', { prompt })) as { text: string }).text
   },
   /** Ask Titan for something: Titan117 opens a new task with this request for the user to send. */
   agent: {

@@ -137,6 +137,13 @@ export interface AppAccess {
   ): Promise<{ sha: string; pushed: string | null; pushError: string | null } | null>
   versions(folder: string): Promise<import('../../lib/git').GitVersion[]>
   restore(folder: string, sha: string): Promise<{ sha: string }>
+  /** Another target for the same project (6.6), made beside the app. */
+  addTarget(
+    folder: string,
+    kind: import('../../lib/apps/template').AppKind
+  ): Promise<import('../../lib/apps/service').AppInfo>
+  /** Copy the app's `src/shared/` to its other targets. */
+  shareCode(folder: string): Promise<{ updated: string[] }>
   /** Save to the user's own GitHub (6.18): asks every time, on the laptop only. */
   saveToGitHub(
     folder: string,
@@ -180,6 +187,8 @@ export interface SidebarAccess {
   refresh(folder: string): Promise<import('../../lib/apps/sidebar').UpdateResult>
   /** Whether the app in this folder is in the sidebar. */
   inSidebar(folder: string): Promise<boolean>
+  /** A sidebar app gets the current SDK before it's built (inside its own folder). */
+  refreshSdk(folder: string): Promise<boolean>
 }
 
 /** The folder agent's view of the document folders (§7, decisions §51). */

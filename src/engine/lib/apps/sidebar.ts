@@ -32,12 +32,20 @@ export interface Manifest {
   reads: string[]
   /** Other apps' collections it changes. */
   writes: string[]
+  /** Whether it asks the user's model questions (`titan.ai`): costs credits, sends what it asks. */
+  ai: boolean
 }
 
 export interface Grants {
   reads: string[]
   writes: string[]
+  /** May ask the user's model (`titan.ai`); off unless agreed. */
+  ai?: boolean
 }
+
+/** `titan.ai` calls per app per day, at most. */
+export const AI_CALLS_PER_DAY = 100
+const MAX_PROMPT = 20_000
 
 export interface SidebarApp {
   id: string
@@ -50,6 +58,8 @@ export interface SidebarApp {
   grants: Grants
   addedAt: number
   updatedAt: number
+  /** Today's `titan.ai` use: the day (YYYY-MM-DD), calls and cost. */
+  ai?: { day: string; calls: number; usd: number }
   /** The last error the app reported, for "Fix with Titan" (6.14). */
   error: { message: string; at: number } | null
 }
@@ -119,7 +129,14 @@ export function readManifest(dir: string, fallbackName: string): Manifest {
   const name =
     typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 40) : fallbackName
   const icon = typeof raw.icon === 'string' && ICONS.includes(raw.icon) ? raw.icon : 'app'
-  return { name, icon, collections, reads: refs('reads'), writes: refs('writes') }
+  return {
+    name,
+    icon,
+    collections,
+    reads: refs('reads'),
+    writes: refs('writes'),
+    ai: raw.ai === true
+  }
 }
 
 /** Whether a grant list covers `app/collection`. */
@@ -134,7 +151,8 @@ const sameSet = (a: string[], b: string[]): boolean =>
 function asksMore(manifest: Manifest, grants: Grants): boolean {
   return (
     manifest.reads.some((r) => !grants.reads.includes(r)) ||
-    manifest.writes.some((w) => !grants.writes.includes(w))
+    manifest.writes.some((w) => !grants.writes.includes(w)) ||
+    (manifest.ai && !grants.ai)
   )
 }
 
@@ -149,10 +167,12 @@ export interface SidebarService {
   /** A new build of an app already in the sidebar; asks for a review if it wants more data. */
   update(folder: string, onProgress?: (note: string) => void): Promise<UpdateResult>
   remove(id: string, options?: { deleteData?: boolean }): Promise<void>
-  /** A call from the app's frame, relayed by the window. */
+  /** A call from the app's frame, relayed by the window (`ai.ask` answers later). */
   call(id: string, method: string, args: unknown): unknown
   /** Data for Titan (the user's agent), across every sidebar app. */
   data: DataLayer
+  /** Before a build: a sidebar app (one with titan.json) gets the current SDK; true when it changed. */
+  refreshSdk(folder: string): Promise<boolean>
   /** Where a build's files are, for the window's `titan117://<id>.apps/`. */
   root: string
 }
@@ -164,6 +184,12 @@ export function createSidebarService(deps: {
   registry(): SidebarApp[]
   setRegistry(next: SidebarApp[]): void
   userName?: () => string | null
+  /** One question to the user's default model, for `titan.ai` (no tools). */
+  ai?: (input: {
+    app: string
+    title: string
+    prompt: string
+  }) => Promise<{ text: string; costUsd: number; model: string }>
   onChange?: () => void
 }): SidebarService {
   const { apps, data, root } = deps
@@ -257,6 +283,35 @@ export function createSidebarService(deps: {
       await rm(join(builds, old), { recursive: true, force: true })
   }
 
+  /** `titan.ai.ask`: only when agreed, a daily limit, one plain question to the user's model. */
+  async function askModel(app: SidebarApp, a: Record<string, unknown>): Promise<{ text: string }> {
+    if (!app.grants.ai)
+      throw new DataError(
+        `${app.title} may not ask the AI model. Set "ai": true in titan.json; you'll be asked when the app is updated.`
+      )
+    if (!deps.ai) throw new DataError('The AI model isn’t available here.')
+    const prompt = typeof a.prompt === 'string' ? a.prompt.trim() : ''
+    if (!prompt) throw new DataError('Ask something.')
+    if (prompt.length > MAX_PROMPT)
+      throw new DataError(
+        `That question is too long (${MAX_PROMPT.toLocaleString('en')} characters at most).`
+      )
+    const day = new Date().toISOString().slice(0, 10)
+    const used = app.ai?.day === day ? app.ai : { day, calls: 0, usd: 0 }
+    if (used.calls >= AI_CALLS_PER_DAY)
+      throw new DataError(
+        `${app.title} asked the AI model ${AI_CALLS_PER_DAY} times today; that's the daily limit.`
+      )
+    // Count the call before it runs, so a burst can't pass the limit.
+    const latest = service.get(app.id) ?? app
+    put({ ...latest, ai: { ...used, calls: used.calls + 1 } })
+    const answer = await deps.ai({ app: app.id, title: app.title, prompt })
+    const now = service.get(app.id)
+    if (now && now.ai?.day === day)
+      put({ ...now, ai: { ...now.ai, usd: Math.round((now.ai.usd + answer.costUsd) * 1e6) / 1e6 } })
+    return { text: answer.text }
+  }
+
   const service: SidebarService = {
     root,
     data,
@@ -265,11 +320,21 @@ export function createSidebarService(deps: {
     byFolder,
     review,
 
+    async refreshSdk(folder) {
+      if (!existsSync(join(folder, MANIFEST))) return false
+      const sdkFile = join(folder, SDK_PATH)
+      if (existsSync(sdkFile) && (await readFile(sdkFile, 'utf8')) === SDK_SOURCE) return false
+      await mkdir(join(folder, 'src'), { recursive: true })
+      await writeFile(sdkFile, SDK_SOURCE)
+      return true
+    },
+
     async add(folder, grants, onProgress) {
       const before = review(folder)
       if (
         !sameSet(grants.reads, before.manifest.reads) ||
-        !sameSet(grants.writes, before.manifest.writes)
+        !sameSet(grants.writes, before.manifest.writes) ||
+        !!grants.ai !== before.manifest.ai
       )
         throw new AppError('What the app asks for changed since you looked. Look again and add it.')
       const info = apps.info(folder)
@@ -293,7 +358,7 @@ export function createSidebarService(deps: {
         icon: manifest.icon,
         collections: manifest.collections,
         build: version,
-        grants: { reads: [...grants.reads], writes: [...grants.writes] },
+        grants: { reads: [...grants.reads], writes: [...grants.writes], ai: !!grants.ai },
         addedAt: known?.addedAt ?? now,
         updatedAt: now,
         error: null
@@ -319,7 +384,8 @@ export function createSidebarService(deps: {
         // Asking for less narrows what it has.
         grants: {
           reads: known.grants.reads.filter((r) => manifest.reads.includes(r)),
-          writes: known.grants.writes.filter((w) => manifest.writes.includes(w))
+          writes: known.grants.writes.filter((w) => manifest.writes.includes(w)),
+          ai: !!known.grants.ai && manifest.ai
         },
         updatedAt: Date.now(),
         error: null
@@ -399,6 +465,8 @@ export function createSidebarService(deps: {
         }
         case 'auth.user':
           return { name: deps.userName?.() ?? null }
+        case 'ai.ask':
+          return askModel(app, a)
         case 'app.error': {
           const message = typeof a.message === 'string' ? a.message.slice(0, 2000) : 'An error'
           put({ ...app, error: { message, at: Date.now() } })

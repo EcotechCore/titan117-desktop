@@ -159,6 +159,8 @@ export function createApi(deps: {
     devices(fresh: boolean): Promise<unknown>
     check(folder: string): Promise<{ started: boolean }>
     restore(folder: string, sha: string): Promise<{ sha: string }>
+    addTarget(folder: string, kind: string): Promise<unknown>
+    shareCode(folder: string): Promise<{ updated: string[] }>
     github(folder: string, action: 'save' | 'stop', isPrivate: boolean): Promise<unknown>
     zip(folder: string): Promise<{ name: string; base64: string }>
     publish(folder: string): Promise<{ started: boolean }>
@@ -170,7 +172,7 @@ export function createApi(deps: {
     review(folder: string): Promise<unknown>
     add(
       folder: string,
-      grants: { reads: string[]; writes: string[] }
+      grants: { reads: string[]; writes: string[]; ai?: boolean }
     ): Promise<{ started: boolean }>
     update(folder: string): Promise<{ started: boolean }>
     remove(id: string, deleteData: boolean): Promise<void>
@@ -408,6 +410,13 @@ export function createApi(deps: {
         if (id === 'sandbox') return a.sandbox(folder)
         if (id === 'check') return a.check(folder)
         if (id === 'publish') return a.publish(folder)
+        if (id === 'target') {
+          const kind = field(body, 'kind')
+          if (kind !== 'web' && kind !== 'mobile' && kind !== 'desktop')
+            throw new ApiError(400, 'BAD_REQUEST', 'Which target: web, mobile or desktop?')
+          return { app: await a.addTarget(folder, kind) }
+        }
+        if (id === 'share') return a.shareCode(folder)
         if (id === 'github')
           return a.github(
             folder,
@@ -437,7 +446,7 @@ export function createApi(deps: {
           if (typeof app !== 'string' || typeof method !== 'string')
             throw new ApiError(400, 'BAD_REQUEST', 'Which app and call?')
           try {
-            return { value: s.call(app, method, field(body, 'args')) ?? null }
+            return { value: (await s.call(app, method, field(body, 'args'))) ?? null }
           } catch (error) {
             if (error instanceof DataError || error instanceof AppError)
               return { error: error.message }
@@ -461,7 +470,11 @@ export function createApi(deps: {
               throw new ApiError(400, 'BAD_REQUEST', 'Which data may it reach?')
             return v as string[]
           }
-          return s.add(folder, { reads: refs('reads'), writes: refs('writes') })
+          return s.add(folder, {
+            reads: refs('reads'),
+            writes: refs('writes'),
+            ai: field(grants, 'ai') === true
+          })
         }
         throw new ApiError(404, 'NOT_FOUND', 'Not found.')
       }

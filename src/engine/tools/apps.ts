@@ -269,6 +269,9 @@ export const appBuild = defineTool<{ folder: string; request: string; quick?: bo
   async run(input, ctx) {
     const app = await ctx.apps.info(input.folder)
     const roles = ctx.apps.models()
+    // A sidebar app builds against the current titan SDK (it may have gained calls since).
+    if (await ctx.sidebar.refreshSdk(input.folder))
+      await ctx.apps.saveVersion(input.folder, 'The titan SDK brought up to date')
     let cost = 0
     let steps = 0
     const notes: string[] = []
@@ -362,6 +365,9 @@ export const appBuild = defineTool<{ folder: string; request: string; quick?: bo
       output: [
         `${status} ${version ? `Saved as a new version (${version.sha}).` : 'Nothing changed, so no new version.'}`,
         sidebarNote,
+        app.linked.length
+          ? `This project's other targets: ${app.linked.map((t) => `${t.kind} in ${t.folder}`).join(', ')}. If src/shared/ changed, copy it with app_share_code and check them.`
+          : '',
         version?.pushed ? `Pushed to ${version.pushed}.` : '',
         version?.pushError ? `Not pushed to GitHub: ${version.pushError}` : '',
         notes.join(' '),
@@ -572,6 +578,63 @@ export const appPublish = defineTool<{ folder: string }>({
   }
 })
 
+export const appAddTarget = defineTool<{ folder: string; target: 'web' | 'mobile' | 'desktop' }>({
+  name: 'app_add_target',
+  description: [
+    'Only when the user asks for it (6.6): give an app made with app_create another target, for example a mobile app',
+    'next to a web app. It makes a new app beside it (its own folder, template and versions) linked to the first:',
+    'logic both use goes in src/shared/ (plain TypeScript), which app_share_code copies between them; each target',
+    'keeps its own screens. Then build the new app with app_build.'
+  ].join(' '),
+  params: {
+    type: 'object',
+    properties: {
+      folder: { type: 'string', description: 'The existing app’s folder.' },
+      target: {
+        type: 'string',
+        enum: ['web', 'mobile', 'desktop'],
+        description: 'The new target: web, mobile or desktop.'
+      }
+    },
+    required: ['folder', 'target']
+  },
+  risk: 'write',
+  permissions: { apps: true },
+  describe: (input) => `Add a ${targetOf(input.target)} app to the project in ${input.folder}`,
+  async run(input, ctx) {
+    const made = await ctx.apps.addTarget(input.folder, targetOf(input.target))
+    return {
+      output: `Made the ${made.kind} app "${made.title}" in ${made.folder}, linked to ${input.folder} (src/shared/ copied). Build it with app_build.`,
+      summary: `New ${made.kind} target: ${made.title}`
+    }
+  }
+})
+
+export const appShareCode = defineTool<{ folder: string }>({
+  name: 'app_share_code',
+  description:
+    'Copy an app’s src/shared/ folder (the logic every target of the project uses) to its other targets made with app_add_target, saving a version in each that changed. Run their checks afterwards with app_check or app_build.',
+  params: {
+    type: 'object',
+    properties: {
+      folder: { type: 'string', description: 'The app whose src/shared/ is the newest.' }
+    },
+    required: ['folder']
+  },
+  risk: 'write',
+  permissions: { apps: true },
+  describe: (input) => `Copy the shared code of ${input.folder} to its other targets`,
+  async run(input, ctx) {
+    const { updated } = await ctx.apps.shareCode(input.folder)
+    return {
+      output: updated.length
+        ? `Copied src/shared/ to ${updated.join(', ')} and saved a version in each.`
+        : 'The other targets already had the same shared code.',
+      summary: `Shared code copied to ${updated.length} target(s)`
+    }
+  }
+})
+
 export const appTools = [
   appCreate,
   appBuild,
@@ -581,5 +644,7 @@ export const appTools = [
   appVersions,
   appRestore,
   appGitHub,
-  appPublish
+  appPublish,
+  appAddTarget,
+  appShareCode
 ]

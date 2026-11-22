@@ -15,7 +15,8 @@ export interface SidebarAppInfo {
   icon: string
   collections: string[]
   build: string
-  grants: { reads: string[]; writes: string[] }
+  grants: { reads: string[]; writes: string[]; ai?: boolean }
+  ai?: { day: string; calls: number; usd: number }
   addedAt: number
   updatedAt: number
   error: { message: string; at: number } | null
@@ -32,6 +33,7 @@ const METHODS = new Set([
   'db.remove',
   'auth.user',
   'agent.ask',
+  'ai.ask',
   'app.error'
 ])
 
@@ -111,6 +113,9 @@ export function SidebarAppView({
         <span className="muted">
           On this laptop · version {app.build.slice(0, 7)}
           {app.grants.reads.length ? ` · reads ${app.grants.reads.join(', ')}` : ''}
+          {app.grants.ai && app.ai?.day === new Date().toISOString().slice(0, 10)
+            ? ` · AI today: ${app.ai.calls} question${app.ai.calls === 1 ? '' : 's'}, ${app.ai.usd > 0 && app.ai.usd < 0.01 ? 'under $0.01' : `$${app.ai.usd.toFixed(2)}`}`
+            : ''}
         </span>
         <span className="grow" />
         <button
@@ -159,7 +164,7 @@ interface Review {
   title: string
   reads: { ref: string; app: string | null }[]
   writes: { ref: string; app: string | null }[]
-  manifest: { reads: string[]; writes: string[]; collections: string[] }
+  manifest: { reads: string[]; writes: string[]; collections: string[]; ai: boolean }
   added: boolean
 }
 
@@ -249,6 +254,13 @@ export function SidebarControls({
           ) : (
             <p className="muted">It doesn’t ask for any other app’s data.</p>
           )}
+          {review.manifest.ai && (
+            <p>
+              It also asks to send questions to your default AI model (
+              <strong>costs credits</strong>, at most 100 a day; what it sends leaves this laptop if
+              the model is in the cloud).
+            </p>
+          )}
           <div className="code-actions">
             <button
               className="btn btn-primary"
@@ -256,7 +268,11 @@ export function SidebarControls({
               onClick={() =>
                 send('/v1/sidebar/add', {
                   folder,
-                  grants: { reads: review.manifest.reads, writes: review.manifest.writes }
+                  grants: {
+                    reads: review.manifest.reads,
+                    writes: review.manifest.writes,
+                    ai: review.manifest.ai
+                  }
                 })
               }
             >

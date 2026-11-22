@@ -52,6 +52,20 @@ export interface Change {
   at: number
 }
 
+/**
+ * One change as it travels between devices (6.12): the record as it is now,
+ * or its deletion, with the time of that change. Merged last-writer-wins.
+ */
+export interface SyncEntry {
+  collection: string
+  id: string
+  op: 'put' | 'delete'
+  /** When the record was last changed (or deleted), in Unix milliseconds. */
+  at: number
+  created?: number
+  data?: Record<string, unknown>
+}
+
 export const APP_ID = /^[a-z0-9][a-z0-9-]{0,59}$/
 export const COLLECTION = /^[a-z][a-z0-9_]{0,39}$/
 const FIELD = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
@@ -73,6 +87,10 @@ export interface DataLayer {
   remove(app: string, collection: string, id: string): boolean
   /** The change log after `seq`, for sync (6.12). */
   changesSince(app: string, seq: number, limit?: number): Change[]
+  /** What changed after `seq`, as entries for another device: each record once, as it is now. */
+  entriesSince(app: string, seq: number, limit?: number): { upTo: number; entries: SyncEntry[] }
+  /** A change from another device, merged last-writer-wins; true when it changed something here. */
+  applyRemote(app: string, entry: SyncEntry): boolean
   /** Delete an app's data for good (the user's choice when removing it). */
   drop(app: string): void
   close(): void
@@ -88,6 +106,12 @@ const SCHEMA = `
     primary key (collection, id)
   );
   create index if not exists docs_updated on docs(collection, updated);
+  create table if not exists tombstones (
+    collection text not null,
+    id text not null,
+    at integer not null,
+    primary key (collection, id)
+  );
   create table if not exists changes (
     seq integer primary key autoincrement,
     collection text not null,
@@ -271,6 +295,7 @@ export function createDataLayer(root: string): DataLayer {
       handle
         .prepare('insert into docs (collection, id, data, created, updated) values (?, ?, ?, ?, ?)')
         .run(collection, id, JSON.stringify(fields), now, now)
+      handle.prepare('delete from tombstones where collection = ? and id = ?').run(collection, id)
       logChange(handle, collection, id, 'put')
       return { ...fields, id, _created: now, _updated: now }
     },
@@ -282,7 +307,6 @@ export function createDataLayer(root: string): DataLayer {
       const changes = cleanData(patch)
       const { id: _id, _created, _updated, ...fields } = current
       void _id
-      void _updated
       const next: Record<string, unknown> = { ...fields }
       // A field set to null is removed.
       for (const [k, v] of Object.entries(changes)) {
@@ -292,7 +316,8 @@ export function createDataLayer(root: string): DataLayer {
       const text = JSON.stringify(next)
       if (Buffer.byteLength(text) > MAX_RECORD_BYTES)
         throw new DataError('That record is too big (256 KB at most).')
-      const now = Date.now()
+      // Each change is later than the last, so the newest edit wins when devices merge (6.12).
+      const now = Math.max(Date.now(), _updated + 1)
       const handle = db(app)
       handle
         .prepare('update docs set data = ?, updated = ? where collection = ? and id = ?')
@@ -309,6 +334,11 @@ export function createDataLayer(root: string): DataLayer {
         .prepare('delete from docs where collection = ? and id = ?')
         .run(collection, id)
       if (!result.changes) return false
+      handle
+        .prepare(
+          'insert into tombstones (collection, id, at) values (?, ?, ?) on conflict (collection, id) do update set at = excluded.at'
+        )
+        .run(collection, id, Date.now())
       logChange(handle, collection, id, 'delete')
       return true
     },
@@ -319,6 +349,90 @@ export function createDataLayer(root: string): DataLayer {
           'select seq, collection, id, op, at from changes where seq > ? order by seq limit ?'
         )
         .all(Math.max(0, seq), Math.min(5000, limit)) as unknown as Change[]
+    },
+
+    entriesSince(app, seq, limit = 1000) {
+      const handle = db(app)
+      const changes = layer.changesSince(app, seq, limit)
+      const seen = new Set<string>()
+      const entries: SyncEntry[] = []
+      // Newest first, so each record goes once, as it is now.
+      for (const c of [...changes].reverse()) {
+        const key = `${c.collection}\u0000${c.id}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        const row = handle
+          .prepare('select data, created, updated from docs where collection = ? and id = ?')
+          .get(c.collection, c.id) as { data: string; created: number; updated: number } | undefined
+        if (row)
+          entries.push({
+            collection: c.collection,
+            id: c.id,
+            op: 'put',
+            at: row.updated,
+            created: row.created,
+            data: JSON.parse(row.data) as Record<string, unknown>
+          })
+        else {
+          const tomb = handle
+            .prepare('select at from tombstones where collection = ? and id = ?')
+            .get(c.collection, c.id) as { at: number } | undefined
+          entries.push({ collection: c.collection, id: c.id, op: 'delete', at: tomb?.at ?? c.at })
+        }
+      }
+      return {
+        upTo: changes.length ? changes[changes.length - 1].seq : seq,
+        entries: entries.reverse()
+      }
+    },
+
+    applyRemote(app, entry) {
+      checkCollection(entry.collection)
+      if (typeof entry.id !== 'string' || !RECORD_ID.test(entry.id))
+        throw new DataError('A synced record has a bad id.')
+      if (!Number.isFinite(entry.at) || entry.at <= 0)
+        throw new DataError('A synced record has no time.')
+      const handle = db(app)
+      const local = handle
+        .prepare('select data, updated from docs where collection = ? and id = ?')
+        .get(entry.collection, entry.id) as { data: string; updated: number } | undefined
+      const tomb = handle
+        .prepare('select at from tombstones where collection = ? and id = ?')
+        .get(entry.collection, entry.id) as { at: number } | undefined
+      if (entry.op === 'delete') {
+        if (local && local.updated > entry.at) return false
+        if (tomb && tomb.at >= entry.at) return false
+        handle
+          .prepare('delete from docs where collection = ? and id = ?')
+          .run(entry.collection, entry.id)
+        handle
+          .prepare(
+            'insert into tombstones (collection, id, at) values (?, ?, ?) on conflict (collection, id) do update set at = excluded.at'
+          )
+          .run(entry.collection, entry.id, entry.at)
+        return !!local
+      }
+      if (entry.op !== 'put') throw new DataError('A synced change is a put or a delete.')
+      const fields = cleanData(entry.data ?? {})
+      const text = JSON.stringify(fields)
+      // Last writer wins; on the same millisecond the larger content wins, the same on every device.
+      if (local && (local.updated > entry.at || (local.updated === entry.at && local.data >= text)))
+        return false
+      if (tomb && tomb.at >= entry.at) return false
+      if (!local) {
+        const total = (handle.prepare('select count(*) as n from docs').get() as { n: number }).n
+        if (total >= MAX_RECORDS)
+          throw new DataError('This app has too many records (200,000 at most).')
+      }
+      handle
+        .prepare(
+          'insert into docs (collection, id, data, created, updated) values (?, ?, ?, ?, ?) on conflict (collection, id) do update set data = excluded.data, updated = excluded.updated'
+        )
+        .run(entry.collection, entry.id, text, entry.created ?? entry.at, entry.at)
+      handle
+        .prepare('delete from tombstones where collection = ? and id = ?')
+        .run(entry.collection, entry.id)
+      return true
     },
 
     drop(app) {
