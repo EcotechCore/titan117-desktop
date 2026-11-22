@@ -333,7 +333,9 @@ export function createApi(deps: {
             description: text('description', 300),
             ...(typeof lang === 'string' ? { lang } : {}),
             ...(typeof starter === 'string' ? { starter } : {}),
-            ...(field(body, 'kind') === 'mobile' ? { kind: 'mobile' } : {})
+            ...(field(body, 'kind') === 'mobile' || field(body, 'kind') === 'desktop'
+              ? { kind: field(body, 'kind') as string }
+              : {})
           })
         }
       }

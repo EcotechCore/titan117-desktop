@@ -32,6 +32,17 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 22 Nov 2026 · Phase 9: desktop apps with Tauri, first part
+
+Branch `phase-9-app-builder`; decisions §57.18.
+
+- **The desktop template (6.4):** Tauri 2.12.7 (`tauri-build` 2.7.6, exact versions in `Cargo.toml`) around a React 19, Vite and Tailwind page; `app.config.json` holds the name, `src-tauri/tauri.conf.json` the window and installer (NSIS only, current user), a window that loads only its own content, Tauri's core permissions only; a test, `AGENTS.md`, and a lockfile of 110 npm packages (permissive, plus MPL 2.0 lightningcss). Its typecheck, test, build and `tauri icon` (from `app-icon.svg`) work without Rust.
+- **The engine:** a third kind, `desktop` (`app_create` target "desktop"), with the desktop specialist's stack, rules and fix prompt; its page tested in Chromium (WebView2) and WebKit at 1024×720, 800×600, 1440×900 and dark, with the screen checks; Cloudflare publishing and Expo Go refused for it. The Apps screen's third choice, an Installer note, and its own placeholders.
+- **Bugs found by driving it and fixed:** `app_create` turned the "desktop" target into a website (now checked by `targetOf`, with a test); and a desktop app got a website's SEO checks because one of its window sizes is named "desktop", so the first fix round added meta tags for nothing (website checks now only for websites, with a test in Edge). Also: a long folder path in the App picker made the Apps screen scroll sideways; it now fits.
+- **Seen working in the built app** (Claude Haiku 5.5): Titan made "Customer Book" as a desktop app and built a customer list (a form, a searchable table, kept on the computer; 9 files, 407 lines with tests), and every check passed in both engines at every window size; after the fixes, Test it on the Apps screen showed the app checks without SEO, and the preview at desktop size showed the two-column window.
+- **Checks:** typecheck, lint, 413 tests, build and `check:licenses` (845 packages) pass.
+- **Left:** the installer (`tauri build`; needs Rust and Microsoft's C++ build tools, and makes the `Cargo.lock`), then the clean-Windows install in Windows Sandbox.
+
 ### 21 Nov 2026 · Phase 9 started: mobile apps with Expo, Expo Go, the laptop check
 
 Branch `phase-9-app-builder`. Decisions §57 (to be confirmed); the phase-start review is in the shared docs.

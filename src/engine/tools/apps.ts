@@ -84,11 +84,46 @@ export const MOBILE_SPECIALIST = [
   '- Store rules: no hidden features, no copied brands, and say what permissions (camera, location) are for.'
 ].join('\n')
 
-type Kind = 'web' | 'mobile'
-const stackOf = (kind: Kind): string => (kind === 'mobile' ? MOBILE_STACK : WEB_STACK)
+/** The desktop template's stack (6.4, decisions §57). */
+const DESKTOP_STACK = [
+  'The app is a desktop app: Tauri 2 (a small Rust program in src-tauri/ that opens a native window) showing a page',
+  'made with React 19, TypeScript, Vite and Tailwind CSS 4 in src/. Read AGENTS.md first. The name and description',
+  'live in app.config.json; the window title and installer name in src-tauri/tauri.conf.json (productName). Titan117',
+  'previews and tests the page in a browser, where Tauri is absent: call Tauri only through @tauri-apps/api inside',
+  'if (isTauri()) from @tauri-apps/api/core.'
+].join(' ')
+
+const DESKTOP_RULES = [
+  'Do not run npm install, the dev server, cargo, tauri, the build or the tests yourself: Titan117 runs them after you',
+  'finish and tells you what failed. Work in src/; change src-tauri/ only for what a page cannot do, and then add the',
+  'Tauri plugin and its permission in src-tauri/capabilities/default.json. Never widen the content security policy to',
+  'load scripts from other websites. Add an npm package only when really needed, with an exact version. Update or add',
+  'tests in src/*.test.tsx (Vitest, rendering with react-dom/server). No keys or secrets. Do not commit; Titan117 saves the version.'
+].join(' ')
+
+/** The desktop specialist (6.5): what a good small-company desktop tool needs. */
+export const DESKTOP_SPECIALIST = [
+  'Desktop specialist rules:',
+  '- Content: the real names, numbers and words from the request; never lorem ipsum or invented facts.',
+  '- A window from 800 by 600 up to full screen: no sideways scroll, a layout that uses the width (sidebar or columns).',
+  '- Keyboard: every action reachable by keyboard, visible focus, Enter submits forms, Escape closes dialogs.',
+  '- Accessibility: labels on every field, buttons named by their text or aria-label, contrast 4.5:1.',
+  '- Dark mode: every colour has a dark: variant.',
+  '- Data: kept on the computer (localStorage for small data) unless the user asks otherwise; no trackers, no',
+  '  scripts or fonts from other websites, so it works offline.',
+  '- Native features (files, tray, notifications) only when asked, through official Tauri plugins with the narrowest permission.'
+].join('\n')
+
+type Kind = 'web' | 'mobile' | 'desktop'
+/** The app_create target, checked: anything else is a website. */
+export const targetOf = (target: unknown): Kind =>
+  target === 'mobile' || target === 'desktop' ? target : 'web'
+const stackOf = (kind: Kind): string =>
+  ({ web: WEB_STACK, mobile: MOBILE_STACK, desktop: DESKTOP_STACK })[kind]
 const specialistOf = (kind: Kind): string =>
-  kind === 'mobile' ? MOBILE_SPECIALIST : WEB_SPECIALIST
-const rulesOf = (kind: Kind): string => (kind === 'mobile' ? MOBILE_RULES : RULES)
+  ({ web: WEB_SPECIALIST, mobile: MOBILE_SPECIALIST, desktop: DESKTOP_SPECIALIST })[kind]
+const rulesOf = (kind: Kind): string =>
+  ({ web: RULES, mobile: MOBILE_RULES, desktop: DESKTOP_RULES })[kind]
 
 export function planPrompt(request: string, kind: Kind = 'web'): string {
   return [
@@ -121,9 +156,11 @@ export function buildPrompt(request: string, plan: string, kind: Kind = 'web'): 
 
 export function fixPrompt(summary: string, kind: Kind = 'web'): string {
   return [
-    kind === 'mobile'
-      ? 'Titan117 ran the mobile app’s checks in this folder (install, typecheck, the web export, tests, and the app opened through react-native-web in Chromium and WebKit at phone and tablet sizes). Fix every problem below in the code, then stop.'
-      : 'Titan117 ran the web app’s checks in this folder (install, typecheck, build, tests, and the app opened in Chromium, Firefox and WebKit at phone, tablet and desktop sizes). Fix every problem below in the code, then stop.',
+    kind === 'desktop'
+      ? 'Titan117 ran the desktop app’s checks in this folder (install, typecheck, build, tests, and its page opened in Chromium and WebKit at window sizes, as Tauri shows it). Fix every problem below in the code, then stop.'
+      : kind === 'mobile'
+        ? 'Titan117 ran the mobile app’s checks in this folder (install, typecheck, the web export, tests, and the app opened through react-native-web in Chromium and WebKit at phone and tablet sizes). Fix every problem below in the code, then stop.'
+        : 'Titan117 ran the web app’s checks in this folder (install, typecheck, build, tests, and the app opened in Chromium, Firefox and WebKit at phone, tablet and desktop sizes). Fix every problem below in the code, then stop.',
     stackOf(kind),
     specialistOf(kind),
     rulesOf(kind),
@@ -145,7 +182,8 @@ export const appCreate = defineTool<{
   description: [
     'Start a new app from Titan117’s template. target "web" (default): a website or web app (React, TypeScript, Vite,',
     'Tailwind, SEO built in). target "mobile": an iPhone and Android app (Expo, React Native, TypeScript), previewed in',
-    'the browser and on the user’s phone with Expo Go. One target per app. It makes a new folder named after the app',
+    'the browser and on the user’s phone with Expo Go. target "desktop": a Windows and Mac app (Tauri, React,',
+    'TypeScript), previewed in the browser; installers come later. One target per app. It makes a new folder named after the app',
     'inside "folder" (an allowed folder) and saves it as version 1. Then use app_build to build what the user asked for.'
   ].join(' '),
   params: {
@@ -168,9 +206,9 @@ export const appCreate = defineTool<{
       },
       target: {
         type: 'string',
-        enum: ['web', 'mobile'],
+        enum: ['web', 'mobile', 'desktop'],
         description:
-          'web (default): a website or web app. mobile: a phone app for iPhone and Android.'
+          'web (default): a website or web app. mobile: a phone app for iPhone and Android. desktop: a Windows and Mac app.'
       }
     },
     required: ['folder', 'name', 'description']
@@ -178,7 +216,7 @@ export const appCreate = defineTool<{
   risk: 'write',
   permissions: { folders: 'write', apps: true },
   describe: (input) =>
-    `Make a new ${input.target === 'mobile' ? 'mobile' : 'web'} app "${input.name}" in ${input.folder}`,
+    `Make a new ${targetOf(input.target)} app "${input.name}" in ${input.folder}`,
   async run(input, ctx) {
     const app = await ctx.apps.create({
       folder: input.folder,
@@ -186,7 +224,7 @@ export const appCreate = defineTool<{
       description: input.description,
       lang: input.lang,
       starter: input.kind,
-      kind: input.target === 'mobile' ? 'mobile' : 'web'
+      kind: targetOf(input.target)
     })
     return {
       output: `Made the ${app.kind} app "${app.title}" in ${app.folder} (version 1, from the template). Build it with app_build.`,

@@ -4,11 +4,12 @@
 // can do for emulators, clean Windows and desktop apps.
 import { execFileSync } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { createServer } from 'http'
 import { join } from 'path'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { createAppService } from '../src/engine/lib/apps/service'
-import { mobileTemplate, TEMPLATE_VERSIONS } from '../src/engine/lib/apps/template'
+import { desktopTemplate, mobileTemplate, TEMPLATE_VERSIONS } from '../src/engine/lib/apps/template'
 import {
   createRunner,
   isExpoApp,
@@ -16,10 +17,15 @@ import {
   type CheckResult,
   type Runner
 } from '../src/engine/lib/apps/runner'
-import type { BrowserReport, BrowserTests } from '../src/engine/lib/apps/browsers'
+import {
+  createBrowserTests,
+  type BrowserReport,
+  type BrowserTests
+} from '../src/engine/lib/apps/browsers'
+import { findBrowserChannel } from '../src/engine/lib/browser'
 import { assess, type DeviceCheck, type DeviceFacts } from '../src/engine/lib/apps/devices'
 import { appCreateRequest } from '../src/renderer/src/apps-lib'
-import { buildPrompt, fixPrompt, planPrompt } from '../src/engine/tools/apps'
+import { appCreate, buildPrompt, fixPrompt, planPrompt, targetOf } from '../src/engine/tools/apps'
 import { tempFolder } from './helpers'
 
 beforeAll(() => {
@@ -341,4 +347,147 @@ describe('the mobile template on disk', () => {
     expect(existsSync(join(dir, 'ios'))).toBe(false)
     expect(readFileSync(join(dir, 'gitignore'), 'utf8')).toMatch(/^android$/m)
   })
+})
+
+describe('desktop apps (Tauri)', () => {
+  const files = desktopTemplate({
+    name: '24 Ore Café',
+    title: '24 Ore "Café"',
+    description: 'Customers & orders',
+    lang: 'ro'
+  })
+
+  it('fills the name everywhere, with a Rust package name that starts with a letter', () => {
+    const conf = JSON.parse(files.get('src-tauri/tauri.conf.json')!)
+    expect(conf.productName).toBe('24 Ore "Café"')
+    expect(conf.identifier).toBe('app.titan117.app-24-ore-cafe')
+    expect(files.get('src-tauri/Cargo.toml')).toContain('name = "app-24-ore-cafe"')
+    expect(files.get('src-tauri/Cargo.toml')).toContain('description = "Customers & orders"')
+    expect(JSON.parse(files.get('app.config.json')!).lang).toBe('ro')
+    for (const [path, content] of files) expect(content, path).not.toMatch(/\{\{\w+\}\}/)
+  })
+
+  it('makes NSIS installers only, keeps the window to its own content, and asks for no extra permissions', () => {
+    const conf = JSON.parse(files.get('src-tauri/tauri.conf.json')!)
+    expect(conf.bundle.targets).toEqual(['nsis'])
+    expect(conf.app.security.csp).toContain("default-src 'self'")
+    expect(conf.app.security.csp).not.toMatch(/https?:\/\/(?!asset\.localhost|ipc\.localhost)/)
+    expect(JSON.parse(files.get('src-tauri/capabilities/default.json')!).permissions).toEqual([
+      'core:default'
+    ])
+    expect(files.get('src-tauri/Cargo.toml')).toMatch(/tauri = \{ version = "=2\.\d+\.\d+"/)
+  })
+
+  it('pins every npm package exactly, from the public registry only', () => {
+    const pkg = JSON.parse(files.get('package.json')!)
+    for (const version of Object.values({ ...pkg.dependencies, ...pkg.devDependencies }))
+      expect(version).toMatch(/^\d+\.\d+\.\d+$/)
+    const lock = JSON.parse(files.get('package-lock.json')!) as {
+      packages: Record<string, { resolved?: string; inBundle?: boolean }>
+    }
+    // Packages bundled inside another package come with it; every other one from the public registry.
+    for (const [path, entry] of Object.entries(lock.packages))
+      if (path && !entry.inBundle)
+        expect(entry.resolved, path).toMatch(/^https:\/\/registry\.npmjs\.org\//)
+    expect(files.get('.gitignore')).toContain('src-tauri/target')
+  })
+
+  it('makes and checks a desktop app at window sizes, and never publishes it to a website host', async () => {
+    const root = tempFolder('titan117-desktop-')
+    const browsers = recordingBrowsers()
+    const apps = createAppService({
+      runner: fakeRunner(),
+      browsers,
+      coAuthor: () => false,
+      hosting: { token: () => 'token', published: () => ({}), setPublished: () => undefined }
+    })
+    const app = await apps.create(root, {
+      kind: 'desktop',
+      title: 'Customer List',
+      description: 'Our customers.'
+    })
+    expect(app.kind).toBe('desktop')
+    expect(app.template).toBe(TEMPLATE_VERSIONS.desktop)
+    expect(readFileSync(join(app.folder, 'AGENTS.md'), 'utf8')).toContain('## This app')
+    expect(existsSync(join(app.folder, 'src-tauri', 'Cargo.toml'))).toBe(true)
+    await apps.check(app.folder)
+    expect(browsers.profiles).toEqual(['desktop'])
+    await expect(apps.startPhone(app.folder)).rejects.toThrow(/Only a mobile app/)
+    await expect(apps.publish(app.folder)).rejects.toThrow(/installer/)
+  })
+
+  it('gives the coding engine the desktop stack and rules', () => {
+    const plan = planPrompt('a customer list', 'desktop')
+    expect(plan).toContain('Tauri 2')
+    expect(plan).toContain('Desktop specialist rules')
+    expect(buildPrompt('x', 'y', 'desktop')).toContain('capabilities/default.json')
+    expect(fixPrompt('✗ build', 'desktop')).toContain('window sizes')
+    expect(appCreateRequest('C:/apps', 'List', 'x', '', 'blank', 'desktop')).toContain(
+      'target "desktop"'
+    )
+  })
+})
+
+describe('app_create passes the target through', () => {
+  it('makes a desktop or mobile app when asked, and a website for anything else', async () => {
+    const kinds: (string | undefined)[] = []
+    const ctx = {
+      apps: {
+        create: async (input: { kind?: string; title: string; folder: string }) => {
+          kinds.push(input.kind)
+          return { kind: input.kind ?? 'web', title: input.title, folder: input.folder }
+        }
+      }
+    } as unknown as Parameters<typeof appCreate.run>[1]
+    for (const target of ['desktop', 'mobile', 'web', 'tv', undefined])
+      await appCreate.run(
+        { folder: '/apps', name: 'X', description: 'y', target } as Parameters<
+          typeof appCreate.run
+        >[0],
+        ctx
+      )
+    expect(kinds).toEqual(['desktop', 'mobile', 'web', 'web', 'web'])
+    expect(targetOf('desktop')).toBe('desktop')
+  })
+})
+
+describe('browser checks per kind of app (in Edge or Chrome, when the laptop has one)', () => {
+  const channel = findBrowserChannel()
+  it.skipIf(!channel)(
+    'gives a desktop app the screen checks, never a website’s SEO checks',
+    async () => {
+      const server = createServer((_req, res) => {
+        res.writeHead(200, { 'content-type': 'text/html' })
+        res.end(
+          '<!doctype html><html lang="en"><head><title>Book</title></head><body><main><h1>Customer Book</h1><button>Add</button></main></body></html>'
+        )
+      })
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+      const port = (server.address() as { port: number }).port
+      try {
+        const tests = createBrowserTests({
+          dir: tempFolder('titan117-browsers-'),
+          channel: channel as 'msedge' | 'chrome'
+        })
+        const report = await tests.run(`http://127.0.0.1:${port}/`, tempFolder('titan117-out-'), {
+          engines: ['chromium'],
+          profile: 'desktop'
+        })
+        expect(report.shots.map((s) => s.size)).toEqual([
+          'window',
+          'window-small',
+          'desktop',
+          'window-dark'
+        ])
+        const checks = report.seo.map((f) => f.check)
+        expect(checks).toContain('Shows something')
+        expect(checks).not.toContain('Description')
+        expect(checks).not.toContain('Tap targets')
+        expect(report.seo.every((f) => f.ok)).toBe(true)
+      } finally {
+        server.close()
+      }
+    },
+    60_000
+  )
 })

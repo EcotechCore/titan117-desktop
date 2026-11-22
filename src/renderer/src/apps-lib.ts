@@ -12,15 +12,15 @@ export function appCreateRequest(
   description: string,
   request: string,
   kind = 'blank',
-  target: 'web' | 'mobile' = 'web'
+  target: 'web' | 'mobile' | 'desktop' = 'web'
 ): string {
   const first = request.trim()
   const how =
-    target === 'mobile'
-      ? 'app_create, target "mobile"'
-      : `app_create${kind !== 'blank' ? `, kind "${kind}"` : ''}`
+    target === 'web'
+      ? `app_create${kind !== 'blank' ? `, kind "${kind}"` : ''}`
+      : `app_create, target "${target}"`
   return [
-    `Make a new ${target === 'mobile' ? 'mobile' : 'web'} app called "${name.trim()}" in the folder ${folder}, with the description "${description.trim()}" (${how}).`,
+    `Make a new ${target} app called "${name.trim()}" in the folder ${folder}, with the description "${description.trim()}" (${how}).`,
     first
       ? `Then build it with the app builder (app_build): ${first}`
       : 'Then stop: I will say what to build.'

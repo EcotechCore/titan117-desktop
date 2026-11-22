@@ -1743,6 +1743,13 @@ textarea.edit {
 /* Apps (phase 8): the live preview and the test report. */
 .apps-pick {
   flex: 1;
+  min-width: 0;
+}
+/* A long folder path in the App picker stays inside the screen. */
+.apps-pick select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
 }
 .apps-new {
   border: 1px solid var(--line);

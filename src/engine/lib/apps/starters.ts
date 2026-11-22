@@ -161,9 +161,14 @@ export function themeCss(brand: BrandKit): string {
 }
 
 /** The part of AGENTS.md that tells a coding agent about this site's starter and brand. */
-export function agentNotes(starter: StarterId, brand: BrandKit, logoFile: string | null): string {
+export function agentNotes(
+  starter: StarterId,
+  brand: BrandKit,
+  logoFile: string | null,
+  heading = 'This site'
+): string {
   const s = STARTERS.find((x) => x.id === starter) ?? STARTERS[0]
-  const lines = ['', '## This site', '']
+  const lines = ['', `## ${heading}`, '']
   if (s.id !== 'blank') {
     lines.push(`- **Kind of site:** ${s.label}. ${s.description}`)
     lines.push(`- **Sections to have:** ${s.sections.join('; ')}.`)

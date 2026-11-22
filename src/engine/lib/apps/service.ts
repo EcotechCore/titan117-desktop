@@ -23,6 +23,7 @@ import type { BrowserReport, BrowserTests, EngineName } from './browsers'
 import type { CheckResult, Runner } from './runner'
 import {
   APP_KINDS,
+  desktopTemplate,
   mobileTemplate,
   slugOf,
   TEMPLATE_VERSIONS,
@@ -296,7 +297,7 @@ export function createAppService(deps: {
 
     /** A new web or mobile app in its own folder inside `parent`, saved as its first version. */
     async create(parent: string, input: NewApp): Promise<AppInfo> {
-      const kind: AppKind = input.kind === 'mobile' ? 'mobile' : 'web'
+      const kind: AppKind = input.kind && APP_KINDS.includes(input.kind) ? input.kind : 'web'
       const title = input.title.trim()
       if (!title) throw new AppError('A new app needs a name.')
       const dir = join(parent, slugOf(title))
@@ -304,7 +305,7 @@ export function createAppService(deps: {
         throw new AppError(
           `"${dir}" already exists and isn't empty. Choose another name or folder.`
         )
-      const files = (kind === 'mobile' ? mobileTemplate : webTemplate)({
+      const files = { web: webTemplate, mobile: mobileTemplate, desktop: desktopTemplate }[kind]({
         name: title,
         title,
         description: input.description.trim() || title,
@@ -334,7 +335,8 @@ export function createAppService(deps: {
         if (css) files.set('src/index.css', css.replace(/@theme \{[^}]*\}/, themeCss(brand)))
         files.set(
           'AGENTS.md',
-          (files.get('AGENTS.md') ?? '') + agentNotes(starter.id, brand, logoFile)
+          (files.get('AGENTS.md') ?? '') +
+            agentNotes(starter.id, brand, logoFile, kind === 'desktop' ? 'This app' : 'This site')
         )
       }
       if (kind === 'web' && starter.pages.length > 1) {
@@ -385,7 +387,8 @@ export function createAppService(deps: {
         onProgress?: (note: string) => void
       } = {}
     ): Promise<AppReport> {
-      const mobile = info(dir).kind === 'mobile'
+      const kind = info(dir).kind
+      const mobile = kind === 'mobile'
       const id = `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomBytes(2).toString('hex')}`
       const outDir = join(dir, REPORTS, id)
       await mkdir(outDir, { recursive: true })
@@ -402,9 +405,9 @@ export function createAppService(deps: {
         await browsers.ensure(options.onProgress)
         const wasRunning = !!runner.preview(dir)
         options.onProgress?.(
-          mobile
-            ? 'Opening the app at phone sizes in Chromium and WebKit…'
-            : 'Opening the preview in Chromium, Firefox and WebKit…'
+          kind === 'web'
+            ? 'Opening the preview in Chromium, Firefox and WebKit…'
+            : `Opening the app at ${mobile ? 'phone' : 'window'} sizes in Chromium and WebKit…`
         )
         const { url } = await runner.startPreview(dir)
         try {
@@ -413,7 +416,7 @@ export function createAppService(deps: {
           browserReport = await browsers.run(url, outDir, {
             engines: options.engines,
             signal: options.signal,
-            profile: mobile ? 'mobile' : 'web',
+            profile: kind,
             ...(mobile ? { loadTimeoutMs: 90_000 } : {})
           })
         } finally {
@@ -555,6 +558,10 @@ export function createAppService(deps: {
       if (app.kind === 'mobile')
         throw new AppError(
           'A mobile app is published to the App Store and Google Play, not to a website host. That comes later in phase 9.'
+        )
+      if (app.kind === 'desktop')
+        throw new AppError(
+          'A desktop app is shared as an installer, not on a website host. That comes later in phase 9.'
         )
       const token = deps.hosting?.token('cloudflare') ?? null
       if (!deps.hosting || !token)

@@ -38,12 +38,31 @@ export const SMALL_PHONE = {
 } as const
 export const MOBILE_ENGINES: EngineName[] = ['chromium', 'webkit']
 
-/** What a run checks: a website (SEO, three engines) or a mobile app's web preview. */
-export type TestProfile = 'web' | 'mobile'
+/**
+ * A desktop app's window (6.4, decisions §57): Tauri shows the page in
+ * WebView2 (Chromium) on Windows and WebKit on a Mac, at its default window,
+ * its smallest, a large one, and the default in dark mode.
+ */
+export const WINDOW_SIZES = {
+  window: { width: 1024, height: 720 },
+  small: { width: 800, height: 600 }
+} as const
+
+/** What a run checks: a website (SEO, three engines), or a mobile or desktop app's page. */
+export type TestProfile = 'web' | 'mobile' | 'desktop'
 
 export interface ShotResult {
   engine: EngineName
-  size: SizeId | 'desktop-dark' | 'phone-slow' | 'desktop-language' | 'phone-small' | 'phone-dark'
+  size:
+    | SizeId
+    | 'desktop-dark'
+    | 'phone-slow'
+    | 'desktop-language'
+    | 'phone-small'
+    | 'phone-dark'
+    | 'window'
+    | 'window-small'
+    | 'window-dark'
   /** File name inside the report folder. */
   screenshot: string | null
   consoleErrors: string[]
@@ -345,10 +364,12 @@ export function createBrowserTests(deps: {
   ): Promise<BrowserReport> {
     mkdirSync(outDir, { recursive: true })
     const mobile = options.profile === 'mobile'
+    const desktopApp = options.profile === 'desktop'
     const origin = new URL(url).origin
     const report: BrowserReport = { engines: [], shots: [], seo: [] }
     const engines =
-      options.engines ?? (mobile ? MOBILE_ENGINES : (['chromium', 'firefox', 'webkit'] as const))
+      options.engines ??
+      (mobile || desktopApp ? MOBILE_ENGINES : (['chromium', 'firefox', 'webkit'] as const))
     for (const engine of engines) {
       if (options.signal?.aborted) break
       let browser: Browser
@@ -371,19 +392,30 @@ export function createBrowserTests(deps: {
           slow?: boolean
           locale?: string
         }
-        const variants: Variant[] = mobile
+        const variants: Variant[] = desktopApp
           ? [
-              { size: 'phone', viewport: SIZES[0], dark: false },
-              { size: 'phone-small', viewport: SMALL_PHONE, dark: false },
-              { size: 'tablet', viewport: SIZES[1], dark: false },
-              { size: 'phone-dark', viewport: SIZES[0], dark: true }
+              { size: 'window', viewport: WINDOW_SIZES.window, dark: false },
+              { size: 'window-small', viewport: WINDOW_SIZES.small, dark: false },
+              { size: 'desktop', viewport: SIZES[2], dark: false },
+              { size: 'window-dark', viewport: WINDOW_SIZES.window, dark: true }
             ]
-          : [
-              ...SIZES.map((s) => ({ size: s.id as ShotResult['size'], viewport: s, dark: false })),
-              { size: 'desktop-dark', viewport: SIZES[2], dark: true }
-            ]
+          : mobile
+            ? [
+                { size: 'phone', viewport: SIZES[0], dark: false },
+                { size: 'phone-small', viewport: SMALL_PHONE, dark: false },
+                { size: 'tablet', viewport: SIZES[1], dark: false },
+                { size: 'phone-dark', viewport: SIZES[0], dark: true }
+              ]
+            : [
+                ...SIZES.map((s) => ({
+                  size: s.id as ShotResult['size'],
+                  viewport: s,
+                  dark: false
+                })),
+                { size: 'desktop-dark', viewport: SIZES[2], dark: true }
+              ]
         // Conditions (6.21), in the first engine that runs: a slow network and another language.
-        if (engine === report.engines.find((e) => e.ran)?.engine)
+        if (!desktopApp && engine === report.engines.find((e) => e.ran)?.engine)
           variants.push(
             { size: 'phone-slow', viewport: SIZES[0], dark: false, slow: true },
             ...(mobile
@@ -452,8 +484,10 @@ export function createBrowserTests(deps: {
             const file = `${engine}-${variant.size}.png`
             await page.screenshot({ path: join(outDir, file), fullPage: false })
             shot.screenshot = file
+            // Website checks only for websites: a desktop app also has a "desktop" size.
             if (
-              !mobile &&
+              options.profile !== 'mobile' &&
+              options.profile !== 'desktop' &&
               engine === report.engines.find((e) => e.ran)?.engine &&
               variant.size === 'desktop'
             )
@@ -464,6 +498,13 @@ export function createBrowserTests(deps: {
               variant.size === 'phone'
             )
               report.seo = await mobileChecks(page)
+            // A desktop app: the same screen checks, without the phone's tap-target size.
+            if (
+              desktopApp &&
+              engine === report.engines.find((e) => e.ran)?.engine &&
+              variant.size === 'window'
+            )
+              report.seo = (await mobileChecks(page)).filter((f) => f.check !== 'Tap targets')
           } catch (error) {
             shot.pageErrors.push(
               `Didn't load: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`

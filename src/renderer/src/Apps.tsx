@@ -31,7 +31,7 @@ interface AppInfo {
   folder: string
   name: string
   title: string
-  kind: 'web' | 'mobile'
+  kind: 'web' | 'mobile' | 'desktop'
   createdAt: number
   preview: string | null
   /** A mobile app open to phones on this Wi-Fi: the address Expo Go opens. */
@@ -267,7 +267,7 @@ export function AppsView({
   const [newDescription, setNewDescription] = useState('')
   const [newRequest, setNewRequest] = useState('')
   const [newKind, setNewKind] = useState('blank')
-  const [newTarget, setNewTarget] = useState<'web' | 'mobile'>('web')
+  const [newTarget, setNewTarget] = useState<'web' | 'mobile' | 'desktop'>('web')
   const [busy, setBusy] = useState(false)
   // Visual edit (6.9): pick an element in the preview, then say what to change.
   const frame = useRef<HTMLIFrameElement | null>(null)
@@ -420,10 +420,10 @@ export function AppsView({
     <div className="list-view apps-view">
       <h1 className="view-title">Apps</h1>
       <p className="muted">
-        Websites, web apps and mobile apps, built on this laptop. Titan plans each build for your
-        OK, writes the code, tests it in local browsers at phone, tablet and desktop sizes, fixes
-        what fails and saves a version you can go back to. Mobile apps also open on your own phone
-        with Expo Go.
+        Websites, web apps, mobile apps and desktop apps, built on this laptop. Titan plans each
+        build for your OK, writes the code, tests it in local browsers at phone, tablet and desktop
+        sizes, fixes what fails and saves a version you can go back to. Mobile apps also open on
+        your own phone with Expo Go.
       </p>
 
       {engine.folders.length === 0 ? (
@@ -464,7 +464,8 @@ export function AppsView({
                 {(
                   [
                     ['web', 'Website or web app'],
-                    ['mobile', 'Mobile app (iPhone and Android)']
+                    ['mobile', 'Mobile app (iPhone and Android)'],
+                    ['desktop', 'Desktop app (Windows and Mac)']
                   ] as const
                 ).map(([id, label]) => (
                   <button
@@ -517,7 +518,7 @@ export function AppsView({
                 />
               </label>
               <label className="field">
-                {newTarget === 'mobile'
+                {newTarget !== 'web'
                   ? 'One or two sentences about it (what the app is for)'
                   : 'One or two sentences about it (shown in search results)'}
                 <input
@@ -533,9 +534,11 @@ export function AppsView({
                   value={newRequest}
                   onChange={(e) => setNewRequest(e.target.value)}
                   placeholder={
-                    newTarget === 'mobile'
-                      ? 'A screen with our menu and prices, and a button to call us.'
-                      : 'A home page with our opening hours, a menu with prices and a contact form.'
+                    newTarget === 'desktop'
+                      ? 'A window to keep our customer list: add, search and edit customers.'
+                      : newTarget === 'mobile'
+                        ? 'A screen with our menu and prices, and a button to call us.'
+                        : 'A home page with our opening hours, a menu with prices and a contact form.'
                   }
                 />
               </label>
@@ -575,7 +578,11 @@ export function AppsView({
             <>
               <div className="row row-tint">
                 <span className="row-icon">
-                  <Icon name={app.kind === 'mobile' ? 'phone' : 'globe'} />
+                  <Icon
+                    name={
+                      app.kind === 'mobile' ? 'phone' : app.kind === 'desktop' ? 'panel' : 'globe'
+                    }
+                  />
                 </span>
                 <div className="row-main">
                   <p className="row-title">{app.title}</p>
@@ -673,9 +680,11 @@ export function AppsView({
                   value={request}
                   onChange={(e) => setRequest(e.target.value)}
                   placeholder={
-                    app.kind === 'mobile'
-                      ? 'For example: add a second screen with our opening hours, and tabs to switch.'
-                      : 'For example: add a gallery page with six photos and a link to it in the menu.'
+                    app.kind === 'desktop'
+                      ? 'For example: add a search box above the list and a button to export it as CSV.'
+                      : app.kind === 'mobile'
+                        ? 'For example: add a second screen with our opening hours, and tabs to switch.'
+                        : 'For example: add a gallery page with six photos and a link to it in the menu.'
                   }
                 />
               </label>
@@ -839,7 +848,17 @@ export function AppsView({
                 </>
               )}
 
-              {app.kind === 'mobile' ? (
+              {app.kind === 'desktop' ? (
+                <>
+                  <h2 className="section">Installer</h2>
+                  <p className="muted">
+                    A desktop app is shared as a Windows installer (and later a Mac app), made on
+                    this laptop with Tauri. That comes later in phase 9 and needs Rust and
+                    Microsoft’s C++ build tools: see This laptop, below. For now, the preview shows
+                    the app’s window contents as Tauri will.
+                  </p>
+                </>
+              ) : app.kind === 'mobile' ? (
                 <>
                   <h2 className="section">Publish</h2>
                   <p className="muted">

@@ -39,9 +39,10 @@ Nothing here blocks the next part of phase 8 except where it says so.
 
 ## Phase 9 · The app builder for mobile and desktop (started 21 Nov 2026)
 
-Nothing here blocks phase 8's last steps. The first part (mobile apps with Expo, Expo Go on your phone, the laptop check) is on the `phase-9-app-builder` branch of the desktop repo.
+Nothing here blocks phase 8's last steps. The first part (mobile apps with Expo, Expo Go on your phone, the laptop check, and desktop apps with Tauri up to the installer) is on the `phase-9-app-builder` branch of the desktop repo.
 
 - [ ] **Try a mobile app** (the desktop app from that branch, with `pnpm dev`): Apps → New app → **Mobile app (iPhone and Android)**, a name, a sentence and what to build first. Approve the plan, then look at the Preview and the Test report (phone sizes in Chromium and WebKit).
+- [ ] **Try a desktop app:** Apps → New app → **Desktop app (Windows and Mac)**, then Preview (Desktop size) and Test it. Making its Windows installer needs the two installs below.
 - [ ] **Try it on your phone:** install **Expo Go** (free, App Store or Google Play), put the phone on the same Wi-Fi as the laptop, press **Open on your phone** and scan the code (Android: in Expo Go; iPhone: with the Camera). If Windows asks whether Node.js may use networks, allow **private networks** only. Tell Claude whether it opened on Android and on an iPhone (that's half of phase 9's check).
 - [ ] **Decisions §57** (to be confirmed): Expo for mobile apps with no Expo account and nothing sent to Expo; Expo Go on the same Wi-Fi only, asking every time, never Expo's public tunnel; the laptop check; the plan for the emulator, Tauri (NSIS installers, not WiX), Windows Sandbox, Podman before Docker, Maestro with its own Java; Expo EAS, store publishing and device farms only after written answers.
 - [ ] **Turn on two Windows features on this laptop**, for the Android emulator and the clean-Windows test (Titan117 only checks them, it can't switch them on): Start → type **Turn Windows features on or off** → tick **Windows Hypervisor Platform** and **Windows Sandbox** → OK → restart. Apps → This laptop → Check again should then show both as ready.

@@ -721,7 +721,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       const logo = brand?.logo ? await resolveAllowed(policy(), brand.logo) : ''
       return apps.create(parent, {
         ...input,
-        kind: input.kind === 'mobile' ? 'mobile' : 'web',
+        kind: input.kind === 'mobile' || input.kind === 'desktop' ? input.kind : 'web',
         starter: STARTERS.find((s) => s.id === input.starter)?.id,
         ...(brand ? { brand: { ...brand, logo } } : {})
       })
