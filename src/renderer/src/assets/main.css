@@ -1743,6 +1743,13 @@ textarea.edit {
 /* Apps (phase 8): the live preview and the test report. */
 .apps-pick {
   flex: 1;
+  min-width: 0;
+}
+/* A long folder path in the App picker stays inside the screen. */
+.apps-pick select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
 }
 .apps-new {
   border: 1px solid var(--line);
@@ -1851,4 +1858,56 @@ textarea.edit {
   color: inherit;
   text-decoration: none;
   display: inline-flex;
+}
+
+/* Phase 9: a mobile app on the phone (Expo Go) and what this laptop can do. */
+.apps-phone {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 16px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.apps-phone ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+.app-qr {
+  flex: none;
+  width: 176px;
+  height: 176px;
+  padding: 6px;
+  background: #ffffff;
+  border-radius: 8px;
+}
+.app-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.app-devices li {
+  margin-bottom: 8px;
+}
+.app-fix {
+  margin: 4px 0 0 20px;
+  font-size: 13px;
+}
+.apps-emulator {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 4px 16px 12px;
+  margin: 12px 0;
+}
+.apps-licence {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--panel);
 }

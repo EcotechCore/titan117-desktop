@@ -2,7 +2,7 @@
 
 Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.md). Update this file in the same commit as the work: change the phase table when a phase starts or finishes, and add a log entry, newest first.
 
-**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Phase 8 started (21 Nov 2026):** its first part works in the built app: make a web app, a plan you approve, the build, checks in Chromium, Firefox and WebKit at three sizes, fixes, a test report, versions and a live preview. **Since then (21 Nov 2026):** Save to GitHub, ZIP export, more test conditions, starters and a brand kit, visual edit and Cloudflare publishing are built, and the five sample apps all pass. **Next step:** the owner's real Save to GitHub and Cloudflare publish (the last part of phase 8's check); Netlify waits for our OAuth app, Vercel and Convex for their written answers. Production waits (§52).
+**Now:** phase 7 is done (21 Nov 2026), apart from what waits outside the code: the GitHub App's client ID, Modal's answer (cloud sandboxes), a Mac (Seatbelt) and remote coding tasks (phase 15). Phase 5 waits for code signing (the owner starts on Monday 23 Nov 2026), a Mac, a clean Windows machine, the 14-day offline test and, once paying, Clerk Pro. **Phase 8 started (21 Nov 2026):** its first part works in the built app: make a web app, a plan you approve, the build, checks in Chromium, Firefox and WebKit at three sizes, fixes, a test report, versions and a live preview. **Since then (21 Nov 2026):** Save to GitHub, ZIP export, more test conditions, starters and a brand kit, visual edit and Cloudflare publishing are built, and the five sample apps all pass. **Phase 9 started (21 Nov 2026):** the phase-start review is recorded (decisions §57), and mobile apps with Expo work in the built app: made and built by Titan, previewed and tested at phone sizes, and opened on a phone with Expo Go; a laptop check says what's needed for the emulator, clean-Windows tests and desktop apps. **Next step:** the owner's real Save to GitHub and Cloudflare publish (phase 8's check), trying a mobile app on a phone, and turning on Windows Hypervisor Platform and Windows Sandbox; then the Android emulator and Tauri desktop apps. Netlify waits for our OAuth app; Vercel, Convex, Expo (EAS) and BrowserStack for written answers. Production waits (§52).
 
 ## Phases
 
@@ -17,7 +17,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 6 | Folder agent | Done | 16 Nov 2026 | 20 Nov 2026 |
 | 7 | Coding engine and code builder | Done (except what waits outside the code) | 20 Nov 2026 | 21 Nov 2026 |
 | 8 | App builder: web | In progress | 21 Nov 2026 | |
-| 9 | App builder: mobile and desktop | Not started | | |
+| 9 | App builder: mobile and desktop | In progress | 21 Nov 2026 | |
 | 10 | Sidebar apps | Not started | | |
 | 11 | Agent builder | Not started | | |
 | 12 | QA and SEO agents | Not started | | |
@@ -31,6 +31,40 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 22 Nov 2026 · Phase 9: the emulator's set-up, the installer, a clean Windows, store guides
+
+Branch `phase-9-app-builder`; decisions §57.19.
+
+- **The emulator (`android.ts`):** Google's command-line tools 22.0 and Eclipse Temurin 21.0.13.1, hash-checked (both matched), into `components/android`; Google's licence shown exactly as `sdkmanager --install` asks for Titan117's four packages, declined while reading; acceptance recorded with the text's fingerprint; then the install, a Pixel 7 phone on Android 14 with Google Play, start (waits for boot) and `exp://10.0.2.2:…` to open a mobile app. Google's tools run from Java directly, with their own settings folder.
+- **The installer:** `makeInstaller` (toolchain check, checks, icons, `tauri build --bundles nsis`) and **a clean Windows** (`sandbox.ts`: a `.wsb` with no network, the installer read-only, a results folder; Windows Sandbox installs silently and starts the app).
+- **Store guides** for Google Play, the App Store and the Microsoft Store on the Apps screen.
+- **Seen in the built app:** the tools downloaded and matched their fingerprints; Google's licence showed in full (17,069 characters, no notices or progress bars) and was not accepted; nothing was installed; Make the installer said Rust and the build tools are missing; the store guides showed. The emulator itself, the installer and the sandbox wait for the owner's steps (owner checklist).
+- **Checks:** typecheck, lint, 424 tests, build and `check:licenses` pass.
+
+### 22 Nov 2026 · Phase 9: desktop apps with Tauri, first part
+
+Branch `phase-9-app-builder`; decisions §57.18.
+
+- **The desktop template (6.4):** Tauri 2.12.7 (`tauri-build` 2.7.6, exact versions in `Cargo.toml`) around a React 19, Vite and Tailwind page; `app.config.json` holds the name, `src-tauri/tauri.conf.json` the window and installer (NSIS only, current user), a window that loads only its own content, Tauri's core permissions only; a test, `AGENTS.md`, and a lockfile of 110 npm packages (permissive, plus MPL 2.0 lightningcss). Its typecheck, test, build and `tauri icon` (from `app-icon.svg`) work without Rust.
+- **The engine:** a third kind, `desktop` (`app_create` target "desktop"), with the desktop specialist's stack, rules and fix prompt; its page tested in Chromium (WebView2) and WebKit at 1024×720, 800×600, 1440×900 and dark, with the screen checks; Cloudflare publishing and Expo Go refused for it. The Apps screen's third choice, an Installer note, and its own placeholders.
+- **Bugs found by driving it and fixed:** `app_create` turned the "desktop" target into a website (now checked by `targetOf`, with a test); and a desktop app got a website's SEO checks because one of its window sizes is named "desktop", so the first fix round added meta tags for nothing (website checks now only for websites, with a test in Edge). Also: a long folder path in the App picker made the Apps screen scroll sideways; it now fits.
+- **Seen working in the built app** (Claude Haiku 5.5): Titan made "Customer Book" as a desktop app and built a customer list (a form, a searchable table, kept on the computer; 9 files, 407 lines with tests), and every check passed in both engines at every window size; after the fixes, Test it on the Apps screen showed the app checks without SEO, and the preview at desktop size showed the two-column window.
+- **Checks:** typecheck, lint, 413 tests, build and `check:licenses` (845 packages) pass.
+- **Left:** the installer (`tauri build`; needs Rust and Microsoft's C++ build tools, and makes the `Cargo.lock`), then the clean-Windows install in Windows Sandbox.
+
+### 21 Nov 2026 · Phase 9 started: mobile apps with Expo, Expo Go, the laptop check
+
+Branch `phase-9-app-builder`. Decisions §57 (to be confirmed); the phase-start review is in the shared docs.
+
+- **Mobile apps (6.3):** a second template, Expo SDK 58.0.26 with React Native 0.88.1 and React 19.3 (from Expo's 0BSD blank template): a lockfile of 497 packages from the public registry, installed without install scripts; a Vitest test rendering through react-native-web (Expo modules that need a phone get stand-ins in `test-stubs/`); `AGENTS.md` rules. `app_create` takes `target: "mobile"`; the Apps screen asks "Website or web app" or "Mobile app". Expo's telemetry and server calls are off (`EXPO_NO_TELEMETRY`, `EXPO_OFFLINE`); no Expo account.
+- **Preview and tests:** Expo's dev server on 127.0.0.1 only (`--localhost`, checked: nothing else listens); a mobile app's checks are typecheck, the web export, its tests, then Chromium and WebKit at phone, small phone, tablet, phone dark and slow phone, with screen checks (shows something, named buttons and images, 44-point tap targets) instead of SEO. The first bundle is made once before the browsers time it.
+- **On the phone (6.24):** `app_phone` and the Apps screen's "Open on your phone" restart the server on the laptop's Wi-Fi address (never a virtual adapter's; Expo's public tunnel never used), show a QR code for Expo Go, and ask every time, on the laptop only (denial test added). Stopping the preview closes it.
+- **The laptop check (6.28):** "This laptop" on the Apps screen reads memory, disk, virtualization, Windows Hypervisor Platform, Windows Sandbox, the edition, WebView2, the C++ build tools, Rust, Xcode and the Wi-Fi address, changes nothing, and says the user's own step for each missing piece.
+- **The mobile specialist (6.5):** its own stack, rules and fix prompt for the coding engine. Publishing to a website host, visual edit and Publish from GitHub are hidden or refused for mobile apps.
+- **Seen working in the built app** (Playwright, a throwaway profile, web and API addresses blank, Claude Haiku 5.5): the laptop check found the Wi-Fi address and that Windows Hypervisor Platform and Windows Sandbox are off; Titan made "Cluj Bakery" as a mobile app and built a home screen (hours, six items with prices in lei, a call button) in about 4 minutes for $0.03: the first check caught a type error in its test, one fix round, then everything passed in both engines at every size. The preview showed it at phone size; Open on your phone asked first, showed the QR code for `exp://192.168.111.17:…`, and from that Wi-Fi address Expo's manifest (SDK 58) and a 3.8 MB Android bundle for Expo Go were served; after Stop the preview, nothing answered there.
+- **Checks:** typecheck, lint, 406 tests, build and `check:licenses` (845 packages; `uqr` 0.1.3, MIT, draws the QR code) pass.
+- **Left:** a real phone with Expo Go (owner), then the Android emulator and automated taps, Tauri desktop apps, Windows Sandbox installs, containers, store publishing and cloud devices (decisions §57.17).
 
 ### 21 Nov 2026 · Phase 8's work merged
 

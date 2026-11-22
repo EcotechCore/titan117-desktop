@@ -25,9 +25,44 @@ export const SIZES = [
 
 export type SizeId = (typeof SIZES)[number]['id']
 
+/**
+ * A mobile app's web preview (6.3, decisions §57): phone sizes first, an
+ * Android-sized phone, a tablet, and the phone in dark mode, in Chromium
+ * (like Android's browser engine) and WebKit (like the iPhone's).
+ */
+export const SMALL_PHONE = {
+  id: 'phone-small',
+  label: 'Small phone',
+  width: 360,
+  height: 780
+} as const
+export const MOBILE_ENGINES: EngineName[] = ['chromium', 'webkit']
+
+/**
+ * A desktop app's window (6.4, decisions §57): Tauri shows the page in
+ * WebView2 (Chromium) on Windows and WebKit on a Mac, at its default window,
+ * its smallest, a large one, and the default in dark mode.
+ */
+export const WINDOW_SIZES = {
+  window: { width: 1024, height: 720 },
+  small: { width: 800, height: 600 }
+} as const
+
+/** What a run checks: a website (SEO, three engines), or a mobile or desktop app's page. */
+export type TestProfile = 'web' | 'mobile' | 'desktop'
+
 export interface ShotResult {
   engine: EngineName
-  size: SizeId | 'desktop-dark' | 'phone-slow' | 'desktop-language'
+  size:
+    | SizeId
+    | 'desktop-dark'
+    | 'phone-slow'
+    | 'desktop-language'
+    | 'phone-small'
+    | 'phone-dark'
+    | 'window'
+    | 'window-small'
+    | 'window-dark'
   /** File name inside the report folder. */
   screenshot: string | null
   consoleErrors: string[]
@@ -87,7 +122,13 @@ export interface BrowserTests {
   run(
     url: string,
     outDir: string,
-    options?: { engines?: EngineName[]; signal?: AbortSignal }
+    options?: {
+      engines?: EngineName[]
+      signal?: AbortSignal
+      profile?: TestProfile
+      /** How long a page may take to load (a mobile app's first bundle is slower). */
+      loadTimeoutMs?: number
+    }
   ): Promise<BrowserReport>
 }
 
@@ -252,16 +293,84 @@ export function createBrowserTests(deps: {
     return findings
   }
 
+  /** A mobile app's screen checks (6.25, the start): it shows something, and its buttons and images are named for screen readers. */
+  async function mobileChecks(page: import('playwright-core').Page): Promise<SeoFinding[]> {
+    const facts = await page.evaluate(() => {
+      const named = (el: Element): boolean =>
+        !!(
+          el.getAttribute('aria-label') ||
+          el.getAttribute('aria-labelledby') ||
+          (el.textContent ?? '').trim()
+        )
+      const small = [...document.querySelectorAll('[role="button"], button, a[href]')].filter(
+        (el) => {
+          const r = el.getBoundingClientRect()
+          return r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44)
+        }
+      ).length
+      return {
+        text: (document.body.innerText ?? '').trim().length,
+        unnamedButtons: [...document.querySelectorAll('[role="button"], button')].filter(
+          (el) => !named(el)
+        ).length,
+        unnamedImages: [...document.querySelectorAll('img, [role="img"]')].filter(
+          (el) => !(el.getAttribute('alt') || el.getAttribute('aria-label'))
+        ).length,
+        small
+      }
+    })
+    return [
+      {
+        check: 'Shows something',
+        ok: facts.text > 0,
+        detail: facts.text
+          ? 'The screen has content.'
+          : 'The screen is empty: the app may have crashed.'
+      },
+      {
+        check: 'Button names',
+        ok: facts.unnamedButtons === 0,
+        detail: facts.unnamedButtons
+          ? `${facts.unnamedButtons} button(s) without a name (accessibilityLabel)`
+          : 'Every button has a name.'
+      },
+      {
+        check: 'Image descriptions',
+        ok: facts.unnamedImages === 0,
+        detail: facts.unnamedImages
+          ? `${facts.unnamedImages} image(s) without accessibilityLabel`
+          : 'Every image is described.'
+      },
+      {
+        check: 'Tap targets',
+        ok: facts.small === 0,
+        detail: facts.small
+          ? `${facts.small} button(s) or link(s) smaller than 44×44`
+          : 'Buttons and links are big enough to tap.'
+      }
+    ]
+  }
+
   /** Open the preview in each engine at each size; screenshots go into `outDir`. */
   async function run(
     url: string,
     outDir: string,
-    options: { engines?: EngineName[]; signal?: AbortSignal } = {}
+    options: {
+      engines?: EngineName[]
+      signal?: AbortSignal
+      profile?: TestProfile
+      loadTimeoutMs?: number
+    } = {}
   ): Promise<BrowserReport> {
     mkdirSync(outDir, { recursive: true })
+    const mobile = options.profile === 'mobile'
+    const desktopApp = options.profile === 'desktop'
     const origin = new URL(url).origin
     const report: BrowserReport = { engines: [], shots: [], seo: [] }
-    for (const engine of options.engines ?? (['chromium', 'firefox', 'webkit'] as const)) {
+    const engines =
+      options.engines ??
+      (mobile || desktopApp ? MOBILE_ENGINES : (['chromium', 'firefox', 'webkit'] as const))
+    for (const engine of engines) {
       if (options.signal?.aborted) break
       let browser: Browser
       try {
@@ -278,25 +387,53 @@ export function createBrowserTests(deps: {
       try {
         type Variant = {
           size: ShotResult['size']
-          viewport: (typeof SIZES)[number]
+          viewport: { width: number; height: number }
           dark: boolean
           slow?: boolean
           locale?: string
         }
-        const variants: Variant[] = [
-          ...SIZES.map((s) => ({ size: s.id as ShotResult['size'], viewport: s, dark: false })),
-          { size: 'desktop-dark', viewport: SIZES[2], dark: true }
-        ]
+        const variants: Variant[] = desktopApp
+          ? [
+              { size: 'window', viewport: WINDOW_SIZES.window, dark: false },
+              { size: 'window-small', viewport: WINDOW_SIZES.small, dark: false },
+              { size: 'desktop', viewport: SIZES[2], dark: false },
+              { size: 'window-dark', viewport: WINDOW_SIZES.window, dark: true }
+            ]
+          : mobile
+            ? [
+                { size: 'phone', viewport: SIZES[0], dark: false },
+                { size: 'phone-small', viewport: SMALL_PHONE, dark: false },
+                { size: 'tablet', viewport: SIZES[1], dark: false },
+                { size: 'phone-dark', viewport: SIZES[0], dark: true }
+              ]
+            : [
+                ...SIZES.map((s) => ({
+                  size: s.id as ShotResult['size'],
+                  viewport: s,
+                  dark: false
+                })),
+                { size: 'desktop-dark', viewport: SIZES[2], dark: true }
+              ]
         // Conditions (6.21), in the first engine that runs: a slow network and another language.
-        if (engine === report.engines.find((e) => e.ran)?.engine)
+        if (!desktopApp && engine === report.engines.find((e) => e.ran)?.engine)
           variants.push(
             { size: 'phone-slow', viewport: SIZES[0], dark: false, slow: true },
-            { size: 'desktop-language', viewport: SIZES[2], dark: false, locale: OTHER_LOCALE }
+            ...(mobile
+              ? []
+              : [
+                  {
+                    size: 'desktop-language' as const,
+                    viewport: SIZES[2],
+                    dark: false,
+                    locale: OTHER_LOCALE
+                  }
+                ])
           )
         for (const variant of variants) {
           if (options.signal?.aborted) break
           const context = await browser.newContext({
             viewport: { width: variant.viewport.width, height: variant.viewport.height },
+            ...(mobile ? { isMobile: engine === 'chromium', hasTouch: true } : {}),
             colorScheme: variant.dark ? 'dark' : 'light',
             serviceWorkers: 'block',
             ...(variant.locale
@@ -337,7 +474,7 @@ export function createBrowserTests(deps: {
           })
           const started = Date.now()
           try {
-            await page.goto(url, { waitUntil: 'load', timeout: 30_000 })
+            await page.goto(url, { waitUntil: 'load', timeout: options.loadTimeoutMs ?? 30_000 })
             await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined)
             shot.loadMs = Date.now() - started
             if (variant.slow) shot.slow = shot.loadMs > SLOW_LIMIT_MS
@@ -347,8 +484,27 @@ export function createBrowserTests(deps: {
             const file = `${engine}-${variant.size}.png`
             await page.screenshot({ path: join(outDir, file), fullPage: false })
             shot.screenshot = file
-            if (engine === report.engines.find((e) => e.ran)?.engine && variant.size === 'desktop')
+            // Website checks only for websites: a desktop app also has a "desktop" size.
+            if (
+              options.profile !== 'mobile' &&
+              options.profile !== 'desktop' &&
+              engine === report.engines.find((e) => e.ran)?.engine &&
+              variant.size === 'desktop'
+            )
               report.seo = await seoChecks(page)
+            if (
+              mobile &&
+              engine === report.engines.find((e) => e.ran)?.engine &&
+              variant.size === 'phone'
+            )
+              report.seo = await mobileChecks(page)
+            // A desktop app: the same screen checks, without the phone's tap-target size.
+            if (
+              desktopApp &&
+              engine === report.engines.find((e) => e.ran)?.engine &&
+              variant.size === 'window'
+            )
+              report.seo = (await mobileChecks(page)).filter((f) => f.check !== 'Tap targets')
           } catch (error) {
             shot.pageErrors.push(
               `Didn't load: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`

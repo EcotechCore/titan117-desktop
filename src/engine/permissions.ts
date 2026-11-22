@@ -703,6 +703,33 @@ export function createPermissionLayer(deps: {
             await mayRunApp(folder, real, 'install its packages from npm and start its preview')
             return appService().startPreview(real)
           },
+          async phone(folder) {
+            const real = await appFolder(folder)
+            const app = appService().info(real)
+            if (app.kind !== 'mobile')
+              throw new PermissionError('Only a mobile app opens on a phone.')
+            // It opens the app's dev server to the local network (decisions §57): asks every time, on the laptop only.
+            const decision = await gate(
+              ctx,
+              `${callId}-phone`,
+              'app_phone',
+              { folder },
+              {
+                risk: 'external',
+                summary: `Open "${app.title}" to phones on this Wi-Fi (Expo Go): while it runs, devices on the same network can load the app's code from this laptop`
+              },
+              true
+            )
+            if (!decision.allowed) throw new PermissionError(`Not opened: ${decision.why}`)
+            activity(
+              ctx,
+              'approval',
+              'app_phone',
+              `Opening ${app.title} to phones`,
+              decision.approvedBy
+            )
+            return appService().startPhone(real)
+          },
           saveVersion: async (folder, message) =>
             appService().saveVersion(await appFolder(folder), message),
           versions: async (folder) => appService().versions(await resolveAllowed(policy, folder)),

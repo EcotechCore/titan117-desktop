@@ -40,6 +40,7 @@ import { ShareError, type ShareService } from './lib/share'
 import { ReportError, type ReportService } from './lib/reports'
 import { AppError } from './lib/apps/service'
 import { NodeDownloadError } from './lib/apps/node'
+import { AndroidError } from './lib/apps/android'
 import { GitError } from './lib/git'
 import { PermissionError } from './lib/folders'
 import type { SetupInterest, SetupState } from '../shared/protocol'
@@ -142,12 +143,19 @@ export function createApi(deps: {
       description: string
       lang?: string
       starter?: string
+      kind?: string
     }): Promise<unknown>
     setBrand(next: unknown): void
     report(folder: string): Promise<unknown>
     versions(folder: string): Promise<unknown>
     screenshot(folder: string, id: string, file: string): Promise<string>
     preview(folder: string, action: 'start' | 'stop'): Promise<{ url: string | null }>
+    phone(folder: string): Promise<{ url: string; phone: string }>
+    android(): unknown
+    androidAction(action: string, folder?: string): Promise<unknown>
+    installer(folder: string): Promise<{ started: boolean }>
+    sandbox(folder: string): Promise<unknown>
+    devices(fresh: boolean): Promise<unknown>
     check(folder: string): Promise<{ started: boolean }>
     restore(folder: string, sha: string): Promise<{ sha: string }>
     github(folder: string, action: 'save' | 'stop', isPrivate: boolean): Promise<unknown>
@@ -329,7 +337,10 @@ export function createApi(deps: {
             title: text('title', 120),
             description: text('description', 300),
             ...(typeof lang === 'string' ? { lang } : {}),
-            ...(typeof starter === 'string' ? { starter } : {})
+            ...(typeof starter === 'string' ? { starter } : {}),
+            ...(field(body, 'kind') === 'mobile' || field(body, 'kind') === 'desktop'
+              ? { kind: field(body, 'kind') as string }
+              : {})
           })
         }
       }
@@ -353,6 +364,8 @@ export function createApi(deps: {
       }
       case 'GET apps/:id': {
         // `/v1/apps/report?folder=…`, `versions?folder=…`, `screenshot?folder=…&report=…&file=…`
+        if (id === 'devices') return need(deps.apps).devices(query.fresh === '1')
+        if (id === 'android') return need(deps.apps).android()
         if (!query.folder) throw new ApiError(400, 'BAD_REQUEST', 'Which app?')
         const a = need(deps.apps)
         if (id === 'report') return { report: await a.report(query.folder) }
@@ -363,11 +376,23 @@ export function createApi(deps: {
         throw new ApiError(404, 'NOT_FOUND', 'Not found.')
       }
       case 'POST apps/:id': {
+        if (id === 'android') {
+          const action = field(body, 'action')
+          const target = field(body, 'folder')
+          if (typeof action !== 'string') throw new ApiError(400, 'BAD_REQUEST', 'Which step?')
+          return need(deps.apps).androidAction(
+            action,
+            typeof target === 'string' ? target : undefined
+          )
+        }
         const folder = field(body, 'folder')
         if (typeof folder !== 'string') throw new ApiError(400, 'BAD_REQUEST', 'Which app?')
         const a = need(deps.apps)
         if (id === 'preview')
           return a.preview(folder, field(body, 'action') === 'stop' ? 'stop' : 'start')
+        if (id === 'phone') return a.phone(folder)
+        if (id === 'installer') return a.installer(folder)
+        if (id === 'sandbox') return a.sandbox(folder)
         if (id === 'check') return a.check(folder)
         if (id === 'publish') return a.publish(folder)
         if (id === 'github')
@@ -841,6 +866,7 @@ export function createApi(deps: {
         error instanceof AppError ||
         error instanceof GitError ||
         error instanceof NodeDownloadError ||
+        error instanceof AndroidError ||
         error instanceof PermissionError
       )
         return { status: 400, body: { error: 'BAD_REQUEST', message: error.message } }

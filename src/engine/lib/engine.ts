@@ -65,6 +65,9 @@ import { createBrowserTests } from './apps/browsers'
 import { AppError, createAppService, type GitHubLink, type Published } from './apps/service'
 import { PublishError } from './apps/cloudflare'
 import { cleanBrand, STARTERS, type BrandKit } from './apps/starters'
+import { assess, probeDevice, type DeviceCheck } from './apps/devices'
+import { AndroidError, createAndroidComponent } from './apps/android'
+import { cleanEnv } from './shell'
 import type { AppModels } from '../tools/lib/define-tool'
 
 export interface AccountState {
@@ -535,7 +538,15 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   const componentsDir = join(options.dataDir ?? tmpdir(), 'components')
   const nodeComponent = createNodeComponent({ dir: join(componentsDir, 'node') })
   const appBrowsers = createBrowserTests({ dir: join(componentsDir, 'browsers') })
+  const android = createAndroidComponent({
+    dir: join(componentsDir, 'android'),
+    baseEnv: () => cleanEnv(process.env, join(scratchRoot, 'android'))
+  })
   const apps = createAppService({
+    toolchain: async () => {
+      const f = await probeDevice(options.dataDir ?? tmpdir())
+      return { rust: !!f.rust, msvc: !!f.msvc }
+    },
     runner: createRunner({
       node: () => nodeComponent.ensure(),
       npmDir: join(componentsDir, 'npm'),
@@ -690,6 +701,35 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   const appChecks = new Map<string, string>()
   /** The last background run's problem per app (publishing), shown on the screen. */
   const appProblems = new Map<string, string>()
+  /** What this laptop can do for mobile and desktop apps (decisions §57), checked when asked, kept 5 minutes. */
+  let deviceChecks: { at: number; checks: DeviceCheck[] } | null = null
+  /** The emulator's set-up (decisions §57.19): what it's doing now, its last problem, Google's licence text. */
+  const androidState: { note: string | null; problem: string | null; licence: string | null } = {
+    note: null,
+    problem: null,
+    licence: null
+  }
+  /** Run a long emulator step in the background; the screen hears "changed apps". */
+  const androidStep = (work: () => Promise<unknown>): { started: boolean } => {
+    if (androidState.note) return { started: false }
+    androidState.note = 'Starting…'
+    androidState.problem = null
+    emit({ type: 'changed', what: 'apps' })
+    void work()
+      .catch((error) => {
+        androidState.problem = error instanceof Error ? error.message : String(error)
+        if (!(error instanceof AndroidError)) log.capture('apps', error, {})
+      })
+      .finally(() => {
+        androidState.note = null
+        emit({ type: 'changed', what: 'apps' })
+      })
+    return { started: true }
+  }
+  const androidProgress = (note: string): void => {
+    androidState.note = note
+    emit({ type: 'changed', what: 'apps' })
+  }
   const appView = {
     async list() {
       const allowed = policy().allowed
@@ -697,6 +737,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         apps: apps.list(allowed).map((a) => ({
           ...a,
           checking: appChecks.get(a.folder) ?? null,
+          installer: a.kind === 'desktop' ? apps.installer(a.folder) : null,
           problem: appProblems.get(a.folder) ?? null
         })),
         models: appModels(),
@@ -711,12 +752,14 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       description: string
       lang?: string
       starter?: string
+      kind?: string
     }) {
       const parent = await realWritable(input.folder)
       const brand = brandKit()
       const logo = brand?.logo ? await resolveAllowed(policy(), brand.logo) : ''
       return apps.create(parent, {
         ...input,
+        kind: input.kind === 'mobile' || input.kind === 'desktop' ? input.kind : 'web',
         starter: STARTERS.find((s) => s.id === input.starter)?.id,
         ...(brand ? { brand: { ...brand, logo } } : {})
       })
@@ -738,6 +781,84 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         return { url: null }
       }
       return apps.startPreview(real)
+    },
+    /** The emulator's state (6.22). */
+    android() {
+      return { ...android.status(), ...androidState }
+    },
+    /** The user's own clicks on the emulator's set-up; accepting Google's licence happens only here. */
+    async androidAction(action: string, folder?: string) {
+      switch (action) {
+        case 'tools':
+          return androidStep(() => android.ensureTools(androidProgress))
+        case 'licence':
+          androidState.licence = await android.licenceText()
+          return { licence: androidState.licence }
+        case 'accept':
+          await android.acceptLicence()
+          androidState.licence = null
+          return { accepted: true }
+        case 'install':
+          return androidStep(() => android.installPhone(androidProgress))
+        case 'start':
+          return androidStep(() => android.start(androidProgress))
+        case 'stop':
+          await android.stop()
+          emit({ type: 'changed', what: 'apps' })
+          return { stopped: true }
+        case 'open': {
+          if (!folder) throw new AppError('Which app?')
+          const real = await realWritable(folder)
+          const { url } = await apps.startPreview(real)
+          // The emulator reaches this laptop's 127.0.0.1 as 10.0.2.2: nothing opens to the network.
+          await android.openUrl(
+            url.replace('http://127.0.0.1:', 'exp://10.0.2.2:').replace(/\/$/, '')
+          )
+          return { opened: true }
+        }
+        default:
+          throw new AppError('Unknown emulator step.')
+      }
+    },
+    /** The user's click: make a desktop app's installer (runs in the background). */
+    async installer(folder: string) {
+      const real = await realWritable(folder)
+      if (appChecks.has(real)) return { started: false }
+      appChecks.set(real, 'Making the installer…')
+      appProblems.delete(real)
+      emit({ type: 'changed', what: 'apps' })
+      void apps
+        .makeInstaller(real, (note) => {
+          appChecks.set(real, note)
+          emit({ type: 'changed', what: 'apps' })
+        })
+        .catch((error) => {
+          appProblems.set(real, error instanceof Error ? error.message : String(error))
+          if (!(error instanceof AppError)) log.capture('apps', error, {})
+        })
+        .finally(() => {
+          appChecks.delete(real)
+          emit({ type: 'changed', what: 'apps' })
+        })
+      return { started: true }
+    },
+    /** The user's click: install and open the app in a fresh Windows Sandbox. */
+    async sandbox(folder: string) {
+      const real = await realWritable(folder)
+      return apps.tryInSandbox(real, join(scratchRoot, 'sandbox'))
+    },
+    /** The user's click: open a mobile app to phones on this Wi-Fi for Expo Go (6.24). */
+    async phone(folder: string) {
+      return apps.startPhone(await realWritable(folder))
+    },
+    /** What this laptop can do (6.28): read-only checks; `fresh` checks again. */
+    async devices(fresh: boolean) {
+      if (fresh || !deviceChecks || Date.now() - deviceChecks.at > 5 * 60_000)
+        deviceChecks = {
+          at: Date.now(),
+          checks: assess(await probeDevice(options.dataDir ?? tmpdir()))
+        }
+      return deviceChecks
     },
     /** Runs in the background; the screen hears "changed apps" as it moves on. */
     async check(folder: string) {

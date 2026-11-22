@@ -1,0 +1,9 @@
+node_modules
+dist
+.expo
+.titan117/reports
+*.log
+.env
+.env.*
+android
+ios
