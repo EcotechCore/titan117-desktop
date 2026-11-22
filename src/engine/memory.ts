@@ -40,9 +40,9 @@ export function projectScope(root: string): string {
   return `project:${root}`
 }
 
-/** The scopes an agent may read: shared memory and its own. */
-export function visibleScopes(agent: string): string[] {
-  return ['shared', agentScope(agent)]
+/** The scopes an agent may read: shared memory and its own, or only its own (decisions §59.4). */
+export function visibleScopes(agent: string, ownOnly = false): string[] {
+  return ownOnly ? [agentScope(agent)] : ['shared', agentScope(agent)]
 }
 
 function checkScope(scope: unknown): string {
@@ -91,7 +91,7 @@ export interface MemoryStore {
   update(id: string, patch: { text?: string; kind?: string; scope?: string }): Memory
   remove(id: string): void
   /** What an agent sees at the start of a task: its profile and preferences, then what matches. */
-  forPrompt(agent: string, about: string): Memory[]
+  forPrompt(agent: string, about: string, ownOnly?: boolean): Memory[]
 }
 
 export function createMemoryStore(db: Db, onChange: () => void = () => undefined): MemoryStore {
@@ -161,13 +161,13 @@ export function createMemoryStore(db: Db, onChange: () => void = () => undefined
       onChange()
     },
 
-    forPrompt(agent, about) {
-      const scopes = visibleScopes(agent)
+    forPrompt(agent, about, ownOnly = false) {
+      const scopes = visibleScopes(agent, ownOnly)
       const standing = (
         db
           .prepare(
-            `select * from memories where scope in (?, ?) and kind in ('profile', 'preference')
-             order by updated_at desc limit 25`
+            `select * from memories where scope in (${scopes.map(() => '?').join(', ')})
+             and kind in ('profile', 'preference') order by updated_at desc limit 25`
           )
           .all(...scopes) as Row[]
       ).map(toMemory)
@@ -194,11 +194,13 @@ export function createMemoryAccess(deps: {
   taskId: string
   taskTitle: () => string
   mode: 'read' | 'write'
+  /** Reads and saves only its own memory (decisions §59.4). */
+  ownOnly?: boolean
   /** The project's real root folder, checked against the allowed folders. */
   projectRoot?(folder: string): Promise<string>
 }): MemoryAccess {
   const { store, agent } = deps
-  const scopes = visibleScopes(agent)
+  const scopes = visibleScopes(agent, deps.ownOnly)
   const writable = (): void => {
     if (deps.mode !== 'write') throw new MemoryError('This tool may read memory, not change it.')
   }
@@ -209,7 +211,7 @@ export function createMemoryAccess(deps: {
     save({ text, kind, shared }) {
       writable()
       return store.add({
-        scope: shared ? 'shared' : agentScope(agent),
+        scope: shared && !deps.ownOnly ? 'shared' : agentScope(agent),
         kind,
         text,
         source: `${agent}, in the task "${deps.taskTitle().slice(0, 80)}"`,

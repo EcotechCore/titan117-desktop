@@ -22,6 +22,9 @@ import type { Logger } from './lib/log'
 import { ModelError } from './models/types'
 import { ConnectorError } from './lib/mcp'
 import { SkillError } from './lib/skills'
+import { AgentError, checkAgent, parseAgent, type AgentStore } from './lib/agents'
+import { CompareError, type CompareResult } from './compare'
+import { TOOL_GROUPS } from '../shared/protocol'
 import { MemoryError } from './memory'
 import { ApprovalError, type PermissionLayer } from './permissions'
 import type { Router } from './router'
@@ -102,6 +105,10 @@ export function createApi(deps: {
   log: Logger
   memory?: MemoryStore
   skills?: SkillStore
+  /** Agent definitions (4.1-4.4): the Agents screen. */
+  agents?: AgentStore
+  /** Compare models side by side (2.8). */
+  compare?: (prompt: unknown, models: unknown) => Promise<CompareResult[]>
   records?: RecordStore
   connectors?: ConnectorHub
   speech?: SpeechEngine
@@ -193,6 +200,82 @@ export function createApi(deps: {
   function need<T>(value: T | undefined): T {
     if (value === undefined) throw new ApiError(404, 'NOT_FOUND', 'Not available.')
     return value
+  }
+
+  /** Agents (4.1-4.4) and Compare (2.8) for the window. Null when the route isn't one of these. */
+  async function agentRoutes(
+    key: string,
+    id: string | undefined,
+    body: unknown
+  ): Promise<unknown | null> {
+    if (!key.includes(' agents') && key !== 'POST compare') return null
+    const agents = need(deps.agents)
+    const found = (): ReturnType<AgentStore['get']> & object => {
+      const def = id ? agents.get(decodeURIComponent(id)) : null
+      if (!def) throw new ApiError(404, 'NOT_FOUND', 'No such agent.')
+      return def
+    }
+    const optionalModel = (value: unknown): string | null =>
+      typeof value === 'string' && value ? modelId(value) : null
+    switch (key) {
+      case 'GET agents':
+        return { agents: agents.list(), groups: TOOL_GROUPS }
+      case 'POST agents': {
+        const def = checkAgent(
+          {
+            ...(body as Record<string, unknown>),
+            model: optionalModel(field(body, 'model')),
+            fastModel: optionalModel(field(body, 'fastModel'))
+          },
+          'you'
+        )
+        return { agent: agents.save(def) }
+      }
+      case 'PUT agents/:id': {
+        const current = found()
+        const model = optionalModel(field(body, 'model'))
+        const fastModel = optionalModel(field(body, 'fastModel'))
+        // Ours can't change; their models are a setting (decisions §59.2).
+        if (current.builtIn) return { agent: agents.setModels(current.name, { model, fastModel }) }
+        const def = checkAgent(
+          { ...(body as Record<string, unknown>), name: current.name, model, fastModel },
+          current.source
+        )
+        return { agent: agents.save(def, { replace: true }) }
+      }
+      case 'DELETE agents/:id':
+        agents.remove(found().name)
+        return { ok: true }
+      case 'POST agents/:id/clone': {
+        const current = found()
+        const def = checkAgent(
+          { ...current, name: field(body, 'name') },
+          `you (from ${current.name})`
+        )
+        return { agent: agents.save(def) }
+      }
+      case 'GET agents/:id/file':
+        return { text: agents.file(found().name) }
+      case 'PUT agents/:id/file': {
+        const current = found()
+        if (current.builtIn)
+          throw new ApiError(400, 'BAD_REQUEST', `${current.name} is built in. Clone it first.`)
+        const def = parseAgent(String(field(body, 'text') ?? ''), current.source)
+        if (def.name !== current.name)
+          throw new ApiError(400, 'BAD_REQUEST', 'An agent’s name can’t change. Clone it instead.')
+        return { agent: agents.save(def, { replace: true }) }
+      }
+      case 'POST compare':
+        return {
+          results: await need(deps.compare)(
+            field(body, 'prompt'),
+            Array.isArray(field(body, 'models'))
+              ? (field(body, 'models') as unknown[]).map((m) => modelId(m))
+              : []
+          )
+        }
+    }
+    return null
   }
 
   /** Memory, skills, past tasks, connectors and speech for the window. Null when the route isn't one of these. */
@@ -804,6 +887,9 @@ export function createApi(deps: {
     const more = await phase4(key, id, body, query)
     if (more !== null) return more
 
+    const team = await agentRoutes(key, id, body)
+    if (team !== null) return team
+
     switch (key) {
       case 'GET state': {
         const state: EngineState = {
@@ -830,7 +916,8 @@ export function createApi(deps: {
           task: runtime.start(
             field(body, 'text') as string,
             modelId(field(body, 'model')),
-            field(body, 'mode') === 'research' ? 'research' : 'normal'
+            field(body, 'mode') === 'research' ? 'research' : 'normal',
+            typeof field(body, 'agent') === 'string' ? (field(body, 'agent') as string) : undefined
           )
         }
 
@@ -841,7 +928,12 @@ export function createApi(deps: {
           task,
           messages: store.listMessages(id),
           approvals: store.listApprovals({ taskId: id }),
-          activity: store.listActivity(id)
+          activity: store.listActivity(id),
+          // Parts handed to other agents and the messages between them (4.6, 4.7).
+          parts: store.listParts(id),
+          talk: store
+            .listAgentMessages(task.parentId ?? id)
+            .filter((m) => !task.parentId || m.taskId === id)
         }
         return detail
       }
@@ -937,7 +1029,9 @@ export function createApi(deps: {
         error instanceof GitError ||
         error instanceof NodeDownloadError ||
         error instanceof AndroidError ||
-        error instanceof PermissionError
+        error instanceof PermissionError ||
+        error instanceof AgentError ||
+        error instanceof CompareError
       )
         return { status: 400, body: { error: 'BAD_REQUEST', message: error.message } }
       if (error instanceof ArtifactError)

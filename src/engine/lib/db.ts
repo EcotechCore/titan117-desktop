@@ -250,6 +250,22 @@ const MIGRATIONS: string[] = [
   // Phase 6, OCR (7.3): files read before OCR that had scanned pages are read again.
   `
   update doc_files set mtime = -1 where empty_pages > 0;
+  `,
+  // Phase 11: parts of a task handed to other agents (4.6), and the messages between them (4.7).
+  `
+  alter table tasks add column parent_id text references tasks(id) on delete cascade;
+  create index tasks_parent on tasks(parent_id);
+  create table agent_messages (
+    id text primary key,
+    root_task_id text not null references tasks(id) on delete cascade,
+    task_id text not null references tasks(id) on delete cascade,
+    from_agent text not null,
+    to_agent text not null,
+    kind text not null,
+    text text not null,
+    at integer not null
+  );
+  create index agent_messages_root on agent_messages(root_task_id, at);
   `
 ]
 

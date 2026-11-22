@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 
 import type {
   Activity,
+  AgentMessage,
   ActivityKind,
   Approval,
   ApprovalStatus,
@@ -35,6 +36,7 @@ function toTask(r: Row): Task {
     steps: r.steps as number,
     costUsd: r.cost_usd as number,
     mode: r.mode === 'research' ? 'research' : 'normal',
+    parentId: (r.parent_id as string | null) ?? null,
     createdAt: r.created_at as number,
     updatedAt: r.updated_at as number
   }
@@ -74,9 +76,20 @@ function toActivity(r: Row): Activity {
 }
 
 export interface Store {
-  createTask(input: { title: string; agent: string; model: string; mode?: Task['mode'] }): Task
+  createTask(input: {
+    title: string
+    agent: string
+    model: string
+    mode?: Task['mode']
+    parentId?: string | null
+  }): Task
   getTask(id: string): Task | null
   listTasks(): Task[]
+  /** The parts of a task handed to other agents (4.6). */
+  listParts(taskId: string): Task[]
+  /** The message bus between agents (4.7). */
+  addAgentMessage(input: Omit<AgentMessage, 'id' | 'at'>): AgentMessage
+  listAgentMessages(rootTaskId: string): AgentMessage[]
   updateTask(
     id: string,
     patch: Partial<Pick<Task, 'status' | 'note' | 'model' | 'steps' | 'costUsd'>>
@@ -118,13 +131,22 @@ export const INTERRUPTED_NOTE = 'The app closed while this task was running.'
 
 export function createStore(db: Db, emit: Emit): Store {
   const store: Store = {
-    createTask({ title, agent, model, mode }) {
+    createTask({ title, agent, model, mode, parentId }) {
       const now = Date.now()
       const id = randomUUID()
       db.prepare(
-        `insert into tasks (id, title, agent, model, status, mode, created_at, updated_at)
-         values (?, ?, ?, ?, 'running', ?, ?, ?)`
-      ).run(id, redact(title).slice(0, 120), agent, model, mode ?? 'normal', now, now)
+        `insert into tasks (id, title, agent, model, status, mode, parent_id, created_at, updated_at)
+         values (?, ?, ?, ?, 'running', ?, ?, ?, ?)`
+      ).run(
+        id,
+        redact(title).slice(0, 120),
+        agent,
+        model,
+        mode ?? 'normal',
+        parentId ?? null,
+        now,
+        now
+      )
       const task = store.getTask(id)!
       emit({ type: 'task', task })
       return task
@@ -139,6 +161,54 @@ export function createStore(db: Db, emit: Emit): Store {
       return (
         db.prepare('select * from tasks order by updated_at desc limit 200').all() as Row[]
       ).map(toTask)
+    },
+
+    listParts(taskId) {
+      return (
+        db
+          .prepare('select * from tasks where parent_id = ? order by created_at')
+          .all(taskId) as Row[]
+      ).map(toTask)
+    },
+
+    addAgentMessage(input) {
+      const message: AgentMessage = {
+        ...input,
+        id: randomUUID(),
+        text: redact(input.text).slice(0, 20_000),
+        at: Date.now()
+      }
+      db.prepare(
+        `insert into agent_messages (id, root_task_id, task_id, from_agent, to_agent, kind, text, at)
+         values (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        message.id,
+        message.rootTaskId,
+        message.taskId,
+        message.from,
+        message.to,
+        message.kind,
+        message.text,
+        message.at
+      )
+      return message
+    },
+
+    listAgentMessages(rootTaskId) {
+      return (
+        db
+          .prepare('select * from agent_messages where root_task_id = ? order by at, rowid')
+          .all(rootTaskId) as Row[]
+      ).map((r) => ({
+        id: r.id as string,
+        rootTaskId: r.root_task_id as string,
+        taskId: r.task_id as string,
+        from: r.from_agent as string,
+        to: r.to_agent as string,
+        kind: r.kind === 'answer' ? 'answer' : 'brief',
+        text: r.text as string,
+        at: r.at as number
+      }))
     },
 
     updateTask(id, patch) {

@@ -13,12 +13,15 @@ import type { Budget } from '../budgets'
 import { createPermissionLayer, type PermissionLayer } from '../permissions'
 import { registerSecret } from '../redact'
 import { createRouter } from '../router'
-import { AGENT, createRuntime, type Runtime } from '../runtime'
+import { createRuntime, type Runtime } from '../runtime'
 import { createMemoryStore, type MemoryStore } from '../memory'
 import { createRecordStore, type RecordStore } from '../records'
 import { createBrowserHost, type BrowserHost } from './browser'
 import { createConnectorHub, type ConnectorHub } from './mcp'
 import { createSkillStore, type SkillStore } from './skills'
+import { createAgentStore, type AgentStore } from './agents'
+import { createTeamService } from '../team'
+import { createComparer } from '../compare'
 import { createSpeechEngine, type SpeechEngine } from './speech'
 import { createStore, type Store } from '../store'
 import { builtInTools, createRegistry, type AnyTool } from '../tools'
@@ -147,6 +150,7 @@ export interface Engine {
     events: EngineEvent[]
     memory: MemoryStore
     skills: SkillStore
+    agents: AgentStore
     records: RecordStore
     connectors: ConnectorHub
     artifacts: ArtifactStore
@@ -278,13 +282,28 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     }
   }
 
-  const changed = (what: 'memory' | 'skills' | 'records' | 'connectors' | 'reports') => (): void =>
-    emit({ type: 'changed', what })
+  const changed =
+    (what: 'memory' | 'skills' | 'records' | 'connectors' | 'reports' | 'agents') => (): void =>
+      emit({ type: 'changed', what })
   const memory = createMemoryStore(db, changed('memory'))
   const skills = createSkillStore(
     options.dataDir ? join(options.dataDir, 'skills') : null,
     changed('skills')
   )
+  // Agents (4.1-4.3, decisions §59): files in the data folder, out of every agent's file tools' reach.
+  const agents = createAgentStore({
+    dir: options.dataDir ? join(options.dataDir, 'agents') : null,
+    onChange: changed('agents'),
+    models: {
+      get: () =>
+        getMeta<Record<string, { model: string | null; fastModel: string | null }>>(
+          db,
+          'agentModels',
+          {}
+        ),
+      set: (next) => setMeta(db, 'agentModels', next)
+    }
+  })
   const records = createRecordStore({
     db,
     store,
@@ -388,6 +407,15 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       memory,
       skills,
       records,
+      team: createTeamService({
+        store,
+        agents,
+        skills,
+        runtime: () => {
+          if (!runtimeRef) throw new Error('The runtime is not ready.')
+          return runtimeRef
+        }
+      }),
       browser,
       speech: (files) => speech.access(files),
       scratchRoot,
@@ -670,7 +698,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     budget: options.budget,
     memory,
     skills,
-    records
+    records,
+    agents
   })
   runtimeRef = runtime
 
@@ -1068,6 +1097,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     memory,
     skills,
+    agents,
+    compare: createComparer({
+      router,
+      locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
+      online: () => connectivity.online()
+    }),
     records,
     connectors,
     speech,
@@ -1078,13 +1113,28 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         return { status: 'refused', output: 'Refused: the task is not running.' }
       if (name === 'run_code')
         return { status: 'refused', output: "Refused: a script can't start another script." }
+      // A script has only its agent's tools (decisions §59.3).
+      const agent = runtime.agentOf(taskId)
+      if (!agent || !runtime.mayUse(taskId, String(name)))
+        return {
+          status: 'refused',
+          output: `Refused: ${task.agent} wasn't given ${String(name)}.`
+        }
       return permissions.execute(
         {
           id: `script-${randomBytes(6).toString('hex')}`,
           name: String(name),
           input: (input ?? {}) as Record<string, unknown>
         },
-        { taskId, agent: AGENT, model: task.model, signal, via: 'script' }
+        {
+          taskId,
+          agent: agent.def.name,
+          model: task.model,
+          signal,
+          via: 'script',
+          alwaysAsk: agent.def.alwaysAsk,
+          ownMemory: agent.def.memory === 'own'
+        }
       )
     }
   })
@@ -1178,6 +1228,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       events,
       memory,
       skills,
+      agents,
       records,
       connectors,
       artifacts,

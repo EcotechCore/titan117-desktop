@@ -24,8 +24,13 @@ export interface Scripted {
   requests: { url: string; headers: Record<string, string>; body: Record<string, unknown> }[]
 }
 
-/** A fake OpenRouter: answers each chat call with the next scripted turn. */
-export function scripted(turns: ScriptedTurn[]): Scripted {
+/**
+ * A fake OpenRouter: answers each chat call with the next scripted turn, or
+ * with what `turns` returns for the request (when calls run at the same time).
+ */
+export function scripted(
+  turns: ScriptedTurn[] | ((body: Record<string, unknown>, n: number) => ScriptedTurn)
+): Scripted {
   const requests: Scripted['requests'] = []
   let index = 0
   const fake = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -47,12 +52,12 @@ export function scripted(turns: ScriptedTurn[]): Scripted {
           }
         ]
       })
-    requests.push({
-      url,
-      headers: (init?.headers ?? {}) as Record<string, string>,
-      body: JSON.parse(String(init?.body ?? '{}'))
-    })
-    const turn = turns[Math.min(index++, turns.length - 1)]
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
+    requests.push({ url, headers: (init?.headers ?? {}) as Record<string, string>, body })
+    const turn =
+      typeof turns === 'function'
+        ? turns(body, index++)
+        : turns[Math.min(index++, turns.length - 1)]
     if (turn.status) return Response.json({ error: { message: 'nope' } }, { status: turn.status })
     const frames: unknown[] = []
     // Split the text in two, as a real stream would.
@@ -85,8 +90,8 @@ export function scripted(turns: ScriptedTurn[]): Scripted {
       choices: [],
       usage: { prompt_tokens: 10, completion_tokens: 5, cost: turn.cost ?? 0.001 }
     })
-    const body = frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join('') + 'data: [DONE]\n\n'
-    return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+    const stream = frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join('') + 'data: [DONE]\n\n'
+    return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
   }) as typeof fetch
   return { fetch: fake, requests }
 }

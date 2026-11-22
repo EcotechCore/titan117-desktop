@@ -63,6 +63,15 @@ Nothing here blocks phases 8 and 9. Phase 10 is merged into `main` (22 Nov 2026)
 - [ ] **Try the rest of phase 10:** ask Titan to give the CRM a "Draft follow-up" button that uses `titan.ai`; then on the Apps screen open the CRM, press **Review what it reaches** and **Update it** (the card says the AI costs credits). On the Inventory, press **Add a mobile app** and look at the new linked app.
 - [ ] **Decisions §58** (to be confirmed): one local database per app as the shared data layer; an app reaches another app's data only as its `titan.json` asks and you agreed; the sidebar runs a checked build with no network; Titan reads the apps' data without asking and changes it with your OK; sync waits for phase 15 and will be end to end encrypted (Electric, Zero and PowerSync aren't used because their servers read the data; Evolu is the model); `titan.ai` limited to 100 questions a day per app, only with your OK; another target as a linked app sharing `src/shared/`; the sync core with AES-256-GCM, its transport after phase 15.
 
+## Phase 11 · The agent builder (started 22 Nov 2026)
+
+Nothing here blocks other phases. Run the desktop app from the `phase-11-agent-builder` branch until it's merged (then from `main`), with `pnpm dev`.
+
+- [ ] **Try the three parts of phase 11's check:** (1) **Agents** (the **Manage** link beside "Agents" in the sidebar) → **New agent**: give it a name, a team, what it does, its tools and instructions, press **Make the agent**, then **Start a task**. (2) Ask Titan for a task with two separate parts, for example "Researcher should find X and Writer should draft Y; give me both": the task's details show **Parts handed out** and **Team talk**. (3) Ask Titan "I need an agent that …, with a skill for …": approve the card, and the agent appears in the sidebar under its team.
+- [ ] **Try Compare models** (sidebar): one prompt on two to four models, with each answer's time and cost.
+- [ ] **Decisions §59** (to be confirmed): agents as files with a header, built-ins cloned to change, a definition only narrows what an agent may do, parts handed to other agents (at most three at once, one level deep, their cost counted in the first task), the message bus kept on the laptop, smart routing (a fast model for the steps after the plan), Compare, Titan making agents and skills after one approval every time, and media (images and video through OpenRouter) as the next part.
+- [ ] **Media (2.7), when we get there:** the credits proxy in the web app needs to forward OpenRouter's Images and Videos APIs. Nothing to do yet; it's the next piece of phase 11.
+
 ## Step 2 · Confirm the decisions (about an hour of reading)
 
 All confirmed by the owner on 18 Nov 2026 (decisions §44–§51), with one addition: Titan searches in the browser when asked to search on Google or another engine (§44.12).

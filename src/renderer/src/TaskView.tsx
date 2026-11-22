@@ -93,7 +93,7 @@ export function ApprovalCard({
   return (
     <div className="approval" role="group" aria-label="Approval needed">
       <p className="approval-q">
-        {approval.risk === 'external' ? 'This always needs your OK:' : 'Allow Titan to do this?'}
+        {approval.risk === 'external' ? 'This always needs your OK:' : 'Allow this?'}
       </p>
       <p className="approval-what">{approval.summary}</p>
       {diff !== null && counts && (
@@ -229,7 +229,7 @@ export function TaskView({
               <span className="agent-tile">
                 <Eyes state="working" />
               </span>
-              <strong>Titan</strong>
+              <strong>{task.agent}</strong>
               <span className="faint">{modelName(task.model, engine)}</span>
             </div>
             {message.toolCalls && (

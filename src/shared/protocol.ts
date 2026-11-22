@@ -28,6 +28,8 @@ export interface Task {
   costUsd: number
   /** Deep research (feature 16.8) runs with a bigger budget and its own instructions. */
   mode: 'normal' | 'research'
+  /** The task this one is a part of, when a manager agent handed it out (4.6). */
+  parentId: string | null
   createdAt: number
   updatedAt: number
 }
@@ -154,6 +156,10 @@ export interface TaskDetail {
   messages: StoredMessage[]
   approvals: Approval[]
   activity: Activity[]
+  /** Parts handed to other agents (4.6). */
+  parts?: Task[]
+  /** Briefs and answers between agents in this work (4.7). */
+  talk?: AgentMessage[]
 }
 
 export type EngineEvent =
@@ -184,6 +190,7 @@ export type EngineEvent =
         | 'documents'
         | 'apps'
         | 'sidebar'
+        | 'agents'
     }
   /** The engine went offline or came back online (1.22). */
   | { type: 'online'; online: boolean }
@@ -258,6 +265,81 @@ export interface Skill {
   source: string
   body: string
   updatedAt: number
+}
+
+/** What an agent may use, in groups of tools (4.1, decisions §59). */
+export type ToolGroup =
+  | 'files'
+  | 'shell'
+  | 'web'
+  | 'browser'
+  | 'documents'
+  | 'artifacts'
+  | 'code'
+  | 'apps'
+  | 'servers'
+  | 'memory'
+  | 'speech'
+  | 'connectors'
+
+export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
+  { id: 'files', label: 'Files in the allowed folders' },
+  { id: 'shell', label: 'Commands and scripts' },
+  { id: 'web', label: 'Web search and pages' },
+  { id: 'browser', label: 'The browser' },
+  { id: 'documents', label: 'Your documents' },
+  { id: 'artifacts', label: 'Artifacts (reports, tables, slides)' },
+  { id: 'code', label: 'Code and git' },
+  { id: 'apps', label: 'The app builder and sidebar apps' },
+  { id: 'servers', label: 'Your servers' },
+  { id: 'memory', label: 'Memory, skills and past tasks' },
+  { id: 'speech', label: 'Speech' },
+  { id: 'connectors', label: 'Your connectors' }
+]
+
+/** An agent (4.1): a Markdown file with a short header, or one of ours built in (4.2). */
+export interface AgentDef {
+  /** The file name: the name in small letters, with dashes. */
+  id: string
+  /** Unique; also the agent's memory scope, so it never changes (clone to rename). */
+  name: string
+  /** One line: what it does. */
+  role: string
+  /** The sidebar group it appears under; empty for none. */
+  team: string
+  color: string
+  /** Its own model, or null for the one chosen in the window. */
+  model: string | null
+  /** A cheaper model for the steps after the plan (smart routing, 2.4). */
+  fastModel: string | null
+  tools: ToolGroup[]
+  /** "shared": shared memory and its own; "own": its own only. */
+  memory: 'shared' | 'own'
+  /** May hand parts of a task to other agents (4.6). */
+  manager: boolean
+  /** Tools that ask every time for this agent, even ones that normally run at once. */
+  alwaysAsk: string[]
+  /** Skills offered to it first. */
+  skills: string[]
+  instructions: string
+  builtIn: boolean
+  /** Who wrote it: Titan117, you, or Titan in a task. */
+  source: string
+  updatedAt: number
+}
+
+/** One message between agents in a piece of work (4.7): a brief or an answer. */
+export interface AgentMessage {
+  id: string
+  /** The task the work started in. */
+  rootTaskId: string
+  /** The part's own task. */
+  taskId: string
+  from: string
+  to: string
+  kind: 'brief' | 'answer'
+  text: string
+  at: number
 }
 
 /** How a past task was solved (feature 3.13). */

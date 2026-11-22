@@ -4,10 +4,12 @@
  * layer; budgets and loop detection stop a task that runs away.
  *
  * Phase 3: Titan, the general assistant, with every built-in tool, memory,
- * skills and records of past tasks. Agent definition files and sub-agents
- * arrive in phase 11.
+ * skills and records of past tasks. Phase 11 (decisions §59): any agent from
+ * its definition file, with only its tools; parts of a task handed to other
+ * agents; and smart routing between a main and a fast model.
  */
-import type { ChatMessage, Task } from '../shared/protocol'
+import type { AgentDef, ChatMessage, Task } from '../shared/protocol'
+import { agentMayUse, BUILT_IN_AGENTS, TITAN, type AgentStore } from './lib/agents'
 import { createBudgetMeter, DEFAULT_BUDGET, RESEARCH_BUDGET, type Budget } from './budgets'
 import type { Logger } from './lib/log'
 import type { SkillStore } from './lib/skills'
@@ -22,9 +24,9 @@ import type { ToolRegistry } from './tools'
 import type { ParamSchema } from './tools/lib/define-tool'
 import { UNTRUSTED_RULE, wrapUntrusted } from './untrusted'
 
-export const AGENT = 'Titan'
+export const AGENT = TITAN
 
-/** What Titan knows at the start of a run: memory, skills, similar past tasks. */
+/** What an agent knows at the start of a run: memory, skills, similar past tasks. */
 export interface PromptContext {
   memories?: string[]
   skills?: { name: string; description: string }[]
@@ -32,7 +34,16 @@ export interface PromptContext {
   platform?: NodeJS.Platform
   /** Deep research (feature 16.8). */
   research?: boolean
+  /** The agent running (4.1); Titan when absent. */
+  agent?: AgentDef
+  /** The other agents a manager may hand parts to (4.6). */
+  team?: { name: string; role: string }[]
+  /** This run is a part of another agent's task (4.6). */
+  partOf?: string
 }
+
+/** The fallback agent: Titan, as built in. */
+export const TITAN_DEF: AgentDef = BUILT_IN_AGENTS.find((a) => a.name === TITAN)!
 
 /** Deep research's own instructions (16.8, decisions §44; ideas from GPT Researcher). */
 export const RESEARCH_RULES = [
@@ -47,9 +58,15 @@ export const RESEARCH_RULES = [
 
 export function systemPrompt(folders: string[], context: PromptContext = {}): string {
   const platform = context.platform ?? process.platform
+  const agent = context.agent ?? TITAN_DEF
+  const titan = agent.builtIn && agent.name === TITAN
   const lines = [
-    "You are Titan, the general assistant in the Titan117 app. You work on the user's own laptop for a small company.",
-    'You do one-off tasks yourself with your tools: files, the shell, small scripts, the browser, web pages, memory, speech and any connectors the user added.',
+    titan
+      ? "You are Titan, the general assistant in the Titan117 app. You work on the user's own laptop for a small company."
+      : `You are ${agent.name}, an agent in the Titan117 app. You work on the user's own laptop for a small company. Your role: ${agent.role}`,
+    titan
+      ? 'You do one-off tasks yourself with your tools: files, the shell, small scripts, the browser, web pages, memory, speech and any connectors the user added.'
+      : 'Use only the tools you are given. If the task needs something you cannot do, say so plainly.',
     'Be brief and plain. Work step by step: act, check the result, fix what went wrong. When done, say what you did and what you found.',
     folders.length
       ? `You may use files only inside these folders: ${folders.join('; ')}. "." means the first one.`
@@ -68,6 +85,23 @@ export function systemPrompt(folders: string[], context: PromptContext = {}): st
     UNTRUSTED_RULE
   ]
   if (context.research) lines.push('', RESEARCH_RULES)
+  if (context.team?.length)
+    lines.push(
+      '',
+      'Your team. For a big task with separate parts, hand each part to the best agent with agent_delegate (several parts in one call run at the same time); give each a complete brief, since they see only what you write. Check their answers, then put the result together yourself:',
+      ...context.team.map((a) => `- ${a.name}: ${a.role}`)
+    )
+  if (context.partOf)
+    lines.push(
+      '',
+      `You are doing one part of a bigger task for ${context.partOf}. Do only that part. End with a clear, complete answer: ${context.partOf} reads your last message.`
+    )
+  if (!titan && agent.instructions)
+    lines.push(
+      '',
+      'Your own instructions (from your definition file; the rules above still come first):',
+      agent.instructions
+    )
   if (context.memories?.length)
     lines.push(
       '',
@@ -111,8 +145,22 @@ function specFor(tool: {
   return { name: tool.name, description: tool.description, params: { ...tool.params, properties } }
 }
 
+/** Who runs a task, and what that means for its tool calls (4.1, 4.6). */
+export interface TaskAgent {
+  def: AgentDef
+  /** The task is a part of another one: it can't hand on. */
+  isPart: boolean
+}
+
 export interface Runtime {
-  start(text: string, model: string, mode?: Task['mode']): Task
+  /** `agent` is an agent's name; Titan when absent. */
+  start(text: string, model: string, mode?: Task['mode'], agent?: string): Task
+  /** A part of a task, handed to another agent (4.6): its own task, linked to the first. */
+  startPart(input: { parentId: string; agent: string; text: string; model: string }): Task
+  /** The agent of a task, or null when it was removed. */
+  agentOf(taskId: string): TaskAgent | null
+  /** Whether a task's agent may use a tool (scripts' calls check this too). */
+  mayUse(taskId: string, toolName: string): boolean
   send(taskId: string, text: string, model?: string): Task
   cancel(taskId: string): void
   isRunning(taskId: string): boolean
@@ -155,6 +203,8 @@ export function createRuntime(deps: {
   memory?: MemoryStore
   skills?: SkillStore
   records?: RecordStore
+  /** Agent definitions (4.1); only Titan without them. */
+  agents?: AgentStore
   /** Why Titan117 is locked (decisions §17), or null when it may work. */
   locked?: () => string | null
   /** Whether the internet can be reached; a cloud model's step waits for it (1.22). */
@@ -169,19 +219,44 @@ export function createRuntime(deps: {
   const { store, emit, log, router, permissions, tools } = deps
   const running = new Map<string, { abort: AbortController; done: Promise<void> }>()
 
+  function agentOf(taskId: string): TaskAgent | null {
+    const task = store.getTask(taskId)
+    if (!task) return null
+    const def = deps.agents ? deps.agents.get(task.agent) : task.agent === TITAN ? TITAN_DEF : null
+    return def ? { def, isPart: !!task.parentId } : null
+  }
+
+  function mayUse(taskId: string, toolName: string): boolean {
+    const agent = agentOf(taskId)
+    const tool = tools.get(toolName)
+    return !!agent && !!tool && agentMayUse(agent.def, tool, { isPart: agent.isPart })
+  }
+
   /** Memory, skills and similar past tasks for this run's instructions. */
-  function promptContext(taskId: string): PromptContext {
+  function promptContext(taskId: string, agent: TaskAgent): PromptContext {
     const messages = store.listMessages(taskId).map((m) => m.message)
     const lastUser = [...messages].reverse().find((m) => m.role === 'user')
     const about = lastUser && lastUser.role === 'user' ? lastUser.text : ''
-    const context: PromptContext = {}
+    const { def } = agent
+    const context: PromptContext = { agent: def }
+    const task = store.getTask(taskId)
+    if (task?.parentId) context.partOf = store.getTask(task.parentId)?.agent ?? TITAN
+    if (def.manager && !agent.isPart && deps.agents)
+      context.team = deps.agents
+        .list()
+        .filter((a) => a.name !== def.name && a.name !== TITAN)
+        .slice(0, 30)
+        .map((a) => ({ name: a.name, role: a.role }))
     try {
-      const memories = deps.memory?.forPrompt(AGENT, about) ?? []
+      const memories = deps.memory?.forPrompt(def.name, about, def.memory === 'own') ?? []
       context.memories = memories.map((m) => `(${m.kind}) ${m.text}`)
       // Memory is private: its passages may not leave in a web request.
       if (memories.length)
         permissions.sawPrivate(taskId, context.memories.join('\n'), 'memory', true)
-      context.skills = (deps.skills?.list() ?? [])
+      // The agent's own skills first (4.1).
+      const all = deps.skills?.list() ?? []
+      const mine = all.filter((s) => def.skills.includes(s.name))
+      context.skills = [...mine, ...all.filter((s) => !def.skills.includes(s.name))]
         .slice(0, 40)
         .map((s) => ({ name: s.name, description: s.description }))
       context.pastTasks = (deps.records?.list({ query: about, limit: 4 }) ?? [])
@@ -202,7 +277,12 @@ export function createRuntime(deps: {
     )
     const startCost = store.getTask(taskId)?.costUsd ?? 0
     const startSteps = store.getTask(taskId)?.steps ?? 0
-    const context = { ...promptContext(taskId), research }
+    const agent = agentOf(taskId)
+    const agentName = agent?.def.name ?? store.getTask(taskId)?.agent ?? AGENT
+    const context = agent ? { ...promptContext(taskId, agent), research } : null
+    // Smart routing (2.4): the main model plans each turn and steps after a failure; the fast one the rest.
+    let firstStep = true
+    let lastFailed = false
 
     function finish(status: Task['status'], note: string | null): void {
       store.updateTask(taskId, {
@@ -220,6 +300,23 @@ export function createRuntime(deps: {
     }
 
     try {
+      if (!agent || !context) {
+        const note = `The agent ${agentName} was removed, so this task can't go on.`
+        store.log({
+          taskId,
+          kind: 'refused',
+          agent: agentName,
+          model: null,
+          tool: null,
+          summary: note,
+          costUsd: 0,
+          approvedBy: null
+        })
+        return finish('stopped', note)
+      }
+      const offered = tools
+        .values()
+        .filter((t) => agentMayUse(agent.def, t, { isPart: agent.isPart }))
       for (;;) {
         if (signal.aborted) return finish('stopped', 'You stopped this task.')
         // Locked mid-task: stop at this checkpoint, between steps, never halfway through one.
@@ -231,7 +328,7 @@ export function createRuntime(deps: {
           store.log({
             taskId,
             kind: 'budget',
-            agent: AGENT,
+            agent: agentName,
             model: null,
             tool: null,
             summary: over,
@@ -242,13 +339,23 @@ export function createRuntime(deps: {
         }
 
         const task = store.getTask(taskId)!
-        const route = router.route(task.model)
+        const fast = agent.def.fastModel
+        const stepModel = fast && !firstStep && !lastFailed ? fast : task.model
+        let route = router.route(task.model)
+        let usedModel = task.model
+        if (stepModel !== task.model)
+          try {
+            route = router.route(stepModel)
+            usedModel = stepModel
+          } catch {
+            // The fast model can't be reached (no key for it): the main model takes the step.
+          }
         // Something from a local-models-only folder is in this task: a cloud model may not see it (7.7).
         if (route.source !== 'local' && deps.localOnly?.(taskId)) {
           store.log({
             taskId,
             kind: 'refused',
-            agent: AGENT,
+            agent: agentName,
             model: task.model,
             tool: null,
             summary: LOCAL_ONLY_NOTE,
@@ -262,7 +369,7 @@ export function createRuntime(deps: {
           store.log({
             taskId,
             kind: 'error',
-            agent: AGENT,
+            agent: agentName,
             model: task.model,
             tool: null,
             summary: OFFLINE_NOTE,
@@ -277,11 +384,12 @@ export function createRuntime(deps: {
           model: route.model,
           system: systemPrompt(deps.folders(), context),
           messages,
-          tools: tools.values().map(specFor),
+          tools: offered.map(specFor),
           signal,
           onText: (text) => emit({ type: 'delta', taskId, text })
         })
         meter.addCost(result.usage.costUsd)
+        firstStep = false
         // Steps and cost show while the task runs, not only at the end.
         store.updateTask(taskId, {
           steps: startSteps + meter.steps,
@@ -290,8 +398,8 @@ export function createRuntime(deps: {
         store.log({
           taskId,
           kind: 'model',
-          agent: AGENT,
-          model: task.model,
+          agent: agentName,
+          model: usedModel,
           tool: null,
           summary:
             `${result.usage.inputTokens} tokens in, ${result.usage.outputTokens} out` +
@@ -314,6 +422,7 @@ export function createRuntime(deps: {
         if (result.toolCalls.length === 0) return finish('done', null)
 
         let loop: string | null = null
+        let stepFailed = false
         for (const call of result.toolCalls) {
           loop ??= meter.onToolCall(call)
           if (loop) {
@@ -328,13 +437,20 @@ export function createRuntime(deps: {
             continue
           }
           meter.pause()
-          const outcome = await permissions.execute(call, {
-            taskId,
-            agent: AGENT,
-            model: task.model,
-            signal
-          })
+          const known = tools.get(call.name)
+          const outcome =
+            known && !agentMayUse(agent.def, known, { isPart: agent.isPart })
+              ? refuseForAgent(taskId, agentName, call.name, agent.isPart)
+              : await permissions.execute(call, {
+                  taskId,
+                  agent: agentName,
+                  model: usedModel,
+                  signal,
+                  alwaysAsk: agent.def.alwaysAsk,
+                  ownMemory: agent.def.memory === 'own'
+                })
           meter.resume()
+          if (outcome.status !== 'done') stepFailed = true
           // A search through credits counts towards the task's budget (16.12).
           if (outcome.status === 'done' && outcome.costUsd) {
             meter.addCost(outcome.costUsd)
@@ -348,11 +464,12 @@ export function createRuntime(deps: {
             ...(outcome.status === 'done' ? {} : { isError: true })
           })
         }
+        lastFailed = stepFailed
         if (loop) {
           store.log({
             taskId,
             kind: 'budget',
-            agent: AGENT,
+            agent: agentName,
             model: null,
             tool: null,
             summary: loop,
@@ -369,7 +486,7 @@ export function createRuntime(deps: {
         store.log({
           taskId,
           kind: 'error',
-          agent: AGENT,
+          agent: agentName,
           model: null,
           tool: null,
           summary: OFFLINE_NOTE,
@@ -386,7 +503,7 @@ export function createRuntime(deps: {
       store.log({
         taskId,
         kind: 'error',
-        agent: AGENT,
+        agent: agentName,
         model: null,
         tool: null,
         summary: note,
@@ -411,6 +528,37 @@ export function createRuntime(deps: {
     void done.finally(() => deps.onBusy?.(running.size))
   }
 
+  /** A tool the agent wasn't given: refused without running, and logged (4.1). */
+  function refuseForAgent(
+    taskId: string,
+    agentName: string,
+    tool: string,
+    isPart: boolean
+  ): { status: 'refused'; output: string } {
+    const why =
+      tool.startsWith('agent_') && isPart
+        ? "a part of a task can't hand work on to other agents."
+        : `${agentName} wasn't given ${tool}. Its definition lists the tools it may use.`
+    store.log({
+      taskId,
+      kind: 'refused',
+      agent: agentName,
+      model: null,
+      tool,
+      summary: `Refused ${tool}: ${why}`,
+      costUsd: 0,
+      approvedBy: null
+    })
+    return { status: 'refused', output: `Refused: ${why}` }
+  }
+
+  function findAgent(name: string | undefined): AgentDef {
+    if (!name || name === TITAN) return deps.agents?.get(TITAN) ?? TITAN_DEF
+    const def = deps.agents?.get(name)
+    if (!def) throw new RuntimeError('NOT_FOUND', `There is no agent called ${name}.`)
+    return def
+  }
+
   function clean(text: unknown): string {
     if (typeof text !== 'string' || !text.trim())
       throw new RuntimeError('BAD_REQUEST', 'Write a message first.')
@@ -419,24 +567,27 @@ export function createRuntime(deps: {
   }
 
   return {
-    start(text, model, mode = 'normal') {
+    start(text, chosen, mode = 'normal', agentName) {
       const lock = deps.locked?.()
       if (lock) throw new RuntimeError('LOCKED', lock)
       const message = clean(text)
+      const def = findAgent(agentName)
+      // An agent with its own model uses it (2.3); otherwise the one chosen in the window.
+      const model = def.model ?? chosen
       router.route(model) // refuses an unknown source before anything is stored
       const task = store.createTask({
         title: message.split('\n')[0].slice(0, 80),
-        agent: AGENT,
+        agent: def.name,
         model,
         mode: mode === 'research' ? 'research' : 'normal'
       })
       store.log({
         taskId: task.id,
         kind: 'task',
-        agent: AGENT,
+        agent: def.name,
         model,
         tool: null,
-        summary: 'Task started',
+        summary: def.name === TITAN ? 'Task started' : `Task started with ${def.name}`,
         costUsd: 0,
         approvedBy: null
       })
@@ -466,7 +617,50 @@ export function createRuntime(deps: {
       return updated
     },
 
+    startPart({ parentId, agent: agentName, text, model: chosen }) {
+      const lock = deps.locked?.()
+      if (lock) throw new RuntimeError('LOCKED', lock)
+      const parent = store.getTask(parentId)
+      if (!parent) throw new RuntimeError('NOT_FOUND', 'No such task.')
+      if (parent.parentId)
+        throw new RuntimeError('BAD_REQUEST', "A part of a task can't hand work on.")
+      const def = findAgent(agentName)
+      const message = clean(text)
+      const model = def.model ?? chosen
+      router.route(model)
+      const task = store.createTask({
+        title: `${def.name}: ${message.split('\n')[0]}`.slice(0, 80),
+        agent: def.name,
+        model,
+        parentId
+      })
+      store.log({
+        taskId: task.id,
+        kind: 'task',
+        agent: def.name,
+        model,
+        tool: null,
+        summary: `Part handed over by ${parent.agent}`,
+        costUsd: 0,
+        approvedBy: null
+      })
+      store.addMessage(task.id, { role: 'user', text: message })
+      permissions.userSaid(task.id, message)
+      launch(task.id)
+      return task
+    },
+
+    agentOf,
+
+    mayUse,
+
     cancel(taskId) {
+      // Its parts stop with it (4.6).
+      for (const part of store.listParts(taskId))
+        if (running.has(part.id)) {
+          running.get(part.id)!.abort.abort()
+          permissions.cancelTask(part.id)
+        }
       const entry = running.get(taskId)
       if (!entry) return
       entry.abort.abort()
@@ -508,7 +702,7 @@ export function createRuntime(deps: {
       store.log({
         taskId,
         kind: 'task',
-        agent: AGENT,
+        agent: task.agent,
         model: task.model,
         tool: null,
         summary: `Resumed: ${why}`,

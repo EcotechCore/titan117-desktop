@@ -285,6 +285,41 @@ function gitRepo(b: Bench): string {
 }
 
 const DENIALS: Record<string, () => Promise<void>> = {
+  async agent_delegate() {
+    // Without the team service (no other agents here) nothing is handed out.
+    const b = bench()
+    const outcome = await b.run({
+      name: 'agent_delegate',
+      input: { parts: [{ agent: 'Writer', brief: 'Write a short note for me.' }] }
+    })
+    expect(outcome.status).toBe('refused')
+    expect(outcome.output).toMatch(/isn't available/)
+    // A brief that says nothing, or too many parts, fails before anything starts.
+    const empty = await b.run({ name: 'agent_delegate', input: { parts: [] } })
+    expect(empty.status).not.toBe('done')
+  },
+
+  async agent_create() {
+    const b = bench()
+    const input = {
+      name: 'Chaser',
+      role: 'Chases suppliers.',
+      team: 'Operations',
+      tools: ['files'],
+      instructions: 'Be polite.',
+      skills: []
+    }
+    // A new agent is a standing instruction: it asks every time, never "always", laptop only.
+    const approval = await b.approvalOf({ name: 'agent_create', input })
+    expect(approval.canAlways).toBe(false)
+    expect(approval.answeredBy).toBe('refused')
+    const denied = await b.run({ name: 'agent_create', input }, 'deny')
+    expect(denied.status).toBe('refused')
+    // Approved, but there is no team service here: still nothing made.
+    const none = await b.run({ name: 'agent_create', input }, 'approve')
+    expect(none.status).toBe('refused')
+  },
+
   async server_list() {
     // Only the servers the user added; nothing without the permission's service.
     const b = bench()
@@ -1432,7 +1467,8 @@ describe('tool denial tests', () => {
           () => ctx.artifacts.list(),
           () => ctx.documents.search('x'),
           () => ctx.apps.versions('.'),
-          () => ctx.sidebar.apps()
+          () => ctx.sidebar.apps(),
+          () => ctx.team.delegate([])
         ]
         const refused: string[] = []
         for (const attempt of tries) {
@@ -1448,7 +1484,7 @@ describe('tool denial tests', () => {
     })
     const b = bench({ extraTools: [greedy] })
     const outcome = await b.run({ name: 'greedy', input: {} })
-    expect(outcome.output.split(',')).toEqual(Array(14).fill('PermissionError'))
+    expect(outcome.output.split(',')).toEqual(Array(15).fill('PermissionError'))
   })
 
   it('every tool declares a risk and its permissions', () => {
