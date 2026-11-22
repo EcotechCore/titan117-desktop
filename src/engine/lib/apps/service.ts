@@ -32,6 +32,7 @@ import {
 } from './template'
 import { findOrMakeRepo, pushApp, type GitHubRepo } from './github'
 import { publishToCloudflare } from './cloudflare'
+import { openInSandbox } from './sandbox'
 import {
   agentNotes,
   cleanBrand,
@@ -183,6 +184,15 @@ export interface AppService {
   stopGitHubSync(dir: string): void
   /** Build, check and publish to the user's own Cloudflare account (6.15). */
   publish(dir: string, onProgress?: (note: string) => void): Promise<Published>
+  /**
+   * A desktop app's Windows installer (6.17): checks first, then Tauri's
+   * build with Rust (NSIS only). Needs Rust and Microsoft's C++ build tools.
+   */
+  makeInstaller(dir: string, onProgress?: (note: string) => void): Promise<{ path: string }>
+  /** The latest installer, if one was made. */
+  installer(dir: string): string | null
+  /** Install and open the app in a fresh Windows Sandbox (6.26). */
+  tryInSandbox(dir: string, workDir: string): Promise<{ resultsDir: string }>
   /** The current version's files as a ZIP (6.18). */
   zip(dir: string): Promise<{ name: string; data: Buffer }>
   versions(dir: string): Promise<GitVersion[]>
@@ -205,6 +215,8 @@ export function createAppService(deps: {
     /** How a push happens (tests push to a local repository). */
     push?: typeof pushApp
   }
+  /** Rust and the build tools on this laptop (Tauri's installer); tests say yes or no. */
+  toolchain?: () => Promise<{ rust: boolean; msvc: boolean }>
   /** Publishing (6.15): the user's own hosting token, and where each app was published. */
   hosting?: {
     token(host: 'cloudflare'): string | null
@@ -589,6 +601,82 @@ export function createAppService(deps: {
       deps.hosting.setPublished({ ...deps.hosting.published(), [dir]: published })
       deps.onChange?.()
       return published
+    },
+
+    installer(dir) {
+      const folder = join(dir, 'src-tauri', 'target', 'release', 'bundle', 'nsis')
+      try {
+        const found = readdirSync(folder).filter((f) => /-setup\.exe$/i.test(f))
+        return found.length ? join(folder, found.sort().at(-1) as string) : null
+      } catch {
+        return null
+      }
+    },
+
+    async makeInstaller(dir, onProgress) {
+      const app = info(dir)
+      if (app.kind !== 'desktop') throw new AppError('Only a desktop app gets an installer.')
+      const tools = (await deps.toolchain?.()) ?? { rust: false, msvc: false }
+      const missing = [
+        ...(tools.rust ? [] : ['Rust (rustup.rs)']),
+        ...(tools.msvc || process.platform !== 'win32'
+          ? []
+          : [
+              'Microsoft’s C++ build tools ("Build Tools for Visual Studio", with "Desktop development with C++")'
+            ])
+      ]
+      if (missing.length)
+        throw new AppError(
+          `Making the installer needs ${missing.join(' and ')} on this laptop. Install them, then try again (Apps → This laptop shows what's there).`
+        )
+      onProgress?.('Installing packages…')
+      const install = await runner.install(dir)
+      if (!install.ok) throw new AppError('The packages didn’t install, so no installer was made.')
+      onProgress?.('Typecheck, build and tests…')
+      const failed = (await runner.checks(dir)).filter((c) => c.ran && !c.ok)
+      if (failed.length)
+        throw new AppError(
+          `No installer: ${failed.map((c) => c.name).join(', ')} failed. Fix them first (Test it shows what's wrong).`
+        )
+      if (!existsSync(join(dir, 'src-tauri', 'icons', 'icon.ico'))) {
+        onProgress?.('Making the icons…')
+        const icons = await runner.script(dir, 'tauri', ['icon', 'app-icon.svg'], {
+          timeoutMs: 2 * 60_000
+        })
+        if (!icons.ok) throw new AppError(`The icons weren't made:\n${icons.output.slice(-1500)}`)
+      }
+      onProgress?.('Building the installer with Rust (the first time takes several minutes)…')
+      const built = await runner.script(dir, 'tauri', ['build', '--bundles', 'nsis'], {
+        timeoutMs: 45 * 60_000
+      })
+      const path = this.installer(dir)
+      if (!built.ok || !path)
+        throw new AppError(
+          `The installer wasn't made:\n${built.output.trim().split('\n').slice(-25).join('\n')}`
+        )
+      deps.onChange?.()
+      return { path }
+    },
+
+    async tryInSandbox(dir, workDir) {
+      const app = info(dir)
+      const path = this.installer(dir)
+      if (app.kind !== 'desktop' || !path) throw new AppError('Make the installer first.')
+      let productName = app.title
+      try {
+        const conf = JSON.parse(
+          readFileSync(join(dir, 'src-tauri', 'tauri.conf.json'), 'utf8')
+        ) as { productName?: string }
+        if (conf.productName) productName = conf.productName
+      } catch {
+        /* the title */
+      }
+      try {
+        const run = await openInSandbox({ installerPath: path, productName, workDir })
+        return { resultsDir: run.resultsDir }
+      } catch (error) {
+        throw new AppError(error instanceof Error ? error.message : String(error))
+      }
     },
 
     stopGitHubSync(dir) {

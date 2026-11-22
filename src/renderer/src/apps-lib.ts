@@ -124,3 +124,58 @@ export function hostGuide(
     note: 'Vercel’s free Hobby plan is for personal, non-commercial use: a company’s site needs Pro. A private repository in a GitHub organisation can’t deploy to Hobby. Node comes from the site’s package.json.'
   }
 }
+
+export type Store = 'apple' | 'google' | 'microsoft'
+
+export interface StoreGuide {
+  name: string
+  start: string
+  cost: string
+  steps: string[]
+}
+
+/**
+ * Publishing an app in the user's own developer account (6.16, 6.17;
+ * decisions §57.13), checked on the stores' own pages on 21 Nov 2026. The
+ * user submits it themselves: Apple's guideline 4.2.6 rejects apps from an
+ * app generation service unless the app's owner submits them.
+ */
+export function storeGuide(store: Store, app: { title: string }): StoreGuide {
+  if (store === 'apple')
+    return {
+      name: 'App Store (iPhone)',
+      start: 'https://developer.apple.com/programs/enroll/',
+      cost: '$99 a year',
+      steps: [
+        'Join the Apple Developer Program with your Apple Account. As a company you need a D-U-N-S number (free from Dun & Bradstreet, up to 5 business days).',
+        `In App Store Connect, add a new app named "${app.title}" with its own bundle ID.`,
+        'Make the iPhone build (with Expo EAS in your own Expo account, or on a Mac with Xcode). Titan117 will prepare it when store builds arrive.',
+        'Add screenshots, a description, a privacy policy address and what data the app collects.',
+        'Submit it for review yourself, from your own account: Apple rejects apps from app builders unless their owner submits them (guideline 4.2.6).'
+      ]
+    }
+  if (store === 'google')
+    return {
+      name: 'Google Play (Android)',
+      start: 'https://play.google.com/console/signup',
+      cost: '$25 once',
+      steps: [
+        'Create a Google Play developer account. A company account needs a D-U-N-S number; a personal one needs your ID.',
+        `In Play Console, create the app "${app.title}".`,
+        'A new personal account must first run a closed test with at least 12 testers for 14 days before it can publish.',
+        'Upload the Android build (an .aab), with screenshots, a description, a privacy policy and the data safety form.',
+        'Send it for review; it usually takes up to seven days.'
+      ]
+    }
+  return {
+    name: 'Microsoft Store (Windows)',
+    start: 'https://partner.microsoft.com/dashboard/registration',
+    cost: 'Free',
+    steps: [
+      'Open a developer account in Partner Center: "Company" for a business (a D-U-N-S number helps verification).',
+      `Reserve the name "${app.title}".`,
+      'Upload the signed installer (code signing comes with your Windows certificate), with screenshots and a description.',
+      'Submit it for certification.'
+    ]
+  }
+}

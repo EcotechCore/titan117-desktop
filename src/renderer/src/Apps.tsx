@@ -18,7 +18,9 @@ import {
   type PreviewSize,
   visualEditRequest,
   hostGuide,
+  storeGuide,
   type GitHost,
+  type Store,
   type PickedElement
 } from './apps-lib'
 import type { EngineClient } from './engine'
@@ -36,6 +38,8 @@ interface AppInfo {
   preview: string | null
   /** A mobile app open to phones on this Wi-Fi: the address Expo Go opens. */
   phone: string | null
+  /** A desktop app's latest installer, when made. */
+  installer: string | null
   checking: string | null
   problem: string | null
   published: { host: 'cloudflare'; url: string; at: number } | null
@@ -103,8 +107,129 @@ function PhoneCode({ address }: { address: string }): React.JSX.Element | null {
   )
 }
 
+interface AndroidState {
+  supported: boolean
+  tools: boolean
+  licence: boolean
+  packages: boolean
+  phone: boolean
+  running: string | null
+  note: string | null
+  problem: string | null
+}
+
+/** The Android emulator's set-up (6.22): each step is the user's own click; Google's licence is accepted only here. */
+function Emulator({
+  client,
+  changed
+}: {
+  client: EngineClient
+  changed: number
+}): React.JSX.Element | null {
+  const [state, setState] = useState<AndroidState | null>(null)
+  const [licence, setLicence] = useState<string | null>(null)
+  const [problem, setProblem] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(() => {
+    client
+      .get<AndroidState>('/v1/apps/android')
+      .then(setState)
+      .catch(() => setState(null))
+  }, [client])
+  useEffect(load, [load, changed])
+  function step(action: string): void {
+    setBusy(true)
+    setProblem(null)
+    client
+      .send<{ licence?: string }>('POST', '/v1/apps/android', { action })
+      .then((r) => {
+        if (action === 'licence') setLicence(r.licence ?? null)
+        if (action === 'accept') setLicence(null)
+        load()
+      })
+      .catch((error: unknown) =>
+        setProblem(error instanceof Error ? error.message : 'Something went wrong.')
+      )
+      .finally(() => setBusy(false))
+  }
+  if (!state?.supported) return null
+  const working = busy || !!state.note
+  return (
+    <div className="apps-emulator">
+      <p className="row-title">Android emulator</p>
+      <p className="muted">
+        {state.running
+          ? `The virtual phone is running (${state.running}). Open a mobile app in it from its page.`
+          : state.phone
+            ? 'Ready: a virtual Android 14 phone. Starting it needs Windows Hypervisor Platform on.'
+            : state.licence
+              ? 'Google’s licence is accepted. Next: Google’s emulator and Android 14 (about 3 GB).'
+              : state.tools
+                ? 'Google’s tools are here. Read Google’s licence; the emulator installs only after you accept it.'
+                : 'Titan117 downloads Google’s Android tools and a Java runtime (about 205 MB) from their makers, checked against their fingerprints. Nothing is installed system-wide.'}
+      </p>
+      {state.note && <p className="faint">{state.note}</p>}
+      {(problem || state.problem) && (
+        <p className="note note-error" role="alert">
+          {problem ?? state.problem}
+        </p>
+      )}
+      {licence && (
+        <>
+          <pre className="apps-licence" tabIndex={0} aria-label="Google’s Android SDK licence">
+            {licence}
+          </pre>
+          <div className="code-actions">
+            <button className="btn btn-primary" disabled={working} onClick={() => step('accept')}>
+              I accept Google’s licence
+            </button>
+            <button className="btn" onClick={() => setLicence(null)}>
+              Not now
+            </button>
+          </div>
+        </>
+      )}
+      {!licence && (
+        <div className="code-actions">
+          {!state.tools && (
+            <button className="btn" disabled={working} onClick={() => step('tools')}>
+              {state.note ? 'Downloading…' : 'Download Google’s tools'}
+            </button>
+          )}
+          {state.tools && !state.licence && (
+            <button className="btn" disabled={working} onClick={() => step('licence')}>
+              {busy ? 'Reading…' : 'Read Google’s licence'}
+            </button>
+          )}
+          {state.licence && !state.phone && (
+            <button className="btn" disabled={working} onClick={() => step('install')}>
+              Install the emulator
+            </button>
+          )}
+          {state.phone && !state.running && (
+            <button className="btn" disabled={working} onClick={() => step('start')}>
+              Start the phone
+            </button>
+          )}
+          {state.running && (
+            <button className="btn" disabled={working} onClick={() => step('stop')}>
+              Stop the phone
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** What this laptop can do for mobile and desktop apps (6.28). */
-function ThisLaptop({ client }: { client: EngineClient }): React.JSX.Element {
+function ThisLaptop({
+  client,
+  changed
+}: {
+  client: EngineClient
+  changed: number
+}): React.JSX.Element {
   const [checks, setChecks] = useState<DeviceCheck[] | null>(null)
   const [busy, setBusy] = useState(false)
   function check(fresh: boolean): void {
@@ -136,12 +261,58 @@ function ThisLaptop({ client }: { client: EngineClient }): React.JSX.Element {
           ))}
         </ul>
       )}
+      <Emulator client={client} changed={changed} />
       <div className="code-actions">
         <button className="btn" disabled={busy} onClick={() => check(!!checks)}>
           {busy ? 'Checking…' : checks ? 'Check again' : 'Check this laptop'}
         </button>
       </div>
     </>
+  )
+}
+
+function StoreSteps({
+  stores,
+  store,
+  setStore,
+  title
+}: {
+  stores: Store[]
+  store: Store
+  setStore: (s: Store) => void
+  title: string
+}): React.JSX.Element {
+  const current = stores.includes(store) ? store : stores[0]
+  const guide = storeGuide(current, { title })
+  return (
+    <div className="apps-guide">
+      {stores.length > 1 && (
+        <div className="segmented" role="radiogroup" aria-label="Store">
+          {stores.map((s) => (
+            <button
+              key={s}
+              role="radio"
+              aria-checked={current === s}
+              className={current === s ? 'seg on' : 'seg'}
+              onClick={() => setStore(s)}
+            >
+              {storeGuide(s, { title }).name}
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="faint">
+        {guide.name}: {guide.cost}, in your own developer account.
+      </p>
+      <ol>
+        {guide.steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+      <a className="btn" href={guide.start} target="_blank" rel="noreferrer">
+        Open {guide.name.split(' (')[0]}
+      </a>
+    </div>
   )
 }
 
@@ -267,6 +438,15 @@ export function AppsView({
   const [newDescription, setNewDescription] = useState('')
   const [newRequest, setNewRequest] = useState('')
   const [newKind, setNewKind] = useState('blank')
+  const [store, setStore] = useState<Store>('google')
+  const [emulatorRunning, setEmulatorRunning] = useState(false)
+  useEffect(() => {
+    if (!client) return
+    client
+      .get<{ running: string | null }>('/v1/apps/android')
+      .then((r) => setEmulatorRunning(!!r.running))
+      .catch(() => setEmulatorRunning(false))
+  }, [client, changed])
   const [newTarget, setNewTarget] = useState<'web' | 'mobile' | 'desktop'>('web')
   const [busy, setBusy] = useState(false)
   // Visual edit (6.9): pick an element in the preview, then say what to change.
@@ -626,6 +806,15 @@ export function AppsView({
                 >
                   Download ZIP
                 </button>
+                {app.kind === 'mobile' && emulatorRunning && (
+                  <button
+                    className="btn"
+                    disabled={busy}
+                    onClick={() => act('/v1/apps/android', { action: 'open', folder: app.folder })}
+                  >
+                    Open in the emulator
+                  </button>
+                )}
                 {app.kind === 'mobile' && !app.phone && (
                   <button
                     className="btn"
@@ -852,20 +1041,66 @@ export function AppsView({
                 <>
                   <h2 className="section">Installer</h2>
                   <p className="muted">
-                    A desktop app is shared as a Windows installer (and later a Mac app), made on
-                    this laptop with Tauri. That comes later in phase 9 and needs Rust and
-                    Microsoft’s C++ build tools: see This laptop, below. For now, the preview shows
-                    the app’s window contents as Tauri will.
+                    A desktop app is shared as a Windows installer, made on this laptop with Tauri
+                    (it needs Rust and Microsoft’s C++ build tools: see This laptop, below). Only a
+                    version that passes its checks gets one.
                   </p>
+                  {app.installer && <p className="faint mono">Installer: {app.installer}</p>}
+                  {app.problem && (
+                    <p className="note note-error" role="alert">
+                      {app.problem}
+                    </p>
+                  )}
+                  <div className="code-actions">
+                    <button
+                      className="btn btn-primary"
+                      disabled={busy || !!app.checking}
+                      onClick={() => act('/v1/apps/installer', { folder: app.folder })}
+                    >
+                      {app.checking?.includes('nstaller') || app.checking?.includes('Rust')
+                        ? app.checking
+                        : app.installer
+                          ? 'Make it again'
+                          : 'Make the installer'}
+                    </button>
+                    {app.installer && (
+                      <button
+                        className="btn"
+                        disabled={busy}
+                        onClick={() => act('/v1/apps/sandbox', { folder: app.folder })}
+                      >
+                        Try it in a clean Windows
+                      </button>
+                    )}
+                  </div>
+                  {app.installer && (
+                    <p className="faint">
+                      A clean Windows opens with Windows Sandbox (no network), installs the app and
+                      starts it; closing it throws everything away.
+                    </p>
+                  )}
+                  <h3 className="app-engine">Microsoft Store</h3>
+                  <StoreSteps
+                    stores={['microsoft']}
+                    store="microsoft"
+                    setStore={setStore}
+                    title={app.title}
+                  />
                 </>
               ) : app.kind === 'mobile' ? (
                 <>
                   <h2 className="section">Publish</h2>
                   <p className="muted">
                     Mobile apps go to the App Store and Google Play from your own developer
-                    accounts. That comes later in phase 9; for now, try it on your phone with Expo
-                    Go.
+                    accounts. Store builds come later in phase 9; for now, try it on your phone with
+                    Expo Go. Here is what each store needs:
                   </p>
+                  <StoreSteps
+                    stores={['google', 'apple']}
+                    store={store}
+                    setStore={setStore}
+                    title={app.title}
+                  />
                 </>
               ) : (
                 <>
@@ -1185,7 +1420,7 @@ export function AppsView({
               sites; after that, building and testing work offline with local models.
             </p>
           )}
-          {client && <ThisLaptop client={client} />}
+          {client && <ThisLaptop client={client} changed={changed} />}
         </>
       )}
     </div>

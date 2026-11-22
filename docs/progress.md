@@ -32,6 +32,16 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 22 Nov 2026 · Phase 9: the emulator's set-up, the installer, a clean Windows, store guides
+
+Branch `phase-9-app-builder`; decisions §57.19.
+
+- **The emulator (`android.ts`):** Google's command-line tools 22.0 and Eclipse Temurin 21.0.13.1, hash-checked (both matched), into `components/android`; Google's licence shown exactly as `sdkmanager --install` asks for Titan117's four packages, declined while reading; acceptance recorded with the text's fingerprint; then the install, a Pixel 7 phone on Android 14 with Google Play, start (waits for boot) and `exp://10.0.2.2:…` to open a mobile app. Google's tools run from Java directly, with their own settings folder.
+- **The installer:** `makeInstaller` (toolchain check, checks, icons, `tauri build --bundles nsis`) and **a clean Windows** (`sandbox.ts`: a `.wsb` with no network, the installer read-only, a results folder; Windows Sandbox installs silently and starts the app).
+- **Store guides** for Google Play, the App Store and the Microsoft Store on the Apps screen.
+- **Seen in the built app:** the tools downloaded and matched their fingerprints; Google's licence showed in full (17,069 characters, no notices or progress bars) and was not accepted; nothing was installed; Make the installer said Rust and the build tools are missing; the store guides showed. The emulator itself, the installer and the sandbox wait for the owner's steps (owner checklist).
+- **Checks:** typecheck, lint, 424 tests, build and `check:licenses` pass.
+
 ### 22 Nov 2026 · Phase 9: desktop apps with Tauri, first part
 
 Branch `phase-9-app-builder`; decisions §57.18.

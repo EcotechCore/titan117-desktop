@@ -58,6 +58,13 @@ export interface Runner {
   needsInstall(dir: string): boolean
   install(dir: string, signal?: AbortSignal): Promise<CheckResult>
   checks(dir: string, signal?: AbortSignal): Promise<CheckResult[]>
+  /** One of the app's own npm scripts with arguments (the desktop installer, its icons). */
+  script(
+    dir: string,
+    name: string,
+    args: string[],
+    options: { timeoutMs: number; signal?: AbortSignal }
+  ): Promise<RunOutput>
   startPreview(dir: string): Promise<{ url: string }>
   /**
    * A mobile app opened to phones on this Wi-Fi (6.24, decisions §57): its
@@ -285,6 +292,10 @@ export function createRunner(deps: {
         results.push({ name, ran: true, ...result })
       }
       return results
+    },
+
+    script(dir, name, args, options) {
+      return npm(dir, ['run', name, '--', ...args], options)
     },
 
     /** Start the app's dev server on 127.0.0.1 (or return the one running). */
