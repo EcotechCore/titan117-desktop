@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 22 Nov 2026 · Phase 12 merged
+
+- The phase 12 pull requests are merged (web #41, desktop #39, pop #36). Run the desktop app from `main` to try the QA tester and the SEO agent.
+
 ### 22 Nov 2026 · Phase 12: the QA tester and the SEO agent
 
 - **Two built-in agents** (`src/engine/lib/agents.ts`): **QA tester** (Quality) and **SEO agent** (Marketing), and a new tool group, **Site checks (QA and SEO)** (`sites` permission, `toolGroup`).
