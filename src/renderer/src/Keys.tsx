@@ -66,6 +66,14 @@ const PROVIDERS: {
     where: 'dash.cloudflare.com/profile/api-tokens',
     note: 'Publishes your sites to your own Cloudflare account (its free plan is enough for most). Create a token with the “Edit Cloudflare Workers” template.',
     kind: 'hosting'
+  },
+  {
+    id: 'pagespeed',
+    name: 'Google PageSpeed Insights',
+    where:
+      'console.cloud.google.com (APIs & Services → Credentials; turn on the PageSpeed Insights API)',
+    note: 'Free. The SEO and QA agents use it for Lighthouse scores and real visitors’ speed; without it they share Google’s small keyless limit, which is often used up.',
+    kind: 'search'
   }
 ]
 
@@ -118,7 +126,7 @@ export function OwnKeys({
     <>
       <h2 className="section">
         {kind === 'search'
-          ? 'Your own search keys'
+          ? 'Your own search and site-check keys'
           : kind === 'hosting'
             ? 'Your hosting'
             : 'Your own API keys'}

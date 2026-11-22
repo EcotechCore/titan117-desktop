@@ -30,6 +30,7 @@ import type { Runner } from '../src/engine/lib/apps/runner'
 import type { BrowserTests } from '../src/engine/lib/apps/browsers'
 import { createDataLayer } from '../src/engine/lib/apps/data'
 import { createSidebarService, type SidebarApp } from '../src/engine/lib/apps/sidebar'
+import { createSiteService } from '../src/engine/lib/sites/service'
 
 interface Bench {
   allowed: string
@@ -52,6 +53,8 @@ interface Bench {
   /** The sidebar's apps (6.2): tests put an app there directly. */
   sidebarApps: SidebarApp[]
   sidebarData: ReturnType<typeof createDataLayer>
+  /** How often a site check tried to start a browser. */
+  siteLaunches(): number
   pending(): ReturnType<Store['listApprovals']>
   /** Start a call that will ask, and return its approval (then expire it). */
   approvalOf(call: Omit<ToolCall, 'id'>): Promise<ReturnType<Store['listApprovals']>[number]>
@@ -74,6 +77,7 @@ function bench(
   const answers = new Map<string, boolean>()
   const artifacts = createArtifactStore(db)
   const searches: string[] = []
+  let siteLaunches = 0
   const search = createSearchService({
     fetch: (async (url: string | URL | Request, init?: RequestInit) => {
       searches.push(`${String(url)} ${typeof init?.body === 'string' ? init.body : ''}`)
@@ -127,6 +131,18 @@ function bench(
         // The app builder with nothing that runs: the denial tests never get that far.
         apps: appService,
         sidebar,
+        // Site checks with no browser: a launch is counted and refused.
+        sites: createSiteService({
+          dir: null,
+          fetch: web.fetch,
+          cloud: () => null,
+          qa: {
+            launch: async () => {
+              siteLaunches++
+              throw new Error('No browser in tests.')
+            }
+          }
+        }),
         answers: { get: (k) => answers.get(k) ?? null, set: (k, v) => void answers.set(k, v) }
       }
   const layer = createPermissionLayer({
@@ -163,6 +179,7 @@ function bench(
     taskId: task.id,
     sidebarApps,
     sidebarData,
+    siteLaunches: () => siteLaunches,
     asked: () => store.listApprovals({ taskId: task.id }).length,
     pending: () => store.listApprovals({ taskId: task.id, status: 'pending' }),
     async run(call, answer, from = 'window') {
@@ -285,6 +302,155 @@ function gitRepo(b: Bench): string {
 }
 
 const DENIALS: Record<string, () => Promise<void>> = {
+  async site_audit() {
+    const b = bench()
+    // A private task: a new site waits for the user; denied, not even robots.txt is fetched.
+    await makePrivate(b, SECRET_TEXT)
+    const denied = await b.run(
+      { name: 'site_audit', input: { url: 'https://shop.example' } },
+      'deny'
+    )
+    expect(denied.status).toBe('refused')
+    expect(b.web.requests.some((r) => r.url.includes('shop.example'))).toBe(false)
+    // Not a web address: refused before anything is asked.
+    const bad = await b.run({ name: 'site_audit', input: { url: 'file:///C:/secret' } })
+    expect(bad.status).toBe('refused')
+    // An address carrying private content never leaves.
+    const leak = await b.run({
+      name: 'site_audit',
+      input: { url: `https://shop.example/?q=${encodeURIComponent(SECRET_TEXT)}` }
+    })
+    expect(leak.status).toBe('refused')
+  },
+
+  async qa_check() {
+    const b = bench()
+    // Screenshots write files: asks; denied, no browser starts.
+    const denied = await b.run(
+      {
+        name: 'qa_check',
+        input: {
+          url: 'https://shop.example',
+          pages: ['https://shop.example/'],
+          screenshots_folder: 'shots'
+        }
+      },
+      'deny'
+    )
+    expect(denied.status).toBe('refused')
+    expect(b.siteLaunches()).toBe(0)
+    // Without a folder it runs, but a refused site gets no browser either.
+    await makePrivate(b, SECRET_TEXT)
+    const refused = await b.run(
+      {
+        name: 'qa_check',
+        input: { url: 'https://other.example', pages: ['https://other.example/'] }
+      },
+      'deny'
+    )
+    expect(refused.status).toBe('refused')
+    expect(b.siteLaunches()).toBe(0)
+  },
+
+  async seo_speed() {
+    const b = bench()
+    // The page's address goes to Google; private content in it never does.
+    await makePrivate(b, SECRET_TEXT)
+    const before = b.web.requests.length
+    const leak = await b.run({
+      name: 'seo_speed',
+      input: { url: `https://shop.example/${encodeURIComponent(SECRET_TEXT)}` }
+    })
+    expect(leak.status).toBe('refused')
+    expect(b.web.requests.length).toBe(before)
+    // Google is a new site for a private task: asks; denied, nothing sent.
+    const denied = await b.run(
+      { name: 'seo_speed', input: { url: 'https://shop.example' } },
+      'deny'
+    )
+    expect(denied.status).toBe('refused')
+    expect(b.web.requests.length).toBe(before)
+  },
+
+  async seo_ai_visibility() {
+    const b = bench()
+    // It costs credits: asks; denied, nothing is asked of any model.
+    const denied = await b.run(
+      {
+        name: 'seo_ai_visibility',
+        input: { brand: 'Brutar', domain: 'brutar.example', questions: ['best bakery in Cluj'] }
+      },
+      'deny'
+    )
+    expect(denied.status).toBe('refused')
+    // Approved, but no credits or key here: it fails plainly.
+    const none = await b.run(
+      {
+        name: 'seo_ai_visibility',
+        input: { brand: 'Brutar', domain: 'brutar.example', questions: ['best bakery in Cluj'] }
+      },
+      'approve'
+    )
+    expect(none.status).toBe('failed')
+    expect(none.output).toMatch(/signed in|OpenRouter key/)
+    // Private content never leaves in a question, before anyone is asked.
+    await makePrivate(b, SECRET_TEXT)
+    const asked = b.asked()
+    const leak = await b.run({
+      name: 'seo_ai_visibility',
+      input: { brand: 'Brutar', domain: 'brutar.example', questions: [SECRET_TEXT] }
+    })
+    expect(leak.status).toBe('refused')
+    expect(b.asked()).toBe(asked)
+  },
+
+  async qa_save_test() {
+    const b = bench()
+    const input = {
+      folder: 'qa-tests',
+      name: 'home',
+      url: 'https://shop.example',
+      steps: [{ action: 'expect_text', text: 'Welcome' }]
+    }
+    const denied = await b.run({ name: 'qa_save_test', input }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(existsSync(join(b.allowed, 'qa-tests', 'home.test.json'))).toBe(false)
+    // Outside the allowed folders: refused even when approved.
+    const outside = await b.run(
+      { name: 'qa_save_test', input: { ...input, folder: b.outside } },
+      'approve'
+    )
+    expect(outside.status).toBe('refused')
+    expect(existsSync(join(b.outside, 'home.test.json'))).toBe(false)
+    // A step that isn't one of ours: refused.
+    const bad = await b.run(
+      { name: 'qa_save_test', input: { ...input, steps: [{ action: 'eval', code: 'alert(1)' }] } },
+      'approve'
+    )
+    expect(bad.status).toBe('refused')
+  },
+
+  async qa_run_tests() {
+    const b = bench()
+    mkdirSync(join(b.allowed, 'qa-tests'))
+    writeFileSync(
+      join(b.allowed, 'qa-tests', 'home.test.json'),
+      JSON.stringify({
+        name: 'home',
+        url: 'https://shop.example',
+        steps: [{ action: 'expect_text', text: 'Hi' }]
+      })
+    )
+    // It clicks through a live site: asks; denied, no browser starts.
+    const denied = await b.run({ name: 'qa_run_tests', input: { folder: 'qa-tests' } }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.siteLaunches()).toBe(0)
+    // Tests outside the allowed folders aren't read.
+    const outside = await b.run({ name: 'qa_run_tests', input: { folder: b.outside } }, 'approve')
+    expect(outside.status).toBe('refused')
+    expect(b.siteLaunches()).toBe(0)
+  },
+
   async image_create() {
     const b = bench()
     // It costs money: it asks; denied, nothing is made.
@@ -1503,7 +1669,8 @@ describe('tool denial tests', () => {
           () => ctx.apps.versions('.'),
           () => ctx.sidebar.apps(),
           () => ctx.team.delegate([]),
-          () => ctx.media.pick('image')
+          () => ctx.media.pick('image'),
+          () => ctx.sites.history('https://example.com')
         ]
         const refused: string[] = []
         for (const attempt of tries) {
@@ -1519,7 +1686,7 @@ describe('tool denial tests', () => {
     })
     const b = bench({ extraTools: [greedy] })
     const outcome = await b.run({ name: 'greedy', input: {} })
-    expect(outcome.output.split(',')).toEqual(Array(16).fill('PermissionError'))
+    expect(outcome.output.split(',')).toEqual(Array(17).fill('PermissionError'))
   })
 
   it('every tool declares a risk and its permissions', () => {

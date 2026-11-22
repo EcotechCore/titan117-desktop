@@ -75,6 +75,17 @@ Nothing here blocks other phases. Phase 11 is merged into `main` (22 Nov 2026) a
 - [ ] **Look at the small extras:** an image Titan makes now shows in the chat; team names in the sidebar fold up (click one) so the task list keeps its room.
 - [ ] **Before production (video charging):** in OpenRouter's **workspace settings**, press **Generate signing secret** under *Webhook signing secret*, then set two settings on the production web app: `OPENROUTER_WEBHOOK_SECRET` (that secret) and `PROXY_WEBHOOK_URL` = `https://titan117.com/api/v1/videos/webhook`. The code is built and tested; it needs a public address, so it can't run locally. Until then a video is charged when the app checks on it, which it does to the end.
 
+## Phase 12 · The QA and SEO agents (started 22 Nov 2026)
+
+Nothing here blocks other phases. The work is on the `phase-12-qa-seo` branch of the desktop repo until merged.
+
+- [ ] **Add your own free Google API key for speed checks** (5 minutes): in [Google Cloud Console](https://console.cloud.google.com), pick or make a project, turn on the **PageSpeed Insights API** (APIs & Services → Library), then **Credentials → Create credentials → API key** (restrict it to that API). In Titan117: **Web search → Google PageSpeed Insights → Add**. Without it, Google's shared keyless limit is usually used up (it was when we tried).
+- [ ] **Try the QA tester:** in the sidebar under **Quality**, start a task: "Test https://your-site … on up to 5 pages, save a test that …, and run it." Approve the cards. Open **QA report** and **QA findings** beside the chat and download them (PDF, Word, Excel). The saved test is in the folder you allowed (`qa-tests/`).
+- [ ] **Try the SEO agent:** under **Marketing**: "Do an SEO check of https://your-site …, check its speed, and see whether AI assistants mention us for: …". The AI check costs about 1–2 cents an answer and asks first. Run it again a day later: the report says what changed.
+- [ ] **Decisions §60** (to be confirmed): our own polite crawler (robots.txt kept, 30 pages by default), axe-core for accessibility (MPL 2.0, unchanged), Lighthouse not shipped (PageSpeed Insights with your own free Google key instead), saved tests that run without AI, AI visibility through OpenRouter with OpenAI, Perplexity and Google models, past audits kept on the laptop.
+- [ ] **For Search Console (when you want rankings and search data, 14.5–14.6):** register our own Google sign-in app: in Google Cloud Console, **Google Auth Platform → Branding** (app name Titan117, support email, the titan117.com homepage and privacy policy), **Data access → add the scope `…/auth/webmasters.readonly`** (and tell us whether the console lists it as sensitive), then **Clients → Create client → Desktop app** and send us the client ID. If the scope is sensitive, Google's verification needs titan117.com verified, the privacy policy live, a short demo video and up to 10 days; until then up to 100 users can use it after a warning screen. Not urgent: it waits for titan117.com to be live (§52).
+- [ ] **Decide on keyword data (14.7):** DataForSEO on each user's own account ($50 minimum top-up, about $0.0006 a results page) is the planned default, built after Search Console. Say if you'd rather start with something else, or skip paid keyword data for V1.
+
 ## Step 2 · Confirm the decisions (about an hour of reading)
 
 All confirmed by the owner on 18 Nov 2026 (decisions §44–§51), with one addition: Titan searches in the browser when asked to search on Google or another engine (§44.12).

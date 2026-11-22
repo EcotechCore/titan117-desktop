@@ -37,6 +37,7 @@
     "@opencode-ai/sdk": "1.19.6",
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/ron": "^1.0.0",
+    "axe-core": "4.14.1",
     "docx": "^9.15.4",
     "electron-updater": "6.8.11",
     "exceljs": "^4.4.0",

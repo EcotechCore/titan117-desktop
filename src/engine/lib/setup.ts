@@ -101,7 +101,8 @@ const NAMES: Record<KeyProvider, string> = {
   exa: 'Exa',
   tavily: 'Tavily',
   brave: 'Brave',
-  cloudflare: 'Cloudflare'
+  cloudflare: 'Cloudflare',
+  pagespeed: 'Google PageSpeed'
 }
 
 /** What the checklist reads; the engine fills it in. */
@@ -250,7 +251,10 @@ export function checklist(
         fix: {
           kind: 'view',
           target:
-            provider === 'exa' || provider === 'tavily' || provider === 'brave'
+            provider === 'exa' ||
+            provider === 'tavily' ||
+            provider === 'brave' ||
+            provider === 'pagespeed'
               ? 'search'
               : provider === 'cloudflare'
                 ? 'apps'

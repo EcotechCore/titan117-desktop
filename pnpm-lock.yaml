@@ -201,6 +201,9 @@ importers:
       '@tesseract.js-data/ron':
         specifier: ^1.0.0
         version: 1.0.0
+      axe-core:
+        specifier: 4.14.1
+        version: 4.14.1
       docx:
         specifier: ^9.15.4
         version: 9.15.4
@@ -1740,6 +1743,10 @@ packages:
 
   aws4@1.13.2:
     resolution: {integrity: sha512-lHe62zvbTB5eEABUVi/AwVh0ZKY9rMMDhmm+eeyuuUQbQ3+J+fONVQOZyj+DdrvD4BY33uYniyRJ4UJIaSKAfw==}
+
+  axe-core@4.14.1:
+    resolution: {integrity: sha512-FHfa+lmNjQZfJz1q8wKqIDwC6DExcHt/pkjNQb09a3NPjCKg2rhu5qb2S4r76ASyFNNtuFooJpZe37OgudVGtQ==}
+    engines: {node: '>=4'}
 
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
@@ -6020,6 +6027,8 @@ snapshots:
       possible-typed-array-names: 1.1.0
 
   aws4@1.13.2: {}
+
+  axe-core@4.14.1: {}
 
   balanced-match@1.0.2: {}
 

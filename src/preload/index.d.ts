@@ -72,7 +72,8 @@ declare global {
             | 'exa'
             | 'tavily'
             | 'brave'
-            | 'cloudflare',
+            | 'cloudflare'
+            | 'pagespeed',
             boolean
           >
         >

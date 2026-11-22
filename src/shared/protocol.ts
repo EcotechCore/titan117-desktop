@@ -220,10 +220,13 @@ export const SEARCH_KEY_PROVIDERS = ['exa', 'tavily', 'brave'] as const
 export type SearchKeyProvider = (typeof SEARCH_KEY_PROVIDERS)[number]
 /** Hosting for publishing apps (6.15, decisions §56.18): the user's own account. */
 export const HOSTING_KEY_PROVIDERS = ['cloudflare'] as const
+/** Site checks (decisions §60): the user's own free Google API key for PageSpeed Insights. */
+export const SITE_KEY_PROVIDERS = ['pagespeed'] as const
 export const KEY_PROVIDERS = [
   ...MODEL_KEY_PROVIDERS,
   ...SEARCH_KEY_PROVIDERS,
-  ...HOSTING_KEY_PROVIDERS
+  ...HOSTING_KEY_PROVIDERS,
+  ...SITE_KEY_PROVIDERS
 ] as const
 export type KeyProvider = (typeof KEY_PROVIDERS)[number]
 
@@ -281,6 +284,7 @@ export type ToolGroup =
   | 'memory'
   | 'speech'
   | 'media'
+  | 'sites'
   | 'connectors'
 
 export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
@@ -296,6 +300,7 @@ export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
   { id: 'memory', label: 'Memory, skills and past tasks' },
   { id: 'speech', label: 'Speech' },
   { id: 'media', label: 'Images and video (cost credits)' },
+  { id: 'sites', label: 'Site checks (QA and SEO)' },
   { id: 'connectors', label: 'Your connectors' }
 ]
 

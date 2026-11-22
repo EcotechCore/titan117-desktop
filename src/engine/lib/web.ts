@@ -28,6 +28,8 @@ export interface TaskNet {
   check(url: string, body: string | null, kind: 'navigate' | 'resource'): Promise<void>
   /** Fetch through the policy, following at most 5 redirects, each checked. */
   fetch(url: string, init?: RequestInit): Promise<Response>
+  /** One request through the policy, redirects not followed (site audits record them). */
+  fetchOnce(url: string, init?: RequestInit): Promise<Response>
   sites(): string[]
 }
 
@@ -129,6 +131,13 @@ export function createTaskNet(deps: {
         return response
       }
       throw new Error('Too many redirects.')
+    },
+
+    async fetchOnce(url, init = {}) {
+      if (init.body && typeof init.body !== 'string')
+        throw new PermissionError('Only text bodies can be sent.')
+      await policy.check(url, typeof init.body === 'string' ? init.body : null, 'navigate')
+      return base(url, { ...init, redirect: 'manual' })
     },
 
     sites: () => sites.list(taskId)

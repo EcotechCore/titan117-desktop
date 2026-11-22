@@ -24,6 +24,7 @@ import { createAgentStore, type AgentStore } from './agents'
 import { createTeamService } from '../team'
 import { createComparer } from '../compare'
 import { createMediaService, type MediaService } from './media'
+import { createSiteService } from './sites/service'
 import { createSpeechEngine, type SpeechEngine } from './speech'
 import { createStore, type Store } from '../store'
 import { builtInTools, createRegistry, type AnyTool } from '../tools'
@@ -429,6 +430,16 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         chosen: (kind) =>
           getMeta<Record<string, string | null>>(db, 'mediaModels', {})[kind] ?? null
       })),
+      sites: createSiteService({
+        dir: options.dataDir ? join(options.dataDir, 'site-audits') : null,
+        fetch: connectivity.track(
+          engineFetch(options.fetch, () =>
+            account.proxyUrl ? [new URL(account.proxyUrl).origin] : []
+          )
+        ),
+        cloud: () => cloud(),
+        pagespeedKey: () => ownKeys.pagespeed ?? null
+      }),
       team: createTeamService({
         store,
         agents,
