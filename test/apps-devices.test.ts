@@ -26,12 +26,7 @@ beforeAll(() => {
   const home = tempFolder('titan117-home-')
   writeFileSync(
     join(home, '.gitconfig'),
-    '[user]
-	name = Test User
-	email = test@example.com
-[core]
-	autocrlf = false
-'
+    '[user]\n\tname = Test User\n\temail = test@example.com\n[core]\n\tautocrlf = false\n'
   )
   process.env.HOME = home
 })
