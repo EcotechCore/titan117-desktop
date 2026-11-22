@@ -109,6 +109,8 @@ export function createApi(deps: {
   agents?: AgentStore
   /** Compare models side by side (2.8). */
   compare?: (prompt: unknown, models: unknown) => Promise<CompareResult[]>
+  /** An image a task's image_create saved (2.7), for the chat; null when it's gone or not one. */
+  taskImage?(taskId: string, callId: string): Promise<{ dataUrl: string } | null>
   /** The models for images and video (2.7): OpenRouter's lists and the user's choice. */
   media?: {
     get(): Promise<{
@@ -216,9 +218,18 @@ export function createApi(deps: {
   async function agentRoutes(
     key: string,
     id: string | undefined,
-    body: unknown
+    body: unknown,
+    query: Record<string, string> = {}
   ): Promise<unknown | null> {
     if (key === 'GET media') return need(deps.media).get()
+    if (key === 'GET tasks/:id/image') {
+      const callId = query.call ?? ''
+      if (!id || !/^[A-Za-z0-9_-]{1,128}$/.test(callId))
+        throw new ApiError(400, 'BAD_REQUEST', 'Which image?')
+      const image = await need(deps.taskImage)(id, callId)
+      if (!image) throw new ApiError(404, 'NOT_FOUND', 'That image is gone.')
+      return image
+    }
     if (key === 'PUT media') {
       const pickOne = (value: unknown): string | null => {
         if (value === null || value === undefined || value === '') return null
@@ -911,7 +922,7 @@ export function createApi(deps: {
     const more = await phase4(key, id, body, query)
     if (more !== null) return more
 
-    const team = await agentRoutes(key, id, body)
+    const team = await agentRoutes(key, id, body, query)
     if (team !== null) return team
 
     switch (key) {

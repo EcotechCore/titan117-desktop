@@ -203,6 +203,22 @@ describe('image_create in a task', () => {
         (a: { tool: string; kind: string }) => a.tool === 'image_create' && a.kind === 'tool'
       ).summary
     ).toMatch(/Made an image with google\/gemini-9-image: cake\.png/)
+    // The chat shows the image the task saved, and nothing else.
+    const toolMessage = done.messages.find(
+      (m: { message: { role: string } }) => m.message.role === 'tool'
+    ).message
+    const shown = await call(
+      engine,
+      'GET',
+      `/v1/tasks/${body.task.id}/image?call=${toolMessage.callId}`
+    )
+    expect(shown.body.dataUrl).toBe(`data:image/png;base64,${PNG.toString('base64')}`)
+    expect((await call(engine, 'GET', `/v1/tasks/${body.task.id}/image?call=nope`)).status).toBe(
+      404
+    )
+    expect((await call(engine, 'GET', `/v1/tasks/${body.task.id}/image?call=../x`)).status).toBe(
+      400
+    )
     // The chosen models are a setting.
     const media = await call(engine, 'PUT', '/v1/media', { image: 'acme/painter', video: null })
     expect(media.body).toMatchObject({ image: 'acme/painter', video: null })

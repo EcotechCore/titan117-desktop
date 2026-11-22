@@ -1,6 +1,6 @@
 // One task: your messages, Titan's steps, approval cards and the answer
 // (design.md §6).
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { Approval, ApprovalAnswer, TaskDetail, ToolCall } from '../../shared/protocol'
 import { diffCounts } from './code-lib'
@@ -10,6 +10,27 @@ import { pullRequestUrl } from './links-lib'
 import { modelName } from './format'
 import { Eyes, Icon } from './ui'
 import type { EngineState } from '../../shared/protocol'
+import type { EngineClient } from './engine'
+
+/** An image the task made (2.7), shown in the chat. */
+function TaskImage({
+  client,
+  taskId,
+  callId
+}: {
+  client: EngineClient
+  taskId: string
+  callId: string
+}): React.JSX.Element | null {
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    client
+      .get<{ dataUrl: string }>(`/v1/tasks/${taskId}/image?call=${encodeURIComponent(callId)}`)
+      .then((r) => setSrc(r.dataUrl))
+      .catch(() => setSrc(null))
+  }, [client, taskId, callId])
+  return src ? <img className="task-image" src={src} alt="The image this task made" /> : null
+}
 
 const TOOL_LABEL: Record<string, string> = {
   list_folder: 'List folder',
@@ -188,13 +209,16 @@ export function TaskView({
   streaming,
   engine,
   onAnswer,
-  onReadAloud
+  onReadAloud,
+  client
 }: {
   detail: TaskDetail
   streaming: string
   engine: EngineState | null
   onAnswer(id: string, answer: ApprovalAnswer): void
   onReadAloud?(text: string): void
+  /** Loads the images the task made; without it they aren't shown. */
+  client?: EngineClient | null
 }): React.JSX.Element {
   const { task, messages, approvals } = detail
   const end = useRef<HTMLDivElement>(null)
@@ -262,6 +286,17 @@ export function TaskView({
                 })}
               </ul>
             )}
+            {client &&
+              message.toolCalls?.map((call) =>
+                call.name === 'image_create' && results.get(call.id)?.isError === false ? (
+                  <TaskImage
+                    key={`img-${call.id}`}
+                    client={client}
+                    taskId={task.id}
+                    callId={call.id}
+                  />
+                ) : null
+              )}
             {message.toolCalls?.map((call) => {
               const approval = pending.get(call.id)
               return approval ? (

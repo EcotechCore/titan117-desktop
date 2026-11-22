@@ -2,7 +2,7 @@
 
 Everything waiting on the owner, in the order to do it. Gathered from every repo's progress log; last rewritten 15 Nov 2026 after phase 4's leftovers and the first part of phase 5. Shared doc: edited in `titan117-web`, copied to the other repos. When an item is done, tick it here and add a line to `progress.md`; when the build adds a new one, it goes here in the same commit.
 
-**Where the code is:** everything up to phase 10 is merged into `main` in all three repos (22 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
+**Where the code is:** everything up to phase 11 is merged into `main` in all three repos (22 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
 
 ## Step 1 · Push and review
 
@@ -65,14 +65,15 @@ Nothing here blocks phases 8 and 9. Phase 10 is merged into `main` (22 Nov 2026)
 
 ## Phase 11 · The agent builder (started 22 Nov 2026)
 
-Nothing here blocks other phases. Run the desktop app from the `phase-11-agent-builder` branch until it's merged (then from `main`), with `pnpm dev`.
+Nothing here blocks other phases. Phase 11 is merged into `main` (22 Nov 2026) and done; run the desktop app from `main` with `pnpm dev`.
 
 - [ ] **Try the three parts of phase 11's check:** (1) **Agents** (the **Manage** link beside "Agents" in the sidebar) → **New agent**: give it a name, a team, what it does, its tools and instructions, press **Make the agent**, then **Start a task**. (2) Ask Titan for a task with two separate parts, for example "Researcher should find X and Writer should draft Y; give me both": the task's details show **Parts handed out** and **Team talk**. (3) Ask Titan "I need an agent that …, with a skill for …": approve the card, and the agent appears in the sidebar under its team.
 - [ ] **Try Compare models** (sidebar): one prompt on two to four models, with each answer's time and cost.
 - [ ] **Decisions §59** (to be confirmed): agents as files with a header, built-ins cloned to change, a definition only narrows what an agent may do, parts handed to other agents (at most three at once, one level deep, their cost counted in the first task), the message bus kept on the laptop, smart routing (a fast model for the steps after the plan), Compare, Titan making agents and skills after one approval every time, and media (images and video through OpenRouter) as the next part.
 - [ ] **Try images (2.7):** with the local web app running and the desktop signed in (so it uses credits), ask Titan "Make a square picture of … and save it as picture.png", approve the card, and check the file and the cost in the task's details. Models → **Images and video** picks the models. This path hasn't been tried end to end through credits yet; with the development key a real image cost $0.03.
 - [ ] **Decide when to try a video clip:** a short clip can cost $0.25–$2 in credits, so none was made while building. The client, the proxy's job routes and the charging are tested with a fake provider.
-- [ ] **Before production:** the proxy should also receive OpenRouter's signed webhook for video jobs, so a job nobody polls to the end is still charged (decisions §59.13).
+- [ ] **Look at the small extras:** an image Titan makes now shows in the chat; team names in the sidebar fold up (click one) so the task list keeps its room.
+- [ ] **Before production (video charging):** in OpenRouter's **workspace settings**, press **Generate signing secret** under *Webhook signing secret*, then set two settings on the production web app: `OPENROUTER_WEBHOOK_SECRET` (that secret) and `PROXY_WEBHOOK_URL` = `https://titan117.com/api/v1/videos/webhook`. The code is built and tested; it needs a public address, so it can't run locally. Until then a video is charged when the app checks on it, which it does to the end.
 
 ## Step 2 · Confirm the decisions (about an hour of reading)
 

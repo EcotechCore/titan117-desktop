@@ -5,7 +5,8 @@
  */
 import { randomBytes } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, extname, join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
 
 import type { EngineEvent } from '../../shared/protocol'
 import { createApi } from '../api'
@@ -121,6 +122,15 @@ export interface EngineOptions {
   onNotify?: (note: { title: string; body: string; taskId: string }) => void
   /** Search by meaning (7.4); tests pass a fake or null, the app the local model. */
   embedder?: Embedder | null
+}
+
+/** Images the chat may show (2.7); never SVG, which can carry scripts. */
+const IMAGE_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif'
 }
 
 /** A task is resumed by itself at most this many times, and only this soon after it stopped (1.6). */
@@ -1110,6 +1120,27 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     memory,
     skills,
     agents,
+    async taskImage(taskId, callId) {
+      const message = store
+        .listMessages(taskId)
+        .map((m) => m.message)
+        .find((m) => m.role === 'tool' && m.callId === callId)
+      if (!message || message.role !== 'tool' || message.isError || message.name !== 'image_create')
+        return null
+      const saved = /^Saved the image to (.+?) \(/.exec(message.output)?.[1]
+      if (!saved) return null
+      try {
+        // Only inside the allowed folders, as the tool wrote it.
+        const real = await resolveAllowed(policy(), saved)
+        const type = IMAGE_TYPES[extname(real).toLowerCase()]
+        if (!type) return null
+        const info = await stat(real)
+        if (!info.isFile() || info.size > 15 * 1024 * 1024) return null
+        return { dataUrl: `data:${type};base64,${(await readFile(real)).toString('base64')}` }
+      } catch {
+        return null
+      }
+    },
     media: {
       async get() {
         const chosen = getMeta<Record<string, string | null>>(db, 'mediaModels', {})

@@ -83,6 +83,25 @@ function App(): React.JSX.Element {
       .catch(() => undefined)
   }, [api, agentsChanged])
   const draftAgent = agents.find((a) => a.name === agentName) ?? null
+  // Teams fold up in the sidebar, so the task list keeps its room; remembered on this laptop.
+  const [folded, setFolded] = useState<string[]>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem('titan117.foldedTeams') ?? '[]')
+      return Array.isArray(saved) ? saved.filter((x): x is string => typeof x === 'string') : []
+    } catch {
+      return []
+    }
+  })
+  const toggleTeam = (team: string): void =>
+    setFolded((now) => {
+      const next = now.includes(team) ? now.filter((x) => x !== team) : [...now, team]
+      try {
+        localStorage.setItem('titan117.foldedTeams', JSON.stringify(next))
+      } catch {
+        // Not kept; it still folds for now.
+      }
+      return next
+    })
   useEffect(() => {
     if (!api) return
     api
@@ -507,28 +526,52 @@ function App(): React.JSX.Element {
         </button>
         {byTeam(agents).map(([team, list]) => (
           <div key={team} className="team">
-            <p className="team-label">{team}</p>
-            {list.map((a) => {
-              const mine = state.tasks.filter((t) => t.agent === a.name)
-              const needs = state.approvals.some((ap) => mine.some((t) => t.id === ap.taskId))
-              const busyNow = mine.some((t) => t.status === 'running')
+            {(() => {
+              const isFolded = folded.includes(team)
+              const names = new Set(list.map((a) => a.name))
+              const teamTasks = state.tasks.filter((t) => names.has(t.agent))
+              const teamNeeds = state.approvals.some((ap) =>
+                teamTasks.some((t) => t.id === ap.taskId)
+              )
+              const teamBusy = teamTasks.some((t) => t.status === 'running')
               return (
                 <button
-                  key={a.id}
-                  className={view.kind === 'start' && agentName === a.name ? 'nav on' : 'nav'}
-                  onClick={() => {
-                    setAgentName(a.name)
-                    dispatch({ type: 'view', view: { kind: 'start' } })
-                    setTimeout(() => input.current?.focus(), 0)
-                  }}
+                  className={isFolded ? 'team-label folded' : 'team-label'}
+                  aria-expanded={!isFolded}
+                  onClick={() => toggleTeam(team)}
                 >
-                  <span className="agent-dot" style={{ background: a.color }} />
-                  <span className="nav-text">{a.name}</span>
-                  {needs && <span className="pill">Needs you</span>}
-                  {!needs && busyNow && <span className="shimmer">Working</span>}
+                  <Icon name="chevron" />
+                  <span className="nav-text">{team}</span>
+                  {isFolded && teamNeeds && <span className="pill">Needs you</span>}
+                  {isFolded && !teamNeeds && teamBusy && <span className="shimmer">Working</span>}
+                  {isFolded && !teamNeeds && !teamBusy && (
+                    <span className="team-count">{list.length}</span>
+                  )}
                 </button>
               )
-            })}
+            })()}
+            {!folded.includes(team) &&
+              list.map((a) => {
+                const mine = state.tasks.filter((t) => t.agent === a.name)
+                const needs = state.approvals.some((ap) => mine.some((t) => t.id === ap.taskId))
+                const busyNow = mine.some((t) => t.status === 'running')
+                return (
+                  <button
+                    key={a.id}
+                    className={view.kind === 'start' && agentName === a.name ? 'nav on' : 'nav'}
+                    onClick={() => {
+                      setAgentName(a.name)
+                      dispatch({ type: 'view', view: { kind: 'start' } })
+                      setTimeout(() => input.current?.focus(), 0)
+                    }}
+                  >
+                    <span className="agent-dot" style={{ background: a.color }} />
+                    <span className="nav-text">{a.name}</span>
+                    {needs && <span className="pill">Needs you</span>}
+                    {!needs && busyNow && <span className="shimmer">Working</span>}
+                  </button>
+                )
+              })}
           </div>
         ))}
 
@@ -807,6 +850,7 @@ function App(): React.JSX.Element {
               engine={engine}
               onAnswer={answer}
               onReadAloud={readAloud}
+              client={api}
             />
           )}
         </div>

@@ -1995,9 +1995,34 @@ textarea.edit {
   height: 12px;
 }
 .team-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
   font-size: 11px;
   color: var(--faint);
   padding: 6px 8px 2px;
+  border-radius: 6px;
+  text-align: left;
+}
+.team-label:hover {
+  color: var(--soft);
+}
+.team-label .icon {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s;
+}
+.team-label.folded .icon {
+  transform: rotate(-90deg);
+}
+.task-image {
+  display: block;
+  max-width: min(100%, 420px);
+  max-height: 420px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  margin: 8px 0;
 }
 .agent-dot {
   display: inline-block;
@@ -2117,4 +2142,9 @@ textarea.edit {
   max-height: 160px;
   overflow-y: auto;
   font-size: 12px;
+}
+.team-count {
+  margin-left: auto;
+  font: 11px/1 var(--mono);
+  color: var(--faint);
 }
