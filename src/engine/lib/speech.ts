@@ -40,6 +40,12 @@ const MAX_SECONDS = 30 * 60
 
 /** Samples from a WAV file (PCM 8/16/24/32-bit or 32-bit float), mixed to mono and resampled to 16 kHz. */
 export function decodeWav(data: Buffer): { samples: Float32Array; seconds: number } {
+  const { samples, rate } = readWav(data)
+  return { samples: resample(samples, rate, 16000), seconds: samples.length / rate }
+}
+
+/** A WAV file's samples mixed to mono, at the rate it was recorded (a video's voiceover keeps it). */
+export function readWav(data: Buffer): { samples: Float32Array; rate: number } {
   if (data.toString('ascii', 0, 4) !== 'RIFF' || data.toString('ascii', 8, 12) !== 'WAVE')
     throw new Error('Only WAV recordings can be transcribed for now.')
   let offset = 12
@@ -82,7 +88,7 @@ export function decodeWav(data: Buffer): { samples: Float32Array; seconds: numbe
     for (let c = 0; c < channels; c++) sum += read((f * channels + c) * bytes)
     mono[f] = sum / channels
   }
-  return { samples: resample(mono, rate, 16000), seconds: frames / rate }
+  return { samples: mono, rate }
 }
 
 /** Linear resampling; good enough for speech recognition. */

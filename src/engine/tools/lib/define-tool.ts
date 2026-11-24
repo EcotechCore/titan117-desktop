@@ -74,6 +74,40 @@ export interface ToolPermissions {
   sites?: boolean
   /** Schedules, web watches and recordings (phase 13, decisions §61): reading them, or also making, checking and running them. */
   automation?: 'read' | 'write'
+  /** The brand kit, the content calendar and the promo video (phase 14, decisions §62): reading, or also saving and making. */
+  marketing?: 'read' | 'write'
+}
+
+/** The brand kit, posts and the promo video (15.1-15.4, 5.1; decisions §62). Nothing here posts anywhere. */
+export interface MarketingAccess {
+  brand(): import('../../lib/marketing/brand').MarketingBrand | null
+  /** Checked and saved; what isn't given keeps its last value. */
+  saveBrand(input: unknown): import('../../lib/marketing/brand').MarketingBrand
+  /** A site read in the laptop's browser, every request through the task's network policy. */
+  readSite(
+    urls: string[],
+    options?: { screenshots?: boolean }
+  ): Promise<import('../../lib/marketing/brand').SiteBrand>
+  posts(
+    filter?: import('../../lib/marketing/posts').PostFilter
+  ): import('../../lib/marketing/posts').Post[]
+  savePosts(
+    inputs: import('../../lib/marketing/posts').PostInput[]
+  ): import('../../lib/marketing/posts').Post[]
+  /** Null when it was removed. */
+  changePost(
+    id: string,
+    action: import('../../lib/marketing/posts').PostStatus | 'remove'
+  ): import('../../lib/marketing/posts').Post | null
+  /** What the platform shows for a post (views, likes, clicks…), as the user reported it. */
+  setResults(id: string, results: unknown): import('../../lib/marketing/posts').Post
+  /** A video an agent described, checked against the brand kit's look. */
+  checkVideo(input: unknown): import('../../lib/marketing/video').VideoSpec
+  /** Drawn on the laptop; `load` reads a scene's picture (through the tool's own file access). */
+  video(
+    spec: import('../../lib/marketing/video').VideoSpec,
+    load: (path: string) => Promise<Buffer>
+  ): Promise<import('../../lib/marketing/service').MadeVideo>
 }
 
 /** Schedules, web watches and recordings (5.5, 5.6, §8; decisions §61). */
@@ -346,6 +380,7 @@ export interface ToolContext {
   media: MediaAccess
   sites: SiteAccess
   automation: AutomationAccess
+  marketing: MarketingAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.

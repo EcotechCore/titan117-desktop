@@ -318,6 +318,34 @@ const MIGRATIONS: string[] = [
   `
   alter table schedules add column state_json text;
   alter table watches add column via text not null default 'reader';
+  `,
+  // Phase 14: the content calendar (15.2-15.4); decisions §62. Local only; nothing here is posted by us.
+  `
+  create table posts (
+    id text primary key,
+    platform text not null,
+    -- The day and time it is meant for, in the laptop's local time.
+    date text not null,
+    time text not null,
+    text text not null,
+    -- JSON lists: hashtags without "#", and media paths inside the allowed folders.
+    hashtags text not null default '[]',
+    media text not null default '[]',
+    link text not null default '',
+    campaign text not null default '',
+    status text not null default 'draft',
+    reminded_at integer,
+    posted_at integer,
+    source text not null,
+    created_at integer not null,
+    updated_at integer not null
+  );
+  create index posts_day on posts(date, time);
+  create index posts_status on posts(status, date);
+  `,
+  // Phase 14, campaign reports (15.11): what a post brought, typed in by the user (JSON).
+  `
+  alter table posts add column results text not null default '{}';
   `
 ]
 

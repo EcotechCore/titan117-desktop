@@ -25,6 +25,21 @@ import { createTeamService } from '../team'
 import { createComparer } from '../compare'
 import { createMediaService, type MediaService } from './media'
 import { createSiteService } from './sites/service'
+import { createMarketing } from './marketing/service'
+import { MarketingError, cleanMarketingBrand } from './marketing/brand'
+import {
+  PLATFORM_INFO,
+  calendarCsv,
+  calendarIcs,
+  composeUrl,
+  countChars,
+  fullText,
+  postWarnings,
+  trackedLink,
+  type Post,
+  type PostInput,
+  type PostStatus
+} from './marketing/posts'
 import { createSpeechEngine, type SpeechEngine } from './speech'
 import { createStore, type Store } from '../store'
 import { builtInTools, createRegistry, type AnyTool } from '../tools'
@@ -123,7 +138,10 @@ export interface EngineOptions {
   onOnline?: () => void
   /** How many tasks are running (1.5): the shell keeps the laptop awake while any is. */
   onBusy?: (running: number) => void
-  /** Something the user should hear about when the window isn't in front (1.9). */
+  /**
+   * Something the user should hear about when the window isn't in front (1.9).
+   * `taskId` is the task a click opens, or `view:marketing` for a post that is due.
+   */
   onNotify?: (note: { title: string; body: string; taskId: string }) => void
   /** Search by meaning (7.4); tests pass a fake or null, the app the local model. */
   embedder?: Embedder | null
@@ -176,6 +194,7 @@ export interface Engine {
     connectivity: Connectivity
     documents: DocIndex
     automation: ReturnType<typeof createAutomation>
+    marketing: ReturnType<typeof createMarketing>
     /** The token a running task's scripts use (feature 4.10). */
     scriptToken(taskId: string): string | null
   }
@@ -460,6 +479,38 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     onError: (error, context) => void log.capture('automation', error, context)
   })
 
+  // Marketing (phase 14; decisions §62): the brand kit, the content calendar and its reminders, the promo video.
+  const marketing = createMarketing({
+    db,
+    speech,
+    memory,
+    locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
+    onChange: () => emit({ type: 'changed', what: 'marketing' }),
+    onRemind(due) {
+      emit({ type: 'changed', what: 'marketing' })
+      if (!options.onNotify || !getMeta<boolean>(db, 'notifications', true)) return
+      const first = due[0]
+      options.onNotify({
+        title:
+          due.length === 1
+            ? `Time to post on ${PLATFORM_INFO[first.platform].label}`
+            : `Time to post: ${due.length} posts are due`,
+        body:
+          due.length === 1
+            ? first.text.replace(/\s+/g, ' ').slice(0, 160)
+            : due
+                .slice(0, 4)
+                .map(
+                  (p) =>
+                    `${PLATFORM_INFO[p.platform].label}: ${p.text.replace(/\s+/g, ' ').slice(0, 40)}`
+                )
+                .join('\n'),
+        taskId: 'view:marketing'
+      })
+    },
+    onError: (error, context) => void log.capture('marketing', error, context)
+  })
+
   const tools = createRegistry(options.tools ?? builtInTools, () => connectors.tools())
   const permissions = createPermissionLayer({
     tools,
@@ -501,6 +552,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       }),
       browser,
       automation,
+      marketing,
       speech: (files) => speech.access(files),
       scratchRoot,
       fetch: connectivity.track(options.toolFetch ?? fetch),
@@ -914,7 +966,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       })
     },
     setBrand(next: unknown) {
-      setMeta(db, 'brandKit', cleanBrand(next as Partial<Record<keyof BrandKit, unknown>>))
+      // The Apps screen changes the look only; what marketing knows about the company stays (15.1).
+      marketing.brand.save(cleanBrand(next as Partial<Record<keyof BrandKit, unknown>>))
     },
     report: async (folder: string) => apps.latestReport(await resolveAllowed(policy(), folder)),
     versions: async (folder: string) => apps.versions(await resolveAllowed(policy(), folder)),
@@ -1216,6 +1269,75 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       })
     }
   }
+  /** The Marketing screen: the user's own clicks. Nothing here posts anywhere. */
+  const postView = (post: Post): Record<string, unknown> => ({
+    ...post,
+    platformLabel: PLATFORM_INFO[post.platform].label,
+    fullText: fullText(post),
+    chars: countChars(post.platform, fullText(post)),
+    maxChars: PLATFORM_INFO[post.platform].maxChars,
+    prefills: PLATFORM_INFO[post.platform].prefills,
+    composeUrl: composeUrl(post),
+    trackedLink: trackedLink(post),
+    warnings: postWarnings(post)
+  })
+  const marketingView = {
+    list() {
+      return {
+        brand: marketing.brand.get() ?? cleanMarketingBrand(null, 0),
+        posts: marketing.posts.list().map(postView),
+        due: marketing.posts.due().map((p) => p.id),
+        platforms: Object.values(PLATFORM_INFO),
+        folders: folders()
+      }
+    },
+    async saveBrand(next: unknown) {
+      const logo = String((next as { logo?: unknown } | null)?.logo ?? '').trim()
+      if (logo) {
+        if (!/\.(png|svg|jpe?g|webp)$/i.test(logo))
+          throw new MarketingError('The logo is a PNG, SVG, JPEG or WebP file.')
+        // Only a file inside the allowed folders.
+        await resolveAllowed(policy(), logo)
+      }
+      marketing.brand.save(next)
+    },
+    async savePost(input: PostInput) {
+      for (const media of Array.isArray(input.media) ? input.media : [])
+        await resolveAllowed(policy(), String(media))
+      marketing.posts.save([input], 'you')
+    },
+    setPost: (id: string, status: PostStatus) => void marketing.posts.setStatus(id, status),
+    removePost: (id: string) => marketing.posts.remove(id),
+    setResults: (id: string, results: unknown) => void marketing.posts.setResults(id, results),
+    /** A post's picture for the window, read only from inside the allowed folders. */
+    async media(path: string) {
+      const type = (
+        {
+          png: 'image/png',
+          jpg: 'image/jpeg',
+          jpeg: 'image/jpeg',
+          webp: 'image/webp',
+          gif: 'image/gif'
+        } as Record<string, string>
+      )[(/\.([a-z0-9]+)$/i.exec(path)?.[1] ?? '').toLowerCase()]
+      const real = await resolveAllowed(policy(), path)
+      if (!type) return { path: real, mediaType: null, base64: null }
+      const info = await stat(real)
+      if (info.size > 8_000_000) return { path: real, mediaType: null, base64: null }
+      return { path: real, mediaType: type, base64: (await readFile(real)).toString('base64') }
+    },
+    export(month: string | null) {
+      const posts = month
+        ? marketing.posts.list({ month })
+        : marketing.posts.list().filter((p) => p.status === 'draft' || p.status === 'ready')
+      if (!posts.length) throw new MarketingError('There are no posts to export.')
+      const name = `content-calendar${month ? `-${month}` : ''}`
+      return {
+        ics: { name: `${name}.ics`, base64: Buffer.from(calendarIcs(posts)).toString('base64') },
+        csv: { name: `${name}.csv`, base64: Buffer.from(calendarCsv(posts)).toString('base64') }
+      }
+    }
+  }
   const handle = createApi({
     appVersion: options.appVersion,
     store,
@@ -1248,6 +1370,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     apps: appView,
     sidebar: sidebarView,
     automation: automationView,
+    marketing: marketingView,
     notifications: {
       get: () => getMeta<boolean>(db, 'notifications', true),
       set: (on) => setMeta(db, 'notifications', on)
@@ -1356,6 +1479,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   void connectors.connectAll()
   documents.start()
   automation.start()
+  marketing.start()
   log.info('engine started', { port: server.port, version: options.appVersion })
 
   function saveFolders(next: string[]): string[] {
@@ -1405,6 +1529,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       }
       // Unlocked: schedules that came due while the app was closed or locked catch up (8.1).
       if (!next.locked) queueMicrotask(() => automation.tick())
+      // And posts that came due meanwhile are announced (15.4).
+      if (!next.locked) queueMicrotask(() => marketing.tick())
       // Signed in again: reports waiting in the queue go, and fixes are checked (19.5, 19.8).
       void reports.flush().then(() => reports.checkFixed())
       void checkKillSwitches()
@@ -1413,6 +1539,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     async close() {
       automation.stop()
+      marketing.stop()
       reports.close()
       connectivity.close()
       documents.close()
@@ -1446,6 +1573,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       connectivity,
       documents,
       automation,
+      marketing,
       scriptToken
     }
   }

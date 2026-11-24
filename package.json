@@ -26,7 +26,9 @@
     "eval:pr": "vitest run -c vitest.live.config.mts test/live/code-pr.live.ts",
     "eval:apps": "vitest run -c vitest.live.config.mts test/live/apps.live.ts",
     "eval:samples": "vitest run -c vitest.live.config.mts test/live/apps-samples.live.ts",
-    "eval:automation": "vitest run -c vitest.live.config.mts test/live/automation.live.ts"
+    "eval:automation": "vitest run -c vitest.live.config.mts test/live/automation.live.ts",
+    "eval:marketing": "vitest run -c vitest.live.config.mts test/live/marketing.live.ts",
+    "eval:marketing-agents": "vitest run -c vitest.live.config.mts test/live/marketing-agents.live.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.8.0",

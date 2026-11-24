@@ -30,6 +30,8 @@ export type View =
   | { kind: 'compare' }
   /** Schedules, web watches and recordings (phase 13). */
   | { kind: 'automations' }
+  /** The brand kit, the content calendar and promo videos (phase 14). */
+  | { kind: 'marketing' }
   /** A sidebar app (6.2), by its id. */
   | { kind: 'sidebar-app'; id: string }
 

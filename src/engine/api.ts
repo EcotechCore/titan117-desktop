@@ -48,6 +48,7 @@ import { AndroidError } from './lib/apps/android'
 import { GitError } from './lib/git'
 import { PermissionError } from './lib/folders'
 import { AutomationError } from './lib/automation/schedule'
+import { MarketingError } from './lib/marketing/brand'
 import type { SetupInterest, SetupState } from '../shared/protocol'
 import { SEARCH_KEY_PROVIDERS, type SearchSettings } from '../shared/protocol'
 
@@ -198,6 +199,17 @@ export function createApi(deps: {
     remove(id: string, deleteData: boolean): Promise<void>
     call(id: string, method: string, args: unknown): unknown
   }
+  /** The Marketing screen (phase 14; decisions §62): the brand kit and the content calendar. */
+  marketing?: {
+    list(): unknown
+    saveBrand(next: unknown): Promise<void>
+    savePost(input: import('./lib/marketing/posts').PostInput): Promise<void>
+    setPost(id: string, status: import('./lib/marketing/posts').PostStatus): void
+    removePost(id: string): void
+    setResults(id: string, results: unknown): void
+    media(path: string): Promise<unknown>
+    export(month: string | null): unknown
+  }
   /** The Automations screen (phase 13; decisions §61): schedules, web watches and recordings. */
   automation?: {
     list(): unknown
@@ -328,6 +340,59 @@ export function createApi(deps: {
         }
     }
     return null
+  }
+
+  /** The brand kit and the content calendar for the window. Null when the route isn't one of these. */
+  async function marketingRoutes(
+    key: string,
+    id: string | undefined,
+    body: unknown
+  ): Promise<unknown | null> {
+    if (key === 'GET marketing') return need(deps.marketing).list()
+    if (key !== 'POST marketing/:id') return null
+    const m = need(deps.marketing)
+    const text = (name: string): string => {
+      const value = field(body, name)
+      if (typeof value !== 'string' || !value.trim())
+        throw new ApiError(400, 'BAD_REQUEST', `"${name}" is missing.`)
+      return value.trim()
+    }
+    switch (id) {
+      case 'brand':
+        await m.saveBrand(field(body, 'brand'))
+        break
+      case 'post': {
+        const post = field(body, 'post')
+        if (!post || typeof post !== 'object' || Array.isArray(post))
+          throw new ApiError(400, 'BAD_REQUEST', '"post" is missing.')
+        await m.savePost(post as import('./lib/marketing/posts').PostInput)
+        break
+      }
+      case 'post-status': {
+        const status = text('status')
+        if (!['draft', 'ready', 'posted', 'skipped'].includes(status))
+          throw new ApiError(400, 'BAD_REQUEST', 'A post is draft, ready, posted or skipped.')
+        m.setPost(text('id'), status as import('./lib/marketing/posts').PostStatus)
+        break
+      }
+      case 'post-remove':
+        m.removePost(text('id'))
+        break
+      case 'post-results':
+        m.setResults(text('id'), field(body, 'results'))
+        break
+      case 'media':
+        return m.media(text('path'))
+      case 'export': {
+        const month = field(body, 'month')
+        if (month !== undefined && month !== null && !/^\d{4}-\d{2}$/.test(String(month)))
+          throw new ApiError(400, 'BAD_REQUEST', 'A month is written like 2026-12.')
+        return m.export(month ? String(month) : null)
+      }
+      default:
+        throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+    }
+    return m.list()
   }
 
   /** Schedules, web watches and recordings for the window. Null when the route isn't one of these. */
@@ -1026,6 +1091,9 @@ export function createApi(deps: {
     const auto = await automationRoutes(key, id, body)
     if (auto !== null) return auto
 
+    const market = await marketingRoutes(key, id, body)
+    if (market !== null) return market
+
     switch (key) {
       case 'GET state': {
         const state: EngineState = {
@@ -1168,7 +1236,8 @@ export function createApi(deps: {
         error instanceof PermissionError ||
         error instanceof AgentError ||
         error instanceof CompareError ||
-        error instanceof AutomationError
+        error instanceof AutomationError ||
+        error instanceof MarketingError
       )
         return { status: 400, body: { error: 'BAD_REQUEST', message: error.message } }
       if (error instanceof ArtifactError)
