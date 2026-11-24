@@ -168,6 +168,12 @@ export interface Runtime {
     text: string
     call: { name: string; input: Record<string, unknown> }
     allow?: string[]
+    /**
+     * Asked once the call is done: a message and a model to carry on with in the
+     * same task (the watcher says what matters after a check found changes), or
+     * null to end there. The task never shows as finished in between.
+     */
+    followUp?: () => { text: string; model: string } | null
   }): Task
   /** A part of a task, handed to another agent (4.6): its own task, linked to the first. */
   startPart(input: { parentId: string; agent: string; text: string; model: string }): Task
@@ -634,7 +640,7 @@ export function createRuntime(deps: {
       return updated
     },
 
-    runDirect({ title, agent: agentName, text, call, allow = [] }) {
+    runDirect({ title, agent: agentName, text, call, allow = [], followUp }) {
       const lock = deps.locked?.()
       if (lock) throw new RuntimeError('LOCKED', lock)
       const def = findAgent(agentName)
@@ -694,11 +700,33 @@ export function createRuntime(deps: {
           status = 'error'
           note = `Something went wrong (ref ${id.slice(0, 8)}). It was saved to the local log.`
         }
+        let next: { text: string; model: string } | null = null
+        if (status === 'done' && followUp && !deps.locked?.())
+          try {
+            next = followUp()
+            if (next) router.route(next.model)
+          } catch (error) {
+            log.capture('runtime', error, { taskId, part: 'follow-up' })
+            next = null
+          }
+        if (next) {
+          store.addMessage(taskId, { role: 'user', text: next.text })
+          store.updateTask(taskId, { model: next.model, steps: 1 })
+          return true
+        }
         store.updateTask(taskId, { status, note, steps: 1 })
         void permissions.release(taskId)
-      })().finally(() => {
-        if (running.get(taskId)?.abort === abort) running.delete(taskId)
-      })
+        return false
+      })()
+        .then((carryOn) => {
+          if (running.get(taskId)?.abort === abort) running.delete(taskId)
+          // The agent takes over in the same task, with the usual loop.
+          if (carryOn) launch(taskId)
+        })
+        .catch((error) => {
+          if (running.get(taskId)?.abort === abort) running.delete(taskId)
+          log.capture('runtime', error, { taskId })
+        })
       running.set(taskId, { abort, done })
       deps.onBusy?.(running.size)
       void done.finally(() => deps.onBusy?.(running.size))

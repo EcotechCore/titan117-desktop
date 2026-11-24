@@ -205,7 +205,7 @@ export function createApi(deps: {
     setSchedule(id: string, enabled: boolean): unknown
     runSchedule(id: string): unknown
     removeSchedule(id: string): void
-    saveWatch(input: { name: unknown; urls: unknown; about?: unknown }): unknown
+    saveWatch(input: { name: unknown; urls: unknown; about?: unknown; browser?: unknown }): unknown
     removeWatch(id: string): void
     checkWatch(id: string): unknown
     startRecording(url: string): Promise<unknown>
@@ -370,7 +370,8 @@ export function createApi(deps: {
         a.saveWatch({
           name: field(body, 'name'),
           urls: field(body, 'urls'),
-          about: field(body, 'about')
+          about: field(body, 'about'),
+          browser: field(body, 'browser') === true
         })
         break
       case 'watch-remove':

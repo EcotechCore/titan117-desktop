@@ -95,6 +95,7 @@ export interface AutomationAccess {
     name: unknown
     urls: unknown
     about?: unknown
+    browser?: unknown
   }): import('../../lib/automation/watch').Watch
   checkWatch(
     name: string,

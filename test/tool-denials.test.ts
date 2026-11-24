@@ -462,6 +462,21 @@ const DENIALS: Record<string, () => Promise<void>> = {
     // A watch that doesn't exist.
     const none = await b.run({ name: 'watch_check', input: { watch: 'Nope' } })
     expect(none.status).toBe('failed')
+    // Read in the browser (the user's choice): a site that forbids automation asks first;
+    // denied, the browser opens nothing. Discord is never opened.
+    const b2 = bench()
+    b2.automation.watches.save({
+      name: 'Social',
+      urls: ['https://www.linkedin.com/company/x', 'https://discord.com/channels/1'],
+      browser: true,
+      source: 'you'
+    })
+    const social = await b2.run({ name: 'watch_check', input: { watch: 'Social' } }, 'deny')
+    expect(social.status).toBe('done')
+    expect(social.output).toContain('chose not to automate')
+    expect(social.output).toContain("isn't automated")
+    expect(b2.browser.opened).toHaveLength(0)
+    expect(b2.automation.watches.get('Social')?.lastChangedAt).toBeNull()
   },
 
   async recording_list() {

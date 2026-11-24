@@ -73,7 +73,7 @@ function actionOf(input: ScheduleInput): Record<string, unknown> {
 
 export const scheduleCreate = defineTool<ScheduleInput>({
   name: 'schedule_create',
-  description: `Make a schedule from the user's words (8.10), e.g. "every weekday at 8, brief me on …". It runs by itself while Titan117 is open and catches up once after the laptop was off; times are the laptop's local time. "when" is one of: {"kind":"daily","time":"08:00","days":[1,2,3,4,5]} (days 0 = Sunday … 6 = Saturday; leave days out for every day), {"kind":"monthly","day":1,"time":"09:00"}, {"kind":"interval","minutes":120} (at least 15), {"kind":"once","at":"2026-12-01T09:00"}. What runs is ONE of: "prompt" (a task for "agent", Titan by default; write the prompt as a complete instruction, since the run sees only that), "recording" (a saved recording's name, replayed without AI) or "watch" (a web watch's name, checked and summed up). The user approves every new schedule.`,
+  description: `Make a schedule from the user's words (8.10), e.g. "every weekday at 8, brief me on …". It runs by itself while Titan117 is open and catches up once after the laptop was off; times are the laptop's local time. "when" is one of: {"kind":"daily","time":"08:00","days":[1,2,3,4,5]} (days 0 = Sunday … 6 = Saturday; leave days out for every day), {"kind":"monthly","day":1,"time":"09:00"}, {"kind":"interval","minutes":120} (at least 15), {"kind":"once","at":"2026-12-01T09:00"}, or a trigger: {"kind":"folder","folder":"Invoices","match":["pdf"]} runs a task whenever new files arrive in a folder inside the allowed folders (the task is told their names; "match" is optional). What runs is ONE of: "prompt" (a task for "agent", Titan by default; write the prompt as a complete instruction, since the run sees only that), "recording" (a saved recording's name, replayed without AI) or "watch" (a web watch's name, checked and summed up). The user approves every new schedule.`,
   params: {
     type: 'object',
     properties: {
@@ -202,15 +202,24 @@ export const watchList = defineTool<{ watch?: string }>({
   }
 })
 
-export const watchSave = defineTool<{ name: string; urls: string[]; about?: string }>({
+export const watchSave = defineTool<{
+  name: string
+  urls: string[]
+  about?: string
+  browser?: boolean
+}>({
   name: 'watch_save',
-  description: `Make or change a web watch (5.5): up to ${MAX_WATCH_PAGES} public pages to re-read for changes, e.g. an official page listing new laws, a supplier's price list, a competitor's news page. Prefer the page that LISTS what is new over a home page. "about" says what matters to the user, in their words. Check it with watch_check; to check it regularly, make a schedule with schedule_create (watch).`,
+  description: `Make or change a web watch (5.5): up to ${MAX_WATCH_PAGES} public pages to re-read for changes, e.g. an official page listing new laws, a supplier's price list, a competitor's news page. Prefer the page that LISTS what is new over a home page, and a site's RSS or Atom feed over both when it has one (each new item is then one line; e.g. EUR-Lex's feeds). "browser": true reads the pages in the browser instead, only when the user asks, for a site that turns automated readers away. "about" says what matters to the user, in their words. Check it with watch_check; to check it regularly, make a schedule with schedule_create (watch).`,
   params: {
     type: 'object',
     properties: {
       name: { type: 'string', description: 'A short name, e.g. "Environmental law"' },
-      urls: { type: 'array', description: 'The pages to watch (full addresses)' },
-      about: { type: 'string', description: 'What matters to the user in these pages' }
+      urls: { type: 'array', description: 'The pages or feeds to watch (full addresses)' },
+      about: { type: 'string', description: 'What matters to the user in these pages' },
+      browser: {
+        type: 'boolean',
+        description: 'Read in the browser, as the user would (only when the user asks)'
+      }
     },
     required: ['name', 'urls']
   },
@@ -222,7 +231,7 @@ export const watchSave = defineTool<{ name: string; urls: string[]; about?: stri
       const urls = checkUrls(input.urls)
       return {
         risk: 'write',
-        summary: `Watch ${urls.length} page(s) as "${checkName(input.name)}": ${urls.join(', ').slice(0, 600)}`
+        summary: `Watch ${urls.length} page(s) as "${checkName(input.name)}"${input.browser ? ', read in the browser' : ''}: ${urls.join(', ').slice(0, 600)}`
       }
     } catch (error) {
       return { risk: 'write', summary: 'Save a web watch', refuse: (error as Error).message }
@@ -237,6 +246,33 @@ export const watchSave = defineTool<{ name: string; urls: string[]; about?: stri
   }
 })
 
+/**
+ * A watched page read in the browser, as the user chose for this watch
+ * (decisions §29): the same rules as browser_open, and a CAPTCHA is the user's.
+ */
+async function readInBrowser(url: string, ctx: ToolContext): Promise<string> {
+  const rule = siteRule(url)
+  if (rule === 'never') throw new PermissionError("Discord isn't automated: its terms forbid it.")
+  if (rule === 'forbids') {
+    const host = new URL(url).hostname
+    const key = `automation:${host}`
+    let yes = ctx.remembered(key)
+    if (yes === null) {
+      yes = await ctx.ask(
+        `${host}'s terms don't allow automation. It may restrict your account. Run it anyway?`
+      )
+      ctx.remember(key, yes)
+    }
+    if (!yes) throw new PermissionError(`You chose not to automate ${host}.`)
+  }
+  const view = await ctx.browser.open(url)
+  if (view.captcha)
+    throw new PermissionError(
+      'The page shows a CAPTCHA. Open it yourself in the browser window, then check again.'
+    )
+  return view.text
+}
+
 export const watchCheck = defineTool<{ watch: string }>({
   name: 'watch_check',
   description:
@@ -247,13 +283,19 @@ export const watchCheck = defineTool<{ watch: string }>({
     required: ['watch']
   },
   risk: 'read',
-  permissions: { automation: 'write', network: true },
+  permissions: { automation: 'write', network: true, browser: true },
   untrustedOutput: true,
   describe: (input) => `Check the watch "${input.watch}"`,
   async run(input, ctx) {
+    const name = String(input.watch ?? '').toLowerCase()
+    const watch = ctx.automation
+      .watches()
+      .find((w) => w.name.toLowerCase() === name || w.id === name)
     const check = await ctx.automation.checkWatch(
       input.watch,
-      async (url) => (await ctx.pages.read(url, { fresh: true })).text
+      watch?.browser
+        ? (url) => readInBrowser(url, ctx)
+        : async (url) => (await ctx.pages.read(url, { fresh: true })).text
     )
     const changed = check.pages.filter((p) => p.changed).length
     const failed = check.pages.filter((p) => p.error).length

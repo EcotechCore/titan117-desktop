@@ -2,12 +2,19 @@
 // catch-up, web watches, recordings and saved logins. No network and no
 // real browser: fakes, and the engine in memory.
 import { describe, expect, it } from 'vitest'
+import { mkdirSync, writeFileSync } from 'fs'
+import { join } from 'path'
 
 import { openDb } from '../src/engine/lib/db'
 import { BUILT_IN_AGENTS, agentMayUse, createAgentStore } from '../src/engine/lib/agents'
 import { checkWhen, describeWhen, nextRun, type When } from '../src/engine/lib/automation/schedule'
-import { createAutomation } from '../src/engine/lib/automation/service'
-import { checkUrls, createWatchStore, diffLines } from '../src/engine/lib/automation/watch'
+import { createAutomation, newFiles } from '../src/engine/lib/automation/service'
+import {
+  checkUrls,
+  createWatchStore,
+  diffLines,
+  feedLines
+} from '../src/engine/lib/automation/watch'
 import {
   checkRecording,
   createRecordingStore,
@@ -69,13 +76,15 @@ describe('schedules', () => {
 })
 
 /** The scheduler with a clock we move and a runtime that only notes what it started. */
-function scheduler(options: { locked?: () => string | null } = {}): {
+function scheduler(
+  options: { locked?: () => string | null; allowed?: string[]; start?: number } = {}
+): {
   auto: ReturnType<typeof createAutomation>
   started: { kind: string; text: string; allow?: string[] }[]
   clock: { now: number }
   running: Set<string>
 } {
-  const clock = { now: at('2026-11-24T10:00:00') }
+  const clock = { now: options.start ?? at('2026-11-24T10:00:00') }
   const started: { kind: string; text: string; allow?: string[] }[] = []
   const running = new Set<string>()
   const runtime = {
@@ -98,6 +107,7 @@ function scheduler(options: { locked?: () => string | null } = {}): {
     agents: createAgentStore({ dir: null }),
     defaultModel: () => MODEL,
     locked: options.locked ?? (() => null),
+    folders: () => ({ allowed: options.allowed ?? [], core: [] }),
     onChange: () => undefined,
     now: () => clock.now
   })
@@ -245,7 +255,152 @@ describe('the scheduler', () => {
   })
 })
 
+describe('triggers: a new file in a folder (4.1)', () => {
+  it('checks the trigger and says it in plain words', () => {
+    const when = checkWhen({ kind: 'folder', folder: 'Invoices', match: '.PDF, xlsx' }, 0)
+    expect(when).toEqual({ kind: 'folder', folder: 'Invoices', match: ['pdf', 'xlsx'] })
+    expect(describeWhen(when)).toBe('When a new pdf, xlsx file arrives in Invoices')
+    expect(nextRun(when, 0)).toBeNull()
+    for (const bad of [{ kind: 'folder' }, { kind: 'folder', folder: 'x', match: ['../etc'] }])
+      expect(() => checkWhen(bad, 0)).toThrow()
+  })
+
+  it('finds only settled files of the right kind, newer than last time', () => {
+    const folder = tempFolder('titan117-trigger-')
+    mkdirSync(join(folder, 'sub'))
+    mkdirSync(join(folder, '.hidden'))
+    const before = Date.now() - 1000
+    writeFileSync(join(folder, 'a.pdf'), 'a')
+    writeFileSync(join(folder, 'sub', 'b.PDF'), 'b')
+    writeFileSync(join(folder, 'c.txt'), 'c')
+    writeFileSync(join(folder, '.hidden', 'd.pdf'), 'd')
+    // Just written: not settled yet.
+    expect(newFiles(folder, before, Date.now(), ['pdf']).files).toEqual([])
+    const later = Date.now() + 60_000
+    const found = newFiles(folder, before, later, ['pdf'])
+    expect(found.files.sort()).toEqual(['a.pdf', 'sub/b.PDF'])
+    expect(newFiles(folder, before, later).files.sort()).toEqual(['a.pdf', 'c.txt', 'sub/b.PDF'])
+    // Seen once: nothing new the next time.
+    expect(newFiles(folder, found.latest, later, ['pdf']).files).toEqual([])
+  })
+
+  it('starts one task for what arrived, names the files, never what was already there', () => {
+    const folder = tempFolder('titan117-trigger-')
+    // The trigger is made "a second ago": files written from here on are newer than that.
+    const { auto, started, clock } = scheduler({ allowed: [folder], start: Date.now() - 1000 })
+    const s = auto.schedules.create({
+      name: 'New invoices',
+      when: { kind: 'folder', folder, match: ['pdf'] },
+      action: { kind: 'task', agent: 'Folder agent', prompt: 'Summarise each new invoice.' },
+      source: 'you'
+    })
+    expect(s.nextAt).toBeNull()
+    auto.tick()
+    expect(started).toHaveLength(0)
+    writeFileSync(join(folder, 'inv-1.pdf'), '1')
+    writeFileSync(join(folder, 'inv-2.pdf'), '2')
+    writeFileSync(join(folder, 'note.txt'), 'x')
+    // Still being copied, as far as the trigger knows: nothing yet.
+    clock.now = Date.now()
+    auto.tick()
+    expect(started).toHaveLength(0)
+    clock.now = Date.now() + 60_000
+    auto.tick()
+    expect(started).toHaveLength(1)
+    expect(started[0].kind).toBe('task:Folder agent')
+    expect(started[0].text).toContain('Summarise each new invoice.')
+    expect(started[0].text).toContain('- inv-1.pdf')
+    expect(started[0].text).toContain('- inv-2.pdf')
+    expect(started[0].text).not.toContain('note.txt')
+    expect(auto.schedules.get('New invoices')!.lastNote).toBe('Started for 2 new file(s).')
+    // Nothing new: nothing starts.
+    clock.now += 60_000
+    auto.tick()
+    expect(started).toHaveLength(1)
+  })
+
+  it('refuses a folder outside the allowed ones, and anything but a task', () => {
+    const allowed = tempFolder('titan117-trigger-')
+    const outside = tempFolder('titan117-outside-')
+    const { auto } = scheduler({ allowed: [allowed] })
+    const action = { kind: 'task', agent: 'Titan', prompt: 'x' }
+    const make = (name: string, folder: string, what: unknown = action): unknown =>
+      auto.schedules.create({ name, when: { kind: 'folder', folder }, action: what, source: 'you' })
+    expect(() => make('Out', outside)).toThrow(/isn't inside/)
+    expect(() => make('Up', '..')).toThrow()
+    auto.watches.save({ name: 'W', urls: ['https://a.example'], source: 'you' })
+    expect(() => make('Watch', allowed, { kind: 'watch', watch: 'W' })).toThrow(/starts a task/)
+    // No folder allowed at all.
+    expect(() =>
+      scheduler().auto.schedules.create({
+        name: 'None',
+        when: { kind: 'folder', folder: allowed },
+        action,
+        source: 'you'
+      })
+    ).toThrow(/No folder is allowed/)
+  })
+
+  it('says once when its folder is no longer allowed, and runs nothing', () => {
+    const folder = tempFolder('titan117-trigger-')
+    const allowed = [folder]
+    const { auto, started, clock } = scheduler({ allowed, start: Date.now() - 1000 })
+    auto.schedules.create({
+      name: 'New files',
+      when: { kind: 'folder', folder },
+      action: { kind: 'task', agent: 'Titan', prompt: 'x' },
+      source: 'you'
+    })
+    allowed.length = 0
+    writeFileSync(join(folder, 'a.txt'), 'a')
+    clock.now = Date.now() + 60_000
+    auto.tick()
+    auto.tick()
+    expect(started).toHaveLength(0)
+    expect(auto.schedules.get('New files')!.lastNote).toContain('Not run')
+  })
+})
+
 describe('web watches', () => {
+  it('reads a feed as one line per item', () => {
+    const rss = `<?xml version="1.0"?><rss version="2.0"><channel><title>Feed</title><pubDate>Tue, 24 Nov 2026</pubDate>
+      <item><title><![CDATA[Regulation (EU) 2026/1 on packaging &amp; waste]]></title><link>https://law.example/1</link><pubDate>x</pubDate></item>
+      <item><title>Decision 2026/2</title><link>https://law.example/2</link></item></channel></rss>`
+    expect(feedLines(rss)).toEqual([
+      'Regulation (EU) 2026/1 on packaging & waste (https://law.example/1)',
+      'Decision 2026/2 (https://law.example/2)'
+    ])
+    const atom = `<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>New act</title><link href="https://law.example/a"/></entry></feed>`
+    expect(feedLines(atom)).toEqual(['New act (https://law.example/a)'])
+    expect(feedLines('<html><body>Not a feed</body></html>')).toBeNull()
+  })
+
+  it('a new item in a feed is one new line, whatever else the feed changed', async () => {
+    let now = 1000
+    const store = createWatchStore({ db: openDb(':memory:'), now: () => now })
+    store.save({ name: 'EU', urls: ['https://law.example/feed'], source: 'you' })
+    const feed = (items: string[], date: string): string =>
+      `<rss><channel><pubDate>${date}</pubDate>${items.map((t, i) => `<item><title>${t}</title><link>https://law.example/${i}</link><pubDate>${date}</pubDate></item>`).join('')}</channel></rss>`
+    await store.check('EU', async () => feed(['Act A'], 'Mon'))
+    now = 2000
+    // Only the feed's own date changed: not a change.
+    const same = await store.check('EU', async () => feed(['Act A'], 'Tue'))
+    expect(same.pages[0].changed).toBe(false)
+    now = 3000
+    const changed = await store.check('EU', async () => feed(['Act A', 'Act B'], 'Wed'))
+    expect(changed.pages[0].added).toEqual(['Act B (https://law.example/1)'])
+    expect(changed.pages[0].removed).toEqual([])
+  })
+
+  it('remembers that a watch is read in the browser', () => {
+    const store = createWatchStore({ db: openDb(':memory:') })
+    const urls = ['https://a.example']
+    expect(store.save({ name: 'A', urls, source: 'you' }).browser).toBe(false)
+    expect(store.save({ name: 'A', urls, browser: true, source: 'you' }).browser).toBe(true)
+    // Saved again without saying: left as it was.
+    expect(store.save({ name: 'A', urls, source: 'you' }).browser).toBe(true)
+  })
+
   it('compares lines and ignores dates and blanks', () => {
     const before = 'Act 1 on waste\nAct 2 on water\n24.11.2026\n\nFooter'
     const next = 'Act 3 on packaging\nAct 1 on waste\n25.11.2026\nFooter'
@@ -493,10 +648,12 @@ describe('the engine', () => {
     const browser = fakeBrowser()
     const web = fakeWeb()
     const model = scripted([{ text: 'unused' }])
+    const notes: { title: string; body: string }[] = []
     const engine = await testEngine({
       fetch: model.fetch,
       toolFetch: web.fetch,
-      browser: browser.host
+      browser: browser.host,
+      onNotify: (note) => void notes.push(note)
     })
     try {
       const saved = await call(engine, 'POST', '/v1/automations/recording-save', {
@@ -532,6 +689,9 @@ describe('the engine', () => {
       expect(task).toMatchObject({ status: 'done', agent: 'Recorder', model: 'none' })
       // No model was called.
       expect(model.requests).toHaveLength(0)
+      // The notification says who finished and what happened (1.9).
+      expect(notes.at(-1)).toMatchObject({ title: 'Recorder finished' })
+      expect(notes.at(-1)!.body).toContain('Replayed send-report: 3 steps')
       // A bad edit is refused and nothing changes.
       const bad = await call(engine, 'POST', '/v1/automations/recording-save', {
         recording: {

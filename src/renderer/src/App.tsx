@@ -75,6 +75,8 @@ function App(): React.JSX.Element {
   // The team (4.2): agents in the sidebar under their teams; the one a new task goes to.
   const [agents, setAgents] = useState<AgentDef[]>([])
   const [agentName, setAgentName] = useState('Titan')
+  /** The agent whose page sent the user to Automations (a schedule or trigger for it, 4.1). */
+  const [automateAgent, setAutomateAgent] = useState<string | null>(null)
   const agentsChanged = state.changed.agents ?? 0
   useEffect(() => {
     if (!api) return
@@ -494,7 +496,10 @@ function App(): React.JSX.Element {
         </button>
         <button
           className={view.kind === 'automations' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'automations' } })}
+          onClick={() => {
+            setAutomateAgent(null)
+            dispatch({ type: 'view', view: { kind: 'automations' } })
+          }}
         >
           <Icon name="calendar" /> Automations
         </button>
@@ -804,12 +809,18 @@ function App(): React.JSX.Element {
                 dispatch({ type: 'view', view: { kind: 'start' } })
                 setTimeout(() => input.current?.focus(), 0)
               }}
+              onAutomate={(name) => {
+                setAutomateAgent(name)
+                dispatch({ type: 'view', view: { kind: 'automations' } })
+              }}
               onProblem={fail}
             />
           )}
           {view.kind === 'automations' && (
             <AutomationsView
+              key={automateAgent ?? 'all'}
               client={api}
+              agent={automateAgent}
               changed={state.changed.automations ?? 0}
               onProblem={fail}
               onOpenTask={(id) => dispatch({ type: 'view', view: { kind: 'task', id } })}

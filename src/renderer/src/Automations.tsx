@@ -47,7 +47,55 @@ interface Listing {
   recordings: RecordingRow[]
   session: { url: string; startedAt: number; events: number } | null
   agents: string[]
+  /** The folders the user allowed (a folder trigger looks inside one). */
+  folders: string[]
 }
+
+/** Ready-made schedules (8.10): one click, then yours to pause, change or remove. */
+const EXAMPLES: {
+  id: string
+  name: string
+  what: string
+  /** What the user fills in first, if anything. */
+  ask?: { label: string; placeholder: string }
+  when: Record<string, unknown>
+  whenText: string
+  agent: string
+  prompt(value: string): string
+}[] = [
+  {
+    id: 'briefing',
+    name: 'Morning briefing',
+    what: 'What needs you today: approvals waiting, what changed in your folders since yesterday, and what your web watches saw.',
+    when: { kind: 'daily', time: '08:00', days: [1, 2, 3, 4, 5] },
+    whenText: 'Every weekday at 08:00',
+    agent: 'Titan',
+    prompt: () =>
+      'Give me a short morning briefing, most important first: (1) what my web watches saw since yesterday (watch_list, then the latest changes of each); (2) files added or changed in my folders since yesterday, by folder; (3) how yesterday’s scheduled runs went (schedule_list). Keep it under 15 lines and say plainly when there is nothing new.'
+  },
+  {
+    id: 'seo',
+    name: 'Weekly SEO re-audit',
+    what: 'The SEO agent audits your site again and says what was fixed and what is new.',
+    ask: { label: 'Your site', placeholder: 'https://your-site.com' },
+    when: { kind: 'daily', time: '09:00', days: [1] },
+    whenText: 'Every Monday at 09:00',
+    agent: 'SEO agent',
+    prompt: (site) =>
+      `Audit ${site} with site_audit and tell me, in a few points, what was fixed since the last audit, what is new, and the three things most worth fixing now.`
+  },
+  {
+    id: 'backup',
+    name: 'Weekly backup',
+    what: 'A dated ZIP copy of one folder, kept in a "backups" folder beside it. It asks before it writes.',
+    ask: { label: 'Folder to back up', placeholder: 'Documents' },
+    when: { kind: 'daily', time: '17:00', days: [5] },
+    whenText: 'Every Friday at 17:00',
+    agent: 'Titan',
+    prompt: (folder) =>
+      `Make a backup of the folder "${folder}": a ZIP file named after the folder and today's date, saved in a "backups" folder inside the allowed folders (make it if it's missing, and never put the backup inside the folder being backed up). Then say where the file is and how big it is. If older backups of this folder exist, list them and ask before removing any.`
+  }
+]
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -62,7 +110,8 @@ export function AutomationsView({
   changed,
   onProblem,
   onOpenTask,
-  onAskTitan
+  onAskTitan,
+  agent
 }: {
   client: EngineClient | null
   changed: number
@@ -70,6 +119,8 @@ export function AutomationsView({
   onOpenTask(id: string): void
   /** Start a task for Titan with these words (a schedule in plain words, 8.10). */
   onAskTitan(text: string): void
+  /** Opened from an agent's page: the form starts with that agent (a trigger, 4.1). */
+  agent?: string | null
 }): React.JSX.Element {
   const [data, setData] = useState<Listing | null>(null)
   const [words, setWords] = useState('')
@@ -142,7 +193,7 @@ export function AutomationsView({
         Titan turns the sentence into a schedule and shows it to you before it is saved.
       </p>
 
-      <Schedules data={data} post={post} onOpenTask={onOpenTask} />
+      <Schedules data={data} post={post} onOpenTask={onOpenTask} agent={agent ?? null} />
       <Watches data={data} post={post} onOpenTask={onOpenTask} />
       <Recordings data={data} post={post} onOpenTask={onOpenTask} />
       <Logins onProblem={onProblem} changed={changed} />
@@ -155,36 +206,45 @@ type Post = <T extends object = Listing>(action: string, body: unknown) => Promi
 function Schedules({
   data,
   post,
-  onOpenTask
+  onOpenTask,
+  agent: preset
 }: {
   data: Listing
   post: Post
   onOpenTask(id: string): void
+  agent: string | null
 }): React.JSX.Element {
   const [name, setName] = useState('')
   const [what, setWhat] = useState<'task' | 'recording' | 'watch'>('task')
-  const [agent, setAgent] = useState('Titan')
+  const [agent, setAgent] = useState(preset ?? 'Titan')
+  const [folder, setFolder] = useState('')
+  const [match, setMatch] = useState('')
+  const [asked, setAsked] = useState<Record<string, string>>({})
   const [prompt, setPrompt] = useState('')
   const [target, setTarget] = useState('')
-  const [every, setEvery] = useState<'day' | 'weekday' | 'week' | 'month' | 'hours'>('weekday')
+  const [every, setEvery] = useState<'day' | 'weekday' | 'week' | 'month' | 'hours' | 'folder'>(
+    'weekday'
+  )
   const [at, setAt] = useState('08:00')
   const [day, setDay] = useState(1)
   const [hours, setHours] = useState(2)
 
   const when =
-    every === 'hours'
-      ? { kind: 'interval', minutes: Math.max(1, hours) * 60 }
-      : every === 'month'
-        ? { kind: 'monthly', day, time: at }
-        : {
-            kind: 'daily',
-            time: at,
-            ...(every === 'weekday'
-              ? { days: [1, 2, 3, 4, 5] }
-              : every === 'week'
-                ? { days: [day] }
-                : {})
-          }
+    every === 'folder'
+      ? { kind: 'folder', folder: folder || data.folders[0] || '', match }
+      : every === 'hours'
+        ? { kind: 'interval', minutes: Math.max(1, hours) * 60 }
+        : every === 'month'
+          ? { kind: 'monthly', day, time: at }
+          : {
+              kind: 'daily',
+              time: at,
+              ...(every === 'weekday'
+                ? { days: [1, 2, 3, 4, 5] }
+                : every === 'week'
+                  ? { days: [day] }
+                  : {})
+            }
   const action =
     what === 'task'
       ? { kind: 'task', agent, prompt }
@@ -193,7 +253,11 @@ function Schedules({
         : { kind: 'watch', watch: target }
   const options =
     what === 'recording' ? data.recordings.map((r) => r.name) : data.watches.map((w) => w.name)
-  const ready = name.trim() && (what === 'task' ? prompt.trim() : target)
+  const ready =
+    name.trim() &&
+    (what === 'task' ? prompt.trim() : target) &&
+    (every !== 'folder' || (what === 'task' && data.folders.length > 0))
+  const taken = new Set(data.schedules.map((s) => s.name.toLowerCase()))
 
   return (
     <>
@@ -245,7 +309,49 @@ function Schedules({
         </div>
       ))}
       <details className="fold">
-        <summary>Add a schedule yourself</summary>
+        <summary>Ready-made schedules</summary>
+        {EXAMPLES.filter((e) => !taken.has(e.name.toLowerCase())).map((e) => (
+          <div key={e.id} className="row">
+            <div className="row-main">
+              <p className="row-title">{e.name}</p>
+              <p className="muted">
+                {e.whenText} · {e.agent}. {e.what}
+              </p>
+            </div>
+            {e.ask && (
+              <input
+                className="search"
+                aria-label={e.ask.label}
+                placeholder={e.ask.placeholder}
+                value={asked[e.id] ?? ''}
+                onChange={(ev) => setAsked({ ...asked, [e.id]: ev.target.value })}
+              />
+            )}
+            <button
+              className="btn"
+              disabled={!!e.ask && !(asked[e.id] ?? '').trim()}
+              onClick={() =>
+                void post('schedule', {
+                  name: e.name,
+                  when: e.when,
+                  action: {
+                    kind: 'task',
+                    agent: e.agent,
+                    prompt: e.prompt((asked[e.id] ?? '').trim())
+                  }
+                })
+              }
+            >
+              Add
+            </button>
+          </div>
+        ))}
+        {EXAMPLES.every((e) => taken.has(e.name.toLowerCase())) && (
+          <p className="muted">You have added them all.</p>
+        )}
+      </details>
+      <details className="fold" open={!!preset}>
+        <summary>Add a schedule or a trigger yourself</summary>
         <div className="add-row">
           <input
             className="search"
@@ -307,7 +413,29 @@ function Schedules({
             <option value="week">Every week</option>
             <option value="month">Every month</option>
             <option value="hours">Every few hours</option>
+            <option value="folder">When a new file arrives in a folder</option>
           </select>
+          {every === 'folder' && (
+            <>
+              <select
+                aria-label="Folder"
+                value={folder || data.folders[0] || ''}
+                onChange={(e) => setFolder(e.target.value)}
+              >
+                {data.folders.length === 0 && <option value="">Allow a folder first</option>}
+                {data.folders.map((f) => (
+                  <option key={f}>{f}</option>
+                ))}
+              </select>
+              <input
+                className="search short"
+                aria-label="File kinds"
+                placeholder="pdf, xlsx"
+                value={match}
+                onChange={(e) => setMatch(e.target.value)}
+              />
+            </>
+          )}
           {every === 'week' && (
             <select
               aria-label="Day of the week"
@@ -332,7 +460,7 @@ function Schedules({
               onChange={(e) => setDay(Number(e.target.value))}
             />
           )}
-          {every === 'hours' ? (
+          {every === 'folder' ? null : every === 'hours' ? (
             <input
               className="search short"
               type="number"
@@ -383,6 +511,7 @@ function Watches({
   const [name, setName] = useState('')
   const [urls, setUrls] = useState('')
   const [about, setAbout] = useState('')
+  const [browser, setBrowser] = useState(false)
   return (
     <>
       <h2 className="section">Web watches</h2>
@@ -463,13 +592,24 @@ function Watches({
           />
         </div>
         <label className="field">
-          Pages to watch, one address per line (up to 10)
+          Pages or RSS feeds to watch, one address per line (up to 10). A site’s feed of what is new
+          works best.
           <textarea
             rows={3}
             placeholder="https://example.gov/new-acts"
             value={urls}
             onChange={(e) => setUrls(e.target.value)}
           />
+        </label>
+        <label className="row choice">
+          <input type="checkbox" checked={browser} onChange={(e) => setBrowser(e.target.checked)} />
+          <span className="row-main">
+            <span className="row-title">Read these pages in the browser</span>
+            <span className="muted">
+              For a site that turns automated readers away. Titan117 opens the page as you would, in
+              its browser window; a CAPTCHA is yours to answer.
+            </span>
+          </span>
         </label>
         <div className="row-actions">
           <button
@@ -479,6 +619,7 @@ function Watches({
               void post('watch', {
                 name,
                 about,
+                browser,
                 urls: urls
                   .split(/\s+/)
                   .map((u) => u.trim())
@@ -488,6 +629,7 @@ function Watches({
                 setName('')
                 setUrls('')
                 setAbout('')
+                setBrowser(false)
               })
             }
           >
