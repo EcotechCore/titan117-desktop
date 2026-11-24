@@ -138,7 +138,8 @@ describe('keep awake and notifications (1.5, 1.9)', () => {
     await until(() => busy.at(-1) === 0)
     expect(busy[0]).toBe(1)
     expect(notes.map((n) => n.title)).toEqual(['Titan needs your OK', 'Titan finished'])
-    expect(notes[1].body).toBe('Write a.txt')
+    // The task's title, then what it ended with.
+    expect(notes[1].body.split(String.fromCharCode(10))).toEqual(['Write a.txt', 'Done.'])
 
     // Turned off in Setup: nothing more.
     expect((await call(engine, 'PUT', '/v1/notifications', { on: false })).status).toBe(200)

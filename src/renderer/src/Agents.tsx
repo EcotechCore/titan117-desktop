@@ -123,6 +123,7 @@ export function AgentsView({
   cloud,
   changed,
   onStart,
+  onAutomate,
   onProblem
 }: {
   client: EngineClient | null
@@ -130,9 +131,14 @@ export function AgentsView({
   cloud: CloudModel[]
   changed: number
   onStart(agent: string): void
+  /** Open Automations to give this agent a schedule or a trigger (4.1). */
+  onAutomate(agent: string): void
   onProblem(error: unknown): void
 }): React.JSX.Element {
   const [agents, setAgents] = useState<AgentDef[]>([])
+  const [triggers, setTriggers] = useState<
+    { id: string; name: string; whenText: string; enabled: boolean; agent: string }[]
+  >([])
   const [skills, setSkills] = useState<Skill[]>([])
   // null: the list; 'new': a new agent; otherwise the agent being edited.
   const [editing, setEditing] = useState<string | null>(null)
@@ -150,6 +156,31 @@ export function AgentsView({
     client
       .get<{ skills: Skill[] }>('/v1/skills')
       .then((r) => setSkills(r.skills))
+      .catch(() => undefined)
+    // What starts this agent by itself: its schedules and triggers (4.1).
+    client
+      .get<{
+        schedules: {
+          id: string
+          name: string
+          whenText: string
+          enabled: boolean
+          action: { kind: string; agent?: string }
+        }[]
+      }>('/v1/automations')
+      .then((r) =>
+        setTriggers(
+          r.schedules
+            .filter((s) => s.action.kind === 'task' && s.action.agent)
+            .map((s) => ({
+              id: s.id,
+              name: s.name,
+              whenText: s.whenText,
+              enabled: s.enabled,
+              agent: s.action.agent!
+            }))
+        )
+      )
       .catch(() => undefined)
   }, [client, changed, onProblem])
 
@@ -483,6 +514,36 @@ export function AgentsView({
           </button>
         )}
       </div>
+
+      {current && (
+        <>
+          <h2 className="section">Runs by itself</h2>
+          {triggers.filter((t) => t.agent === current.name).length === 0 && (
+            <p className="muted">
+              Only when you start a task. A schedule or a trigger (a new file in a folder) can start{' '}
+              {current.name} for you.
+            </p>
+          )}
+          {triggers
+            .filter((t) => t.agent === current.name)
+            .map((t) => (
+              <div key={t.id} className="row">
+                <div className="row-main">
+                  <p className="row-title">{t.name}</p>
+                  <p className="muted">
+                    {t.whenText}
+                    {t.enabled ? '' : ' · paused'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          <div className="row-actions">
+            <button className="btn" onClick={() => onAutomate(current.name)}>
+              Add a schedule or a trigger
+            </button>
+          </div>
+        </>
+      )}
 
       {current && (
         <details className="advanced" onToggle={(e) => e.currentTarget.open && void showFile()}>

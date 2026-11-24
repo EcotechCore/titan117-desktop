@@ -20,6 +20,11 @@ export type When =
   | { kind: 'daily'; time: string; days?: number[] }
   | { kind: 'monthly'; day: number; time: string }
   | { kind: 'once'; at: number }
+  /**
+   * A trigger (feature 4.1): when a new or changed file arrives in a folder
+   * inside the allowed folders. `match` lists file endings, without the dot.
+   */
+  | { kind: 'folder'; folder: string; match?: string[] }
 
 /** What a schedule runs. */
 export type Action =
@@ -104,8 +109,27 @@ export function checkWhen(input: unknown, now: number): When {
       if (at < now - 60_000) throw new AutomationError('That time has already passed.')
       return { kind: 'once', at }
     }
+    case 'folder': {
+      const folder = typeof w.folder === 'string' ? w.folder.trim() : ''
+      if (!folder || folder.length > 500 || folder.includes('\0'))
+        throw new AutomationError('Name the folder to keep an eye on.')
+      const raw = Array.isArray(w.match) ? w.match : String(w.match ?? '').split(/[\s,;]+/)
+      const match = [
+        ...new Set(
+          raw.map((m) =>
+            String(m ?? '')
+              .trim()
+              .toLowerCase()
+              .replace(/^\*?\./, '')
+          )
+        )
+      ].filter(Boolean)
+      if (match.length > 10 || match.some((m) => !/^[a-z0-9]{1,8}$/.test(m)))
+        throw new AutomationError('File kinds are endings like pdf, xlsx (10 at most).')
+      return { kind: 'folder', folder, ...(match.length ? { match } : {}) }
+    }
     default:
-      throw new AutomationError('A schedule is "interval", "daily", "monthly" or "once".')
+      throw new AutomationError('A schedule is "interval", "daily", "monthly", "once" or "folder".')
   }
 }
 
@@ -128,6 +152,9 @@ export function nextRun(when: When, after: number): number | null {
       return after + when.minutes * 60_000
     case 'once':
       return when.at > after ? when.at : null
+    case 'folder':
+      // No clock time: the scheduler looks in the folder.
+      return null
     case 'daily': {
       const { h, m } = clock(when.time)
       const from = new Date(after)
@@ -167,6 +194,8 @@ export function describeWhen(when: When): string {
       return `Once, on ${new Date(when.at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}`
     case 'monthly':
       return `On day ${when.day} of every month at ${when.time}`
+    case 'folder':
+      return `When a new ${when.match ? `${when.match.join(', ')} ` : ''}file arrives in ${when.folder}`
     case 'daily': {
       const days = when.days
       if (!days) return `Every day at ${when.time}`

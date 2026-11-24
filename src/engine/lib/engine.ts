@@ -76,7 +76,7 @@ import { cleanBrand, STARTERS, type BrandKit } from './apps/starters'
 import { assess, probeDevice, type DeviceCheck } from './apps/devices'
 import { AndroidError, createAndroidComponent } from './apps/android'
 import { cleanEnv } from './shell'
-import { createAutomation, RECORDER, WATCHER, type SiteLogin } from './automation/service'
+import { createAutomation, RECORDER, type SiteLogin } from './automation/service'
 import { AutomationError } from './automation/schedule'
 import { checkRecording, describeStep, stepsFromEvents } from './automation/recorder'
 import { describeAction, describeWhen } from './automation/schedule'
@@ -217,7 +217,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       const before = lastStatus.get(id)
       lastStatus.set(id, status)
       if (before === status || before === undefined) return
-      if (status === 'done') options.onNotify({ title: 'Titan finished', body: title, taskId: id })
+      if (status === 'done')
+        options.onNotify({
+          title: `${event.task.agent} finished`,
+          body: [title, outcomeLine(id)].filter(Boolean).join('\n'),
+          taskId: id
+        })
       else if (status === 'error')
         options.onNotify({ title: 'A task failed', body: `${title}: ${note ?? ''}`, taskId: id })
       else if (status === 'stopped' && note === OFFLINE_NOTE)
@@ -228,6 +233,28 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         body: event.approval.summary,
         taskId: event.approval.taskId
       })
+  }
+  /** What a finished task ended with, in a line: the agent's answer, or what its last tool did. */
+  function outcomeLine(taskId: string): string {
+    try {
+      const last = store
+        .listMessages(taskId)
+        .map((m) => m.message)
+        .reverse()
+        .find((m) => m.role === 'assistant' && m.text.trim())
+      const text =
+        last && last.role === 'assistant'
+          ? last.text
+          : ([...store.listActivity(taskId)].reverse().find((a) => a.kind === 'tool')?.summary ??
+            '')
+      return text
+        .replace(/[*_#`>]+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160)
+    } catch {
+      return ''
+    }
   }
   const emit = (event: EngineEvent): void => {
     if (!options.dataDir && event.type !== 'delta') events.push(event)
@@ -427,6 +454,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     agents,
     defaultModel: () => getMeta<string | null>(db, 'defaultModel', null),
+    folders: () => ({ allowed: folders(), core }),
     locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
     onChange: () => emit({ type: 'changed', what: 'automations' }),
     onError: (error, context) => void log.capture('automation', error, context)
@@ -1125,7 +1153,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
           ].filter((site) => !automation.logins.get(site))
         })),
         session: browser.recording?.() ?? null,
-        agents: agents.list().map((a) => a.name)
+        agents: agents.list().map((a) => a.name),
+        folders: folders()
       }
     },
     createSchedule: (input: { name: unknown; when: unknown; action: unknown }) =>
@@ -1133,36 +1162,11 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     setSchedule: (id: string, enabled: boolean) => automation.schedules.setEnabled(id, enabled),
     runSchedule: (id: string) => automation.schedules.runNow(id),
     removeSchedule: (id: string) => automation.schedules.remove(id),
-    saveWatch: (input: { name: unknown; urls: unknown; about?: unknown }) =>
+    saveWatch: (input: { name: unknown; urls: unknown; about?: unknown; browser?: unknown }) =>
       automation.watches.save({ ...input, source: 'you' }),
     removeWatch: (id: string) => automation.watches.remove(id),
     /** Check now: reading runs without AI; the agent sums up only when something changed. */
-    checkWatch(id: string) {
-      const watch = automation.watches.get(id)
-      if (!watch) throw new AutomationError('There is no such watch.')
-      const task = runtime.runDirect({
-        title: `Check ${watch.name}`,
-        agent: WATCHER,
-        text: `Check the watch "${watch.name}".`,
-        call: { name: 'watch_check', input: { watch: watch.name } }
-      })
-      const before = watch.lastChangedAt
-      void runtime.settled(task.id).then(() => {
-        const after = automation.watches.get(watch.id)
-        const model = getMeta<string | null>(db, 'defaultModel', null)
-        if (!after || after.lastChangedAt === before || !model || account.locked) return
-        try {
-          runtime.send(
-            task.id,
-            'Something changed. In a few short points, say what changed and what matters to us (use what memory says about the company), with the page address next to each point. If none of it matters, say so in one line.',
-            model
-          )
-        } catch (error) {
-          log.capture('automation', error, { part: 'watch explain' })
-        }
-      })
-      return task
-    },
+    checkWatch: (id: string) => automation.checkWatch(id),
     async startRecording(url: string) {
       if (!browser.startRecording) throw new AutomationError('The browser can’t record here.')
       const session = await browser.startRecording(

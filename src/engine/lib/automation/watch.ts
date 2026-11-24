@@ -25,6 +25,11 @@ export interface Watch {
   urls: string[]
   /** What matters to the user in these pages, in their words. */
   about: string
+  /**
+   * Read in the browser instead of by our plain reader: the user's choice, for
+   * a site that turns automated readers away (decisions §29, §61).
+   */
+  browser: boolean
   source: string
   createdAt: number
   lastCheckedAt: number | null
@@ -64,6 +69,42 @@ export function linesOf(text: string): string[] {
     .split(/\r?\n/)
     .map((l) => l.replace(/\s+/g, ' ').trim())
     .filter((l) => l.length > 2 && !/^[\d\s.:,/-]+$/.test(l))
+}
+
+function plain(text: string): string {
+  return text
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * A feed (RSS or Atom) as one line per item, "Title (address)", so a new item
+ * is one new line; null when the text isn't a feed. Official sources publish
+ * feeds for exactly this (EUR-Lex's predefined RSS alerts, decisions §61).
+ */
+export function feedLines(text: string): string[] | null {
+  if (!/<(rss|feed|rdf:RDF)[\s>]/i.test(text.slice(0, 3000))) return null
+  const items = text.slice(0, 3_000_000).match(/<(item|entry)[\s>][\s\S]*?<\/\1>/gi) ?? []
+  return items
+    .slice(0, 500)
+    .map((item) => {
+      const title = plain(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(item)?.[1] ?? '').slice(0, 400)
+      const link =
+        plain(/<link[^>]*>([^<]+)<\/link>/i.exec(item)?.[1] ?? '') ||
+        plain(/<link[^>]*href="([^"]+)"/i.exec(item)?.[1] ?? '')
+      return [title, /^https?:\/\//i.test(link) ? `(${link.slice(0, 500)})` : '']
+        .filter(Boolean)
+        .join(' ')
+    })
+    .filter(Boolean)
 }
 
 /** What's in `next` and not in `before`, and the other way round, in page order. */
@@ -129,6 +170,7 @@ interface WatchRow {
   name: string
   urls: string
   about: string
+  via: string
   source: string
   created_at: number
   last_checked_at: number | null
@@ -139,7 +181,13 @@ export interface WatchStore {
   list(): Watch[]
   /** By id or name (any case). */
   get(idOrName: string): Watch | null
-  save(input: { name: unknown; urls: unknown; about?: unknown; source: string }): Watch
+  save(input: {
+    name: unknown
+    urls: unknown
+    about?: unknown
+    browser?: unknown
+    source: string
+  }): Watch
   remove(idOrName: string): void
   /**
    * Compare freshly read pages with the last time and remember them.
@@ -164,6 +212,7 @@ export function createWatchStore(deps: {
     name: r.name,
     urls: JSON.parse(r.urls) as string[],
     about: r.about,
+    browser: r.via === 'browser',
     source: r.source,
     createdAt: r.created_at,
     lastCheckedAt: r.last_checked_at,
@@ -190,11 +239,14 @@ export function createWatchStore(deps: {
       const about = String(input.about ?? '')
         .trim()
         .slice(0, 1000)
+      const via = input.browser === true ? 'browser' : 'reader'
       const existing = store.get(name)
       if (existing) {
-        db.prepare('update watches set urls = ?, about = ? where id = ?').run(
+        db.prepare('update watches set urls = ?, about = ?, via = ? where id = ?').run(
           JSON.stringify(urls),
           about,
+          // Left as it was unless said.
+          input.browser === undefined ? (existing.browser ? 'browser' : 'reader') : via,
           existing.id
         )
         // Pages no longer watched are forgotten.
@@ -213,8 +265,8 @@ export function createWatchStore(deps: {
         throw new AutomationError(`There are already ${MAX_WATCHES} watches. Remove one first.`)
       const id = randomUUID()
       db.prepare(
-        'insert into watches (id, name, urls, about, source, created_at) values (?, ?, ?, ?, ?, ?)'
-      ).run(id, name, JSON.stringify(urls), about, input.source.slice(0, 200), now())
+        'insert into watches (id, name, urls, about, via, source, created_at) values (?, ?, ?, ?, ?, ?, ?)'
+      ).run(id, name, JSON.stringify(urls), about, via, input.source.slice(0, 200), now())
       changed()
       return store.get(id)!
     },
@@ -238,7 +290,9 @@ export function createWatchStore(deps: {
           .get(watch.id, url) as { text: string; hash: string } | undefined
         let text: string
         try {
-          text = linesOf(await read(url)).join('\n')
+          const raw = await read(url)
+          // A feed is compared item by item; a page line by line.
+          text = (feedLines(raw) ?? linesOf(raw)).join('\n')
         } catch (error) {
           pages.push({
             url,

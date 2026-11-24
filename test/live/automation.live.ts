@@ -7,7 +7,7 @@
 //   pnpm eval:automation                  (Claude Haiku 5.5 by default)
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createServer, type Server } from 'http'
-import { readFileSync } from 'fs'
+import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { AddressInfo } from 'net'
 
@@ -394,6 +394,70 @@ describe.skipIf(!channel)('phase 13 in a real browser', () => {
       expect(changes.some((c) => c.url === LIVE_PAGE)).toBe(true)
     },
     400_000
+  )
+
+  it('reads EUR-Lex through its official RSS feed, one line per act', async () => {
+    // "All Parliament and Council legislation", from EUR-Lex's "Predefined RSS alerts" page.
+    const feed =
+      process.env.TITAN_FEED_URL ?? 'https://eur-lex.europa.eu/EN/display-feed.rss?rssId=162'
+    const made = await call(engine, 'POST', '/v1/automations/watch', {
+      name: 'EU legislation',
+      urls: [feed]
+    })
+    const id: string = made.body.watches.find(
+      (w: { name: string }) => w.name === 'EU legislation'
+    ).id
+    const run = await call(engine, 'POST', '/v1/automations/watch-check', { id })
+    await engine.parts.runtime.settled(run.body.task.id)
+    const output = JSON.stringify(engine.parts.store.listMessages(run.body.task.id))
+    expect(output).toContain('Read for the first time')
+    expect(output).not.toContain('Could not be read')
+    const row = engine.parts.db
+      .prepare('select text from watch_pages where watch_id = ?')
+      .get(id) as { text: string }
+    const lines = row.text.split(String.fromCharCode(10))
+    report.push(`EUR-Lex feed: ${lines.length} acts read; first: ${lines[0].slice(0, 160)}`)
+    expect(lines.length).toBeGreaterThan(5)
+    expect(lines[0]).toMatch(/\(https:\/\/eur-lex\.europa\.eu\//)
+  }, 120_000)
+
+  it.skipIf(!key)(
+    'a new file in a folder starts the agent, which is told the file',
+    async () => {
+      const folder = tempFolder('titan117-inbox-')
+      engine.addFolder(folder)
+      const made = await call(engine, 'POST', '/v1/automations/schedule', {
+        name: 'New notes',
+        when: { kind: 'folder', folder, match: ['txt'] },
+        action: {
+          kind: 'task',
+          agent: 'Titan',
+          prompt: 'Read each new file and tell me in one line what it says.'
+        }
+      })
+      expect(made.status).toBe(200)
+      await new Promise((r) => setTimeout(r, 1200))
+      writeFileSync(
+        join(folder, 'delivery.txt'),
+        'The pallets from Brasov arrive on Thursday at 10.'
+      )
+      // The trigger waits until a file has settled (10 seconds), then the scheduler's look finds it.
+      await new Promise((r) => setTimeout(r, 11_500))
+      engine.parts.automation.tick()
+      const schedule = engine.parts.automation.schedules.get('New notes')!
+      expect(schedule.lastNote).toBe('Started for 1 new file(s).')
+      const taskId = schedule.lastTaskId!
+      await until(() => engine.parts.store.getTask(taskId)!.status === 'done', 120_000)
+      const answer = engine.parts.store
+        .listMessages(taskId)
+        .map((m) => m.message)
+        .filter((m) => m.role === 'assistant')
+        .at(-1)
+      const text = answer && answer.role === 'assistant' ? answer.text : ''
+      expect(text).toMatch(/Thursday/i)
+      report.push(`Folder trigger: ${text.replace(/\s+/g, ' ').slice(0, 200)}`)
+    },
+    200_000
   )
 
   it.skipIf(!key)('Titan makes a schedule from plain words, after the user’s OK', async () => {

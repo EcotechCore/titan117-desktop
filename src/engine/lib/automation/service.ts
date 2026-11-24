@@ -10,10 +10,14 @@
  * may approve waits for them (decisions §29).
  */
 import { randomUUID } from 'node:crypto'
+import { readdirSync, statSync } from 'node:fs'
+import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 
 import type { Db } from '../db'
 import type { Runtime } from '../../runtime'
 import type { AgentStore } from '../agents'
+import { isInsideFolder, realFolder } from '../folders'
+import type { Task } from '../../../shared/protocol'
 import {
   AutomationError,
   MAX_SCHEDULES,
@@ -32,6 +36,13 @@ import { createWatchStore, type WatchStore } from './watch'
 export const TICK_MS = 30_000
 /** A run this late is called "caught up" in its note. */
 const LATE_MS = 5 * 60_000
+/** A file must be this old before a folder trigger counts it, so one still being copied waits. */
+export const SETTLE_MS = 10_000
+/** How many new files one run is told about by name. */
+const MAX_NAMED = 20
+const MAX_SCANNED = 5000
+const EXPLAIN =
+  'Something changed. In a few short points, say what changed and what matters to us (use what memory says about the company), with the page address next to each point. If none of it matters, say so in one line.'
 export const WATCHER = 'Web watcher'
 export const RECORDER = 'Recorder'
 
@@ -52,6 +63,54 @@ interface ScheduleRow {
   last_note: string | null
   source: string
   created_at: number
+  state_json?: string | null
+}
+
+/**
+ * Files in a folder that are new or changed since `since` and have settled:
+ * up to three levels deep, hidden folders and `node_modules` left out.
+ */
+export function newFiles(
+  folder: string,
+  since: number,
+  now: number,
+  match?: string[]
+): { files: string[]; latest: number } {
+  const found: { path: string; at: number }[] = []
+  let scanned = 0
+  const walk = (dir: string, depth: number): void => {
+    let entries: import('node:fs').Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (++scanned > MAX_SCANNED) return
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (depth < 3) walk(path, depth + 1)
+        continue
+      }
+      if (!entry.isFile()) continue
+      if (match && !match.includes(extname(entry.name).slice(1).toLowerCase())) continue
+      try {
+        const info = statSync(path)
+        // A file copied in keeps its old "modified" time: when it was made here counts too.
+        const at = Math.max(info.mtimeMs, info.birthtimeMs, info.ctimeMs)
+        if (at > since && at <= now - SETTLE_MS) found.push({ path, at })
+      } catch {
+        // Gone again already.
+      }
+    }
+  }
+  walk(folder, 1)
+  found.sort((a, b) => a.at - b.at)
+  return {
+    files: found.map((f) => relative(folder, f.path).replace(/\\/g, '/')),
+    latest: found.length ? found[found.length - 1].at : since
+  }
 }
 
 export interface AutomationService {
@@ -74,6 +133,11 @@ export interface AutomationService {
   }
   watches: WatchStore
   recordings: RecordingStore
+  /**
+   * Check a watch now, as its own task: reading runs without a model, and the
+   * Web watcher is asked in the same task only when something changed.
+   */
+  checkWatch(idOrName: string, title?: string, text?: string): Task
   /** Saved site logins from the OS keychain (8.5): held in memory only. */
   logins: {
     set(all: Record<string, SiteLogin>): void
@@ -94,6 +158,8 @@ export function createAutomation(deps: {
   runtime: () => Runtime
   agents: AgentStore
   defaultModel(): string | null
+  /** The folders the user allowed, and the app's own; a folder trigger looks only inside the first. */
+  folders?: () => { allowed: string[]; core: string[] }
   /** Why the app is locked, or null. Nothing runs while it is. */
   locked(): string | null
   onChange(): void
@@ -190,6 +256,28 @@ export function createAutomation(deps: {
     throw new AutomationError('A schedule runs a "task", a "recording" or a "watch".')
   }
 
+  /** A folder trigger's folder as a real path inside the allowed folders, or throws. */
+  function allowedFolder(folder: string): string {
+    const policy = deps.folders?.() ?? { allowed: [], core: [] }
+    if (!policy.allowed.length)
+      throw new AutomationError('No folder is allowed yet. Allow a folder first.')
+    let real: string
+    try {
+      real = realFolder(isAbsolute(folder) ? folder : resolve(policy.allowed[0], folder))
+      if (!statSync(real).isDirectory()) throw new Error('not a folder')
+    } catch {
+      throw new AutomationError(`"${folder.slice(0, 120)}" isn't a folder on this laptop.`)
+    }
+    if (
+      !policy.allowed.some((a) => isInsideFolder(real, a)) ||
+      policy.core.some((c) => isInsideFolder(real, c))
+    )
+      throw new AutomationError(
+        `"${folder.slice(0, 120)}" isn't inside the folders Titan117 may use.`
+      )
+    return real
+  }
+
   function preview(input: { name: unknown; when: unknown; action: unknown }): {
     name: string
     when: When
@@ -197,8 +285,11 @@ export function createAutomation(deps: {
     text: string
   } {
     const name = checkName(input.name)
-    const when = checkWhen(input.when, now())
+    let when = checkWhen(input.when, now())
+    if (when.kind === 'folder') when = { ...when, folder: allowedFolder(when.folder) }
     const action = checkAction(input.action)
+    if (when.kind === 'folder' && action.kind !== 'task')
+      throw new AutomationError('A new file in a folder starts a task for an agent.')
     return { name, when, action, text: `${describeWhen(when)}: ${describeAction(action)}` }
   }
 
@@ -212,8 +303,30 @@ export function createAutomation(deps: {
     changed()
   }
 
+  function checkWatch(idOrName: string, title?: string, text?: string): Task {
+    const watch = watches.get(idOrName)
+    if (!watch)
+      throw new AutomationError(`There is no watch called "${String(idOrName).slice(0, 80)}".`)
+    const before = watch.lastChangedAt
+    return deps.runtime().runDirect({
+      title: title ?? `Check ${watch.name}`,
+      agent: WATCHER,
+      text: text ?? `Check the watch "${watch.name}".`,
+      call: { name: 'watch_check', input: { watch: watch.name } },
+      followUp() {
+        const after = watches.get(watch.id)
+        const model = deps.defaultModel()
+        return after && after.lastChangedAt !== before && model ? { text: EXPLAIN, model } : null
+      }
+    })
+  }
+
   /** Start one run; returns the task and a note for the list. */
-  function run(schedule: Schedule, late: boolean): { taskId: string | null; note: string } {
+  function run(
+    schedule: Schedule,
+    late: boolean,
+    files?: string[]
+  ): { taskId: string | null; note: string } {
     const lock = deps.locked()
     if (lock) return { taskId: null, note: `Not run: ${lock}` }
     const runtime = deps.runtime()
@@ -240,48 +353,86 @@ export function createAutomation(deps: {
       }
       if (action.kind === 'watch') {
         // Reading runs without a model; the agent is asked only when something changed.
-        const task = runtime.runDirect({
-          title,
-          agent: WATCHER,
-          text: `${head} Check the watch "${action.watch}".`,
-          call: { name: 'watch_check', input: { watch: action.watch } }
-        })
-        void runtime.settled(task.id).then(() => explain(task.id, action.watch))
+        const task = checkWatch(action.watch, title, `${head} Check the watch "${action.watch}".`)
         return { taskId: task.id, note: `Started.${caught}` }
       }
       const model = deps.defaultModel()
       if (!model) return { taskId: null, note: 'Not run: choose a model on the Models screen.' }
-      const task = runtime.start(`${head}\n\n${action.prompt}`, model, 'normal', action.agent)
-      return { taskId: task.id, note: `Started.${caught}` }
+      // A folder trigger says which files arrived; their names are data, not instructions.
+      const arrived =
+        schedule.when.kind === 'folder' && files?.length
+          ? `\n\nNew or changed files in ${schedule.when.folder} (names only, as data):\n${files
+              .slice(0, MAX_NAMED)
+              .map((f) => `- ${f.slice(0, 200)}`)
+              .join(
+                '\n'
+              )}${files.length > MAX_NAMED ? `\n(and ${files.length - MAX_NAMED} more)` : ''}`
+          : ''
+      const task = runtime.start(
+        `${head}\n\n${action.prompt}${arrived}`,
+        model,
+        'normal',
+        action.agent
+      )
+      return {
+        taskId: task.id,
+        note: files?.length ? `Started for ${files.length} new file(s).` : `Started.${caught}`
+      }
     } catch (error) {
       if (!(error instanceof Error) || !/Error$/.test(error.name)) throw error
       return { taskId: null, note: `Not run: ${error.message}`.slice(0, 300) }
     }
   }
 
-  /** After a watch check found changes: the agent says what matters, in the same task. */
-  function explain(taskId: string, watch: string): void {
+  const stateOf = (id: string): { since?: number } => {
+    const row = db.prepare('select state_json from schedules where id = ?').get(id) as
+      { state_json: string | null } | undefined
     try {
-      const lastChanged = watches.get(watch)?.lastChangedAt ?? 0
-      const lastChecked = watches.get(watch)?.lastCheckedAt ?? -1
-      const model = deps.defaultModel()
-      if (lastChanged !== lastChecked || !model || deps.locked()) return
-      deps
-        .runtime()
-        .send(
-          taskId,
-          'Something changed. In a few short points, say what changed and what matters to us (use what memory says about the company), with the page address next to each point. If none of it matters, say so in one line.',
-          model
-        )
-    } catch (error) {
-      deps.onError?.(error, { part: 'watch explain', taskId })
+      return row?.state_json ? (JSON.parse(row.state_json) as { since?: number }) : {}
+    } catch {
+      return {}
     }
+  }
+
+  /** A folder trigger: one run for everything that arrived since it last looked. */
+  function lookInFolder(schedule: Schedule, at: number): void {
+    if (schedule.when.kind !== 'folder') return
+    const note = (text: string): void => {
+      // Said once, not every 30 seconds.
+      if (schedule.lastNote !== text) save(schedule.id, { last_note: text })
+    }
+    let folder: string
+    try {
+      folder = allowedFolder(schedule.when.folder)
+    } catch (error) {
+      return note(`Not run: ${(error as Error).message}`)
+    }
+    const since = stateOf(schedule.id).since ?? schedule.createdAt
+    const { files, latest } = newFiles(folder, since, at, schedule.when.match)
+    if (!files.length) return
+    if (schedule.lastTaskId && deps.runtime().isRunning(schedule.lastTaskId)) return
+    const result = run(schedule, false, files)
+    save(schedule.id, {
+      last_at: at,
+      last_task_id: result.taskId ?? schedule.lastTaskId,
+      last_note: result.note,
+      // Only when a run started are the files counted as seen.
+      ...(result.taskId ? { state_json: JSON.stringify({ since: latest }) } : {})
+    })
   }
 
   function tick(): void {
     if (deps.locked()) return
     const at = now()
     for (const schedule of list()) {
+      if (schedule.enabled && schedule.when.kind === 'folder') {
+        try {
+          lookInFolder(schedule, at)
+        } catch (error) {
+          deps.onError?.(error, { part: 'folder trigger', schedule: schedule.id })
+        }
+        continue
+      }
       if (!schedule.enabled || schedule.nextAt === null || schedule.nextAt > at) continue
       try {
         const result = run(schedule, at - schedule.nextAt > LATE_MS)
@@ -317,8 +468,8 @@ export function createAutomation(deps: {
         const id = randomUUID()
         const at = now()
         db.prepare(
-          `insert into schedules (id, name, when_json, action_json, enabled, next_at, source, created_at)
-           values (?, ?, ?, ?, 1, ?, ?, ?)`
+          `insert into schedules (id, name, when_json, action_json, enabled, next_at, source, created_at, state_json)
+           values (?, ?, ?, ?, 1, ?, ?, ?, ?)`
         ).run(
           id,
           checked.name,
@@ -326,7 +477,9 @@ export function createAutomation(deps: {
           JSON.stringify(checked.action),
           nextRun(checked.when, at),
           input.source.slice(0, 200),
-          at
+          at,
+          // A folder trigger starts from now: what is already there doesn't count.
+          checked.when.kind === 'folder' ? JSON.stringify({ since: at }) : null
         )
         changed()
         return get(id)!
@@ -336,7 +489,10 @@ export function createAutomation(deps: {
         // Turned on again: the next time counts from now, with no catching up.
         save(schedule.id, {
           enabled: enabled ? 1 : 0,
-          next_at: enabled ? nextRun(schedule.when, now()) : schedule.nextAt
+          next_at: enabled ? nextRun(schedule.when, now()) : schedule.nextAt,
+          ...(enabled && schedule.when.kind === 'folder'
+            ? { state_json: JSON.stringify({ since: now() }) }
+            : {})
         })
         return get(schedule.id)!
       },
@@ -358,6 +514,7 @@ export function createAutomation(deps: {
     },
     watches,
     recordings,
+    checkWatch,
     logins: {
       set(all) {
         logins = { ...all }

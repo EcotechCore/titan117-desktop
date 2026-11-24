@@ -313,6 +313,11 @@ const MIGRATIONS: string[] = [
     removed text not null
   );
   create index watch_changes_watch on watch_changes(watch_id, at);
+  `,
+  // Phase 13, triggers (4.1): what a folder trigger has already seen; watches read in the browser.
+  `
+  alter table schedules add column state_json text;
+  alter table watches add column via text not null default 'reader';
   `
 ]
 
