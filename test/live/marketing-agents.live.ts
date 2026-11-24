@@ -214,5 +214,35 @@ describe.skipIf(!key || !channel)(
       // Nothing was posted: no request ever went to a platform.
       expect(posts.every((p) => p.status === 'draft')).toBe(true)
     }, 700_000)
+
+    it('the Marketing agent drafts ads and reports what the posts brought', async () => {
+      // The user posted three of December's posts and reads their numbers off the platforms.
+      const posts = engine.parts.marketing.posts.list({ month: '2026-12' }).slice(0, 3)
+      for (const p of posts) engine.parts.marketing.posts.setStatus(p.id, 'posted')
+      await runAndApprove(
+        'Marketing agent',
+        `Two things. First: our posts got these numbers. The ${posts[0].platform} post of ${posts[0].date} (id ${posts[0].id}): 120 views, 14 likes, 3 comments, 5 clicks. The ${posts[1].platform} post of ${posts[1].date} (id ${posts[1].id}): 40 views and 2 likes. Record them, then make the campaign report for December 2026. Second: draft Christmas ads for us, one Google search ad for people in Cluj looking for a bakery or Christmas bread, opening ${base}order , and one Meta ad. Decide everything yourself; don't ask me questions.`,
+        600_000
+      )
+      const results = engine.parts.marketing.posts.get(posts[0].id)!.results
+      report.push(`Results recorded: ${JSON.stringify(results)}`)
+      expect(results).toMatchObject({ views: 120, likes: 14, clicks: 5 })
+      const artifacts = engine.parts.artifacts.list()
+      report.push(`Artifacts: ${artifacts.map((a) => `${a.kind} "${a.title}"`).join('; ')}`)
+      const reportDoc = artifacts.find((a) => a.title.startsWith('Campaign report'))
+      expect(reportDoc).toBeTruthy()
+      const text = engine.parts.artifacts.get(reportDoc!.id).current.content
+      expect(text).toContain('3 posted')
+      const tsv = files(folder).find((f) => f.endsWith('google-ads-editor.tsv'))
+      expect(tsv).toBeTruthy()
+      const tsvText = readFileSync(tsv!, 'utf16le').replace(String.fromCharCode(0xfeff), '')
+      const rows = tsvText.trimEnd().split(/\r\n/)
+      const ad = rows.find((r) => r.includes('Responsive search ad'))?.split(/\t/) ?? []
+      report.push(
+        `Google Ads Editor file: ${rows.length - 1} row(s); first headlines: ${ad.slice(6, 9).join(' / ')}`
+      )
+      expect(tsvText).not.toContain('Enabled')
+      expect(artifacts.some((a) => a.title.endsWith('Meta ads'))).toBe(true)
+    }, 700_000)
   }
 )

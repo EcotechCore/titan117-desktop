@@ -206,6 +206,7 @@ export function createApi(deps: {
     savePost(input: import('./lib/marketing/posts').PostInput): Promise<void>
     setPost(id: string, status: import('./lib/marketing/posts').PostStatus): void
     removePost(id: string): void
+    setResults(id: string, results: unknown): void
     media(path: string): Promise<unknown>
     export(month: string | null): unknown
   }
@@ -376,6 +377,9 @@ export function createApi(deps: {
       }
       case 'post-remove':
         m.removePost(text('id'))
+        break
+      case 'post-results':
+        m.setResults(text('id'), field(body, 'results'))
         break
       case 'media':
         return m.media(text('path'))

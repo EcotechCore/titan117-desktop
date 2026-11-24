@@ -342,6 +342,10 @@ const MIGRATIONS: string[] = [
   );
   create index posts_day on posts(date, time);
   create index posts_status on posts(status, date);
+  `,
+  // Phase 14, campaign reports (15.11): what a post brought, typed in by the user (JSON).
+  `
+  alter table posts add column results text not null default '{}';
   `
 ]
 

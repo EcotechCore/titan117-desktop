@@ -35,6 +35,7 @@ import {
   countChars,
   fullText,
   postWarnings,
+  trackedLink,
   type Post,
   type PostInput,
   type PostStatus
@@ -1277,6 +1278,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     maxChars: PLATFORM_INFO[post.platform].maxChars,
     prefills: PLATFORM_INFO[post.platform].prefills,
     composeUrl: composeUrl(post),
+    trackedLink: trackedLink(post),
     warnings: postWarnings(post)
   })
   const marketingView = {
@@ -1306,6 +1308,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     setPost: (id: string, status: PostStatus) => void marketing.posts.setStatus(id, status),
     removePost: (id: string) => marketing.posts.remove(id),
+    setResults: (id: string, results: unknown) => void marketing.posts.setResults(id, results),
     /** A post's picture for the window, read only from inside the allowed folders. */
     async media(path: string) {
       const type = (

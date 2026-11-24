@@ -912,6 +912,89 @@ const DENIALS: Record<string, () => Promise<void>> = {
     expect(b.marketingLaunches()).toBe(0)
   },
 
+  async post_results() {
+    const b = bench()
+    const [post] = b.marketing.posts.save(
+      [{ platform: 'x', date: '2026-12-03', text: 'Fresh bread tomorrow.', status: 'posted' }],
+      'you'
+    )
+    // It changes what the report says: it asks; denied, nothing is recorded.
+    const denied = await b.run(
+      { name: 'post_results', input: { id: post.id, results: { likes: 12 } } },
+      'deny'
+    )
+    expect(denied.status).toBe('refused')
+    expect(b.marketing.posts.get(post.id)?.results).toEqual({})
+    // No numbers (or ones that aren't): refused before anyone is asked.
+    const asked = b.asked()
+    for (const results of [{}, { likes: -3 }, { likes: 'many' }])
+      expect((await b.run({ name: 'post_results', input: { id: post.id, results } })).status).toBe(
+        'refused'
+      )
+    expect(b.asked()).toBe(asked)
+  },
+
+  async campaign_report() {
+    const none = await bench({ noServices: true }).run({ name: 'campaign_report', input: {} })
+    expect(none.status).toBe('refused')
+    // Nothing planned: no artifact is made.
+    const b = bench()
+    const empty = await b.run({ name: 'campaign_report', input: { month: '2026-12' } })
+    expect(empty.status).toBe('done')
+    expect(b.artifacts.list()).toHaveLength(0)
+  },
+
+  async ad_drafts() {
+    const b = bench()
+    const google = {
+      campaign: 'Christmas',
+      ad_group: 'Bread',
+      final_url: 'https://bakery.example/order',
+      headlines: ['Fresh bread in Cluj', 'Order by 18:00', 'Collect warm at 7'],
+      descriptions: ['Sourdough and rye baked by hand.', 'Order online in two minutes.'],
+      keywords: ['bakery cluj']
+    }
+    // It writes a file: it asks; denied, nothing is written and no artifact is made.
+    const denied = await b.run({ name: 'ad_drafts', input: { google: [google] } }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(existsSync(join(b.allowed, 'marketing'))).toBe(false)
+    expect(b.artifacts.list()).toHaveLength(0)
+    // Over a platform's limit, no ads, or a page that isn't a web address: refused before anyone is asked.
+    const asked = b.asked()
+    for (const input of [
+      {},
+      { google: [{ ...google, headlines: [...google.headlines, 'x'.repeat(31)] }] },
+      { google: [{ ...google, final_url: 'javascript:alert(1)' }] },
+      { meta: [{ primary_text: 'Hello', headline: 'Hi', link: 'file:///C:/x' }] }
+    ])
+      expect((await b.run({ name: 'ad_drafts', input })).status).toBe('refused')
+    expect(b.asked()).toBe(asked)
+    // A picture outside the allowed folders, or a folder outside them: nothing is made.
+    const picture = await b.run(
+      {
+        name: 'ad_drafts',
+        input: {
+          meta: [
+            {
+              primary_text: 'Warm bread.',
+              headline: 'Order now',
+              link: 'https://bakery.example/',
+              image: join(b.outside, 'loaf.png')
+            }
+          ]
+        }
+      },
+      'approve'
+    )
+    expect(picture.status).toBe('refused')
+    const outside = await b.run(
+      { name: 'ad_drafts', input: { google: [google], folder: b.outside } },
+      'approve'
+    )
+    expect(outside.status).toBe('refused')
+    expect(b.artifacts.list()).toHaveLength(0)
+  },
+
   async agent_delegate() {
     // Without the team service (no other agents here) nothing is handed out.
     const b = bench()

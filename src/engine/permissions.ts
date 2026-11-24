@@ -618,6 +618,10 @@ export function createPermissionLayer(deps: {
             }
             return market().posts.setStatus(id, action)
           },
+          setResults(id, results) {
+            marketWrite()
+            return market().posts.setResults(id, results)
+          },
           checkVideo(input) {
             const brand = market().brand.get()
             return checkVideo(

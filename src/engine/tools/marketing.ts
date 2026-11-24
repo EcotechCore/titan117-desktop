@@ -16,6 +16,8 @@ import {
   PLATFORMS,
   PLATFORM_INFO,
   POST_STATUSES,
+  RESULT_KEYS,
+  cleanResults,
   calendarCsv,
   calendarIcs,
   checkPost,
@@ -35,6 +37,17 @@ import {
   type VideoFormat
 } from '../lib/marketing/video'
 import { PermissionError } from '../lib/folders'
+import {
+  GOOGLE,
+  META,
+  META_BUTTONS,
+  adsDocument,
+  checkAds,
+  googleEditorFile,
+  metaSheet,
+  metaWarnings
+} from '../lib/marketing/ads'
+import { campaignReport, campaignSheet } from '../lib/marketing/report'
 import { defineTool } from './lib/define-tool'
 
 function slug(text: string, fallback: string): string {
@@ -579,6 +592,187 @@ export const promoVideo = defineTool<VideoInput>({
   }
 })
 
+export const postResults = defineTool<{ id: string; results: Record<string, unknown> }>({
+  name: 'post_results',
+  description:
+    'Record what a posted post brought, as the user read it off the platform: {"views","likes","comments","shares","clicks"} (give only the numbers they told you). Titan117 reads no platform’s numbers itself. campaign_report sums them up.',
+  params: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'The post’s id' },
+      results: { type: 'object', description: 'The numbers, e.g. {"likes": 14, "clicks": 3}' }
+    },
+    required: ['id', 'results']
+  },
+  risk: 'write',
+  permissions: { marketing: 'write' },
+  describe: () => 'Record a post’s results',
+  assess(input) {
+    const given = cleanResults(input.results)
+    const parts = RESULT_KEYS.flatMap((k) => (given[k] === undefined ? [] : [`${given[k]} ${k}`]))
+    return {
+      risk: 'write',
+      summary: `Record a post’s results: ${parts.join(', ') || 'nothing'}`,
+      ...(parts.length
+        ? {}
+        : { refuse: 'Give at least one number: views, likes, comments, shares or clicks.' })
+    }
+  },
+  async run(input, ctx) {
+    const post = ctx.marketing.setResults(String(input.id), input.results)
+    return {
+      output: `Recorded for the ${PLATFORM_INFO[post.platform].label} post of ${post.date}: ${RESULT_KEYS.flatMap((k) => (post.results[k] === undefined ? [] : [`${post.results[k]} ${k}`])).join(', ')}.`,
+      summary: 'Recorded a post’s results'
+    }
+  }
+})
+
+export const campaignReportTool = defineTool<{
+  month?: string
+  from?: string
+  to?: string
+  campaign?: string
+}>({
+  name: 'campaign_report',
+  description:
+    'Make a campaign report from the content calendar: what was planned and posted per platform and campaign, what is overdue, and what it brought (the numbers the user typed in). Give "month" (2026-12) or "from"/"to" days, and optionally one "campaign". It makes a report and a spreadsheet (download as PDF, Word or Excel).',
+  params: {
+    type: 'object',
+    properties: {
+      month: { type: 'string', description: 'A month, like 2026-12' },
+      from: { type: 'string', description: 'From this day' },
+      to: { type: 'string', description: 'Up to this day' },
+      campaign: { type: 'string', description: 'Only this campaign' }
+    },
+    required: []
+  },
+  risk: 'read',
+  permissions: { marketing: 'read', artifacts: 'write' },
+  describe: (input) => `Make the campaign report${input.month ? ` for ${input.month}` : ''}`,
+  async run(input, ctx) {
+    const posts = ctx.marketing.posts({
+      month: input.month,
+      from: input.from,
+      to: input.to,
+      campaign: input.campaign
+    })
+    if (!posts.length)
+      return { output: 'There are no posts in that period.', summary: 'Nothing to report' }
+    const range =
+      input.month ?? ([input.from, input.to].filter(Boolean).join(' to ') || 'all posts')
+    const period = [input.campaign, range].filter(Boolean).join(', ')
+    const text = campaignReport(posts, period)
+    const report = ctx.artifacts.create({
+      kind: 'document',
+      title: `Campaign report ${period}`,
+      content: text
+    })
+    const sheet = ctx.artifacts.create({
+      kind: 'spreadsheet',
+      title: `Campaign posts ${period}`,
+      content: campaignSheet(posts)
+    })
+    return {
+      output: `${text}\nThe report is the artifact "${report.title}" and its posts the spreadsheet "${sheet.title}".`,
+      summary: `Made the campaign report for ${period}: ${posts.length} post(s)`
+    }
+  }
+})
+
+interface AdsInput {
+  title?: string
+  google?: unknown[]
+  meta?: unknown[]
+  notes?: string
+  folder?: string
+}
+
+export const adDrafts = defineTool<AdsInput>({
+  name: 'ad_drafts',
+  description: [
+    'Write ads for the user to launch themselves; nothing touches an ad account and nothing is spent.',
+    `"google": search ads, each {"campaign","ad_group","final_url","headlines":[${GOOGLE.minHeadlines}-${GOOGLE.maxHeadlines}, each up to ${GOOGLE.headlineChars} characters],"descriptions":[${GOOGLE.minDescriptions}-${GOOGLE.maxDescriptions}, each up to ${GOOGLE.descriptionChars}],"paths":[up to 2, ${GOOGLE.pathChars} characters],"keywords":[{"text","match":"broad"|"phrase"|"exact"}]}. Count the characters: one over is refused.`,
+    `"meta": Facebook and Instagram ads, each {"name","primary_text" (best under ${META.primaryText} characters),"headline" (best under ${META.headline}),"description","button": one of ${META_BUTTONS.join(', ')},"link","image": a PNG or JPEG in the allowed folders,"audience": who to show it to}.`,
+    '"notes": your advice on budget and audience, in plain words; the user decides both.',
+    'It makes a document with every ad, a file for Google Ads Editor’s import with everything paused, and a sheet of the Meta ads. Use only what the brand kit and the site say: no invented prices, numbers or claims.'
+  ].join(' '),
+  params: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: 'What the ads are for, e.g. "Christmas orders"' },
+      google: { type: 'array', description: 'Google search ads (see the description)' },
+      meta: { type: 'array', description: 'Meta ads (see the description)' },
+      notes: { type: 'string', description: 'Advice on budget and audience' },
+      folder: {
+        type: 'string',
+        description: 'Where to save the import file (default marketing/ads)'
+      }
+    },
+    required: []
+  },
+  risk: 'write',
+  permissions: { marketing: 'read', artifacts: 'write', folders: 'write' },
+  describe: (input) => `Draft ads${input.title ? `: ${String(input.title).slice(0, 80)}` : ''}`,
+  assess(input) {
+    // Ads that break a limit go back to the agent before the user is asked.
+    try {
+      const drafts = checkAds(input)
+      return {
+        risk: 'write',
+        summary: `Draft ${drafts.google.length} Google and ${drafts.meta.length} Meta ad(s) for "${drafts.title}" and save the import file in ${folderOf(input.folder, 'marketing/ads')}. Nothing is sent to an ad account; you launch them yourself.`
+      }
+    } catch (error) {
+      return { risk: 'write', summary: 'Draft ads', refuse: (error as Error).message }
+    }
+  },
+  async run(input, ctx) {
+    const drafts = checkAds(input)
+    for (const ad of drafts.meta)
+      if (ad.image)
+        await ctx.files.resolve(ad.image).catch(() => {
+          throw new PermissionError(`"${ad.image.slice(0, 120)}" isn't inside the allowed folders.`)
+        })
+    let file: string | null = null
+    if (drafts.google.length) {
+      file = `${folderOf(input.folder, 'marketing/ads')}/${slug(drafts.title, 'ads')}-google-ads-editor.tsv`
+      // Editor reads Unicode text: UTF-16 with a byte-order mark, like Excel's "Unicode Text".
+      await ctx.files.writeBytes(
+        file,
+        Buffer.concat([
+          Buffer.from([0xff, 0xfe]),
+          Buffer.from(googleEditorFile(drafts.google), 'utf16le')
+        ])
+      )
+    }
+    const doc = ctx.artifacts.create({
+      kind: 'document',
+      title: drafts.title,
+      content: adsDocument(drafts, { google: file })
+    })
+    const sheet = drafts.meta.length
+      ? ctx.artifacts.create({
+          kind: 'spreadsheet',
+          title: `${drafts.title}: Meta ads`,
+          content: metaSheet(drafts.meta)
+        })
+      : null
+    const notes = drafts.meta.flatMap((ad) => metaWarnings(ad).map((w) => `- ${ad.name}: ${w}`))
+    return {
+      output: [
+        `Drafted ${drafts.google.length} Google and ${drafts.meta.length} Meta ad(s): the document "${doc.title}"${sheet ? ` and the spreadsheet "${sheet.title}"` : ''}.`,
+        file
+          ? `Google Ads Editor file: ${file} (Account > Import > From file; everything arrives paused).`
+          : '',
+        notes.length ? `Worth a look:\n${notes.join('\n')}` : '',
+        'Nothing is running: the user imports or copies the ads, sets the budget and launches them.'
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      summary: `Drafted ${drafts.google.length} Google and ${drafts.meta.length} Meta ad(s)`
+    }
+  }
+})
+
 export const marketingTools = [
   brandGet,
   brandFromSite,
@@ -587,5 +781,8 @@ export const marketingTools = [
   postList,
   postChange,
   calendarExport,
-  promoVideo
+  promoVideo,
+  postResults,
+  campaignReportTool,
+  adDrafts
 ]

@@ -10,6 +10,8 @@ import { Icon } from './ui'
 
 type Platform = 'linkedin' | 'facebook' | 'instagram' | 'x' | 'tiktok'
 type Status = 'draft' | 'ready' | 'posted' | 'skipped'
+const RESULT_KEYS = ['views', 'likes', 'comments', 'shares', 'clicks'] as const
+type ResultKey = (typeof RESULT_KEYS)[number]
 
 interface PostRow {
   id: string
@@ -28,6 +30,10 @@ interface PostRow {
   maxChars: number
   prefills: boolean
   composeUrl: string
+  /** The link with where the visit came from (utm), as it is posted. */
+  trackedLink: string
+  /** What the post brought, typed in from the platform's own numbers. */
+  results: Partial<Record<ResultKey, number>>
   warnings: string[]
 }
 
@@ -132,6 +138,40 @@ function Media({ client, path }: { client: EngineClient | null; path: string }):
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+/** What a posted post brought: the user types in what the platform shows (15.11). */
+function Results({
+  post,
+  onSave
+}: {
+  post: PostRow
+  onSave(results: Record<string, string>): void
+}): React.JSX.Element {
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(RESULT_KEYS.map((k) => [k, String(post.results[k] ?? '')]))
+  )
+  const changed = RESULT_KEYS.some((k) => values[k] !== String(post.results[k] ?? ''))
+  return (
+    <div className="post-results">
+      <span className="muted">What it brought (from {post.platformLabel}’s own numbers):</span>
+      {RESULT_KEYS.map((k) => (
+        <label key={k} className="post-result">
+          {k[0].toUpperCase() + k.slice(1)}
+          <input
+            className="search short"
+            type="number"
+            min={0}
+            value={values[k]}
+            onChange={(e) => setValues({ ...values, [k]: e.target.value })}
+          />
+        </label>
+      ))}
+      <button className="btn" disabled={!changed} onClick={() => onSave(values)}>
+        Save
+      </button>
     </div>
   )
 }
@@ -243,7 +283,7 @@ export function MarketingView({
         <p className="post-text">{p.fullText}</p>
         {p.link && (
           <p className="muted">
-            Link: <span className="mono">{p.link}</span>
+            Link: <span className="mono">{p.trackedLink || p.link}</span>
           </p>
         )}
         {p.media.map((m) => (
@@ -257,6 +297,13 @@ export function MarketingView({
         <p className="muted">
           {p.chars} of {p.maxChars} characters
         </p>
+        {p.status === 'posted' && (
+          <Results
+            key={`${p.id}-${JSON.stringify(p.results)}`}
+            post={p}
+            onSave={(results) => void post('post-results', { id: p.id, results })}
+          />
+        )}
         <div className="post-actions">
           {p.status !== 'posted' && (
             <button className="btn btn-primary" onClick={() => void copyAndOpen(p)}>
@@ -378,6 +425,61 @@ export function MarketingView({
           }
         >
           Make a promo video from the site
+        </button>
+      </div>
+
+      <div className="post-actions">
+        <button
+          className="btn"
+          onClick={() =>
+            setWords(
+              'Draft Google search ads and Meta ads for … (what, for whom, where, and the page they open)'
+            )
+          }
+        >
+          Draft ads
+        </button>
+        <button
+          className="btn"
+          onClick={() =>
+            setWords('Find leads: businesses in … that … (say who fits and how many you want)')
+          }
+        >
+          Find leads
+        </button>
+        <button
+          className="btn"
+          disabled={!inMonth.length}
+          onClick={() =>
+            onAsk(
+              'Marketing agent',
+              `Make the campaign report for ${monthKey(month)} with campaign_report, then tell me in a few lines what worked and what to do next month.`
+            )
+          }
+        >
+          Report for this month
+        </button>
+        <button
+          className="btn"
+          onClick={() =>
+            onAsk(
+              'Web watcher',
+              `I want to hear about new reviews and mentions of ${data.brand.name || 'our company'}${data.brand.website ? ` (${data.brand.website})` : ''}. Ask me which public review pages we have (our Google reviews page, Facebook, Trustpilot, a trade directory), then save one web watch for them with what matters to us (new reviews, complaints, our name), and check it once.`
+            )
+          }
+        >
+          Watch reviews and mentions
+        </button>
+        <button
+          className="btn"
+          onClick={() =>
+            onAsk(
+              'Builder',
+              'I want a landing page for a campaign. Ask me what it is for and what visitors should do, then make it with the landing page starter in our brand kit, with one clear call to action, a sign-up form and good titles and descriptions for search engines, and run its checks.'
+            )
+          }
+        >
+          Make a landing page
         </button>
       </div>
 

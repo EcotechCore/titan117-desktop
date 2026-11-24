@@ -15,7 +15,16 @@ import {
   parseColour,
   pickColours
 } from '../src/engine/lib/marketing/brand'
+import {
+  adsDocument,
+  checkAds,
+  googleChars,
+  googleEditorFile,
+  metaSheet,
+  metaWarnings
+} from '../src/engine/lib/marketing/ads'
 import { writeMp4 } from '../src/engine/lib/marketing/mp4'
+import { campaignReport, campaignSheet } from '../src/engine/lib/marketing/report'
 import {
   PLATFORM_INFO,
   calendarCsv,
@@ -24,9 +33,11 @@ import {
   composeUrl,
   countChars,
   createPostStore,
+  cleanResults,
   dueAt,
   fullText,
-  postWarnings
+  postWarnings,
+  trackedLink
 } from '../src/engine/lib/marketing/posts'
 import { BRAND_MEMORY_SOURCE, createMarketing } from '../src/engine/lib/marketing/service'
 import {
@@ -174,7 +185,9 @@ describe('posts', () => {
     const x = new URL(composeUrl({ ...base, platform: 'x' }))
     expect(x.origin + x.pathname).toBe('https://x.com/intent/post')
     expect(x.searchParams.get('text')).toBe('Fresh & warm\n\n#bread')
-    expect(x.searchParams.get('url')).toBe('https://northwind.example/')
+    expect(x.searchParams.get('url')).toBe(
+      'https://northwind.example/?utm_source=x&utm_medium=social'
+    )
     const linkedin = new URL(composeUrl({ ...base, platform: 'linkedin' }))
     expect(linkedin.hostname).toBe('www.linkedin.com')
     expect(linkedin.searchParams.get('text')).toContain('Fresh & warm')
@@ -390,6 +403,194 @@ describe('the promo video’s script', () => {
     expect(Buffer.from(job.audio, 'base64')).toHaveLength(20)
     expect(textOn('#fde047')).toBe('#14161a')
     expect(mix('#000000', '#ffffff', 0.5)).toBe('#808080')
+  })
+})
+
+describe('what posts brought', () => {
+  const post = { platform: 'linkedin', date: '2026-12-03', time: '09:30', text: 'Fresh bread.' }
+
+  it('adds where a visit came from to a post’s link, once', () => {
+    const link = trackedLink({
+      platform: 'linkedin',
+      link: 'https://northwind.example/order?ref=a',
+      campaign: 'Winter Offer 2026!'
+    })
+    const url = new URL(link)
+    expect(url.searchParams.get('ref')).toBe('a')
+    expect(url.searchParams.get('utm_source')).toBe('linkedin')
+    expect(url.searchParams.get('utm_medium')).toBe('social')
+    expect(url.searchParams.get('utm_campaign')).toBe('winter-offer-2026')
+    // A link that already says where it came from is left alone; no link stays none.
+    const own = 'https://northwind.example/?utm_source=newsletter'
+    expect(trackedLink({ platform: 'x', link: own })).toBe(own)
+    expect(trackedLink({ platform: 'x', link: '' })).toBe('')
+    // Copy and open posts the tracked link.
+    const x = new URL(
+      composeUrl({ platform: 'x', text: 'Hi', hashtags: [], link: 'https://northwind.example/' })
+    )
+    expect(x.searchParams.get('url')).toContain('utm_source=x')
+  })
+
+  it('keeps only whole numbers from 0 up as results', () => {
+    expect(cleanResults({ likes: '14', clicks: 3.6, views: -1, shares: 'lots', other: 9 })).toEqual(
+      {
+        likes: 14,
+        clicks: 4
+      }
+    )
+    const store = createPostStore({ db: openDb(':memory:') })
+    const [saved] = store.save([{ ...post, status: 'posted' }], 'you')
+    store.setResults(saved.id, { likes: 14 })
+    // A later number is added; the first stays.
+    expect(store.setResults(saved.id, { clicks: 3 }).results).toEqual({ likes: 14, clicks: 3 })
+    expect(() => store.setResults('nope', { likes: 1 })).toThrow(/no such post/)
+  })
+
+  it('reports what was planned, posted, overdue and brought', () => {
+    const now = new Date('2026-12-20T12:00:00').getTime()
+    const store = createPostStore({ db: openDb(':memory:'), now: () => now })
+    const [a, b] = store.save(
+      [
+        { ...post, status: 'posted', campaign: 'Winter', link: 'https://northwind.example/' },
+        { ...post, platform: 'x', text: 'Rye | today', status: 'posted', campaign: 'Winter' },
+        { ...post, date: '2026-12-10', status: 'ready' },
+        { ...post, date: '2026-12-28', platform: 'instagram' }
+      ],
+      'you'
+    )
+    store.setResults(a.id, { likes: 10, clicks: 4 })
+    store.setResults(b.id, { likes: 2 })
+    const posts = store.list({ month: '2026-12' })
+    const report = campaignReport(posts, 'December 2026', now)
+    expect(report).toContain('4 planned: 2 posted, 1 ready, 1 drafts, 0 skipped')
+    expect(report).toContain('**1 post(s) were due and are not marked as posted.**')
+    expect(report).toContain('| LinkedIn | 2 | 1 | – | 10 | – | – | 4 |')
+    expect(report).toContain('| Winter | 2 | 2 | – | 12 | – | – | 4 |')
+    // A post's words can't break the table.
+    expect(report).toContain('| Rye / today | X |')
+    expect(report).toContain('utm_campaign')
+    const sheet = JSON.parse(campaignSheet(posts)) as { columns: string[]; rows: unknown[][] }
+    expect(sheet.columns).toContain('Clicks')
+    expect(sheet.rows).toHaveLength(4)
+    expect(String(sheet.rows[0][6])).toContain('utm_source=linkedin')
+    // Nothing typed in yet: it says where to type it.
+    const bare = store.save([{ ...post, date: '2026-11-02', status: 'posted' }], 'you')
+    expect(campaignReport(bare, 'x', now)).toMatch(/No results are typed in yet/)
+  })
+})
+
+describe('ad drafts', () => {
+  const google = {
+    campaign: 'Christmas',
+    ad_group: 'Bread',
+    final_url: 'https://bakery.example/order',
+    headlines: ['Fresh bread in Cluj', 'Order by 18:00', 'Collect warm at 7', 'Order by 18:00'],
+    descriptions: ['Sourdough and rye baked by hand.', 'Order online in two minutes.'],
+    paths: ['xmas orders'],
+    keywords: ['bakery cluj', { text: '[sourdough "cluj"]', match: 'exact' }, { text: '=cmd' }]
+  }
+  const meta = {
+    name: 'Warm rye',
+    primary_text: 'Warm rye at seven. '.repeat(10),
+    headline: 'Order tonight, collect warm tomorrow',
+    button: 'order now',
+    link: 'https://bakery.example/order'
+  }
+
+  it('checks Google’s limits to the character', () => {
+    const drafts = checkAds({ title: 'Christmas orders', google: [google], meta: [meta] })
+    // A repeated headline counts once.
+    expect(drafts.google[0].headlines).toHaveLength(3)
+    expect(drafts.google[0].paths).toEqual(['xmas-orders'])
+    expect(drafts.google[0].keywords).toEqual([
+      { text: 'bakery cluj', match: 'phrase' },
+      { text: 'sourdough cluj', match: 'exact' },
+      { text: 'cmd', match: 'phrase' }
+    ])
+    expect(() => checkAds({ google: [{ ...google, headlines: ['a', 'b'] }] })).toThrow(/3 to 15/)
+    expect(() =>
+      checkAds({ google: [{ ...google, headlines: [...google.headlines, 'x'.repeat(31)] }] })
+    ).toThrow(/31 characters; Google takes 30/)
+    expect(() =>
+      checkAds({ google: [{ ...google, descriptions: ['x'.repeat(91), 'ok'] }] })
+    ).toThrow(/takes 90/)
+    expect(() => checkAds({ google: [{ ...google, keywords: [] }] })).toThrow(/keywords/)
+    expect(() => checkAds({ google: [{ ...google, final_url: 'ftp://x' }] })).toThrow(/page/)
+    expect(() => checkAds({})).toThrow(/at least one/)
+    // Double-width characters count 2, as Google counts them.
+    expect(googleChars('パン屋')).toBe(6)
+    expect(googleChars('Pâine')).toBe(5)
+  })
+
+  it('advises on Meta’s recommendations without refusing', () => {
+    const drafts = checkAds({ meta: [meta] })
+    expect(drafts.meta[0].button).toBe('Order now')
+    const warnings = metaWarnings(drafts.meta[0])
+    expect(warnings.join(' ')).toMatch(/recommends up to 150/)
+    expect(warnings.join(' ')).toMatch(/recommends 27/)
+    expect(warnings.join(' ')).toMatch(/no picture/)
+    expect(() => checkAds({ meta: [{ ...meta, image: 'notes.txt' }] })).toThrow(/PNG or JPEG/)
+    const sheet = JSON.parse(metaSheet(drafts.meta)) as { columns: string[]; rows: string[][] }
+    expect(sheet.columns[0]).toBe('Ad name')
+    expect(sheet.rows[0][4]).toBe('Order now')
+  })
+
+  it('writes Google Ads Editor’s import file with everything paused', () => {
+    const drafts = checkAds({
+      google: [google, { ...google, ad_group: 'Pastry', headlines: ['=1+1', 'Rolls', 'Buns'] }]
+    })
+    const rows = googleEditorFile(drafts.google)
+      .trimEnd()
+      .split('\r\n')
+      .map((r) => r.split('\t'))
+    const col = (name: string): number => rows[0].indexOf(name)
+    for (const name of [
+      'Campaign',
+      'Ad group',
+      'Headline 15',
+      'Description 4',
+      'Final URL',
+      'Type'
+    ])
+      expect(col(name)).toBeGreaterThanOrEqual(0)
+    expect(rows.every((r) => r.length === rows[0].length)).toBe(true)
+    // One campaign row, two ad groups, two ads and three keywords each.
+    expect(rows).toHaveLength(1 + 1 + 2 + 2 + 6)
+    expect(rows.filter((r) => r[col('Campaign status')] === 'Paused')).toHaveLength(1)
+    const ads = rows.filter((r) => r[col('Ad type')] === 'Responsive search ad')
+    expect(ads).toHaveLength(2)
+    // Every ad and keyword is paused; nothing is enabled anywhere in the file.
+    expect(
+      rows
+        .slice(1)
+        .every((r) =>
+          [r[col('Campaign status')], r[col('Ad group status')], r[col('Status')]].includes(
+            'Paused'
+          )
+        )
+    ).toBe(true)
+    expect(googleEditorFile(drafts.google)).not.toContain('Enabled')
+    expect(ads[0][col('Headline 1')]).toBe('Fresh bread in Cluj')
+    expect(ads[0][col('Path 1')]).toBe('xmas-orders')
+    // A cell that starts like a formula can't run in a spreadsheet.
+    expect(ads[1][col('Headline 1')]).toBe("'=1+1")
+    const exact = rows.find((r) => r[col('Keyword')] === 'sourdough cluj')!
+    expect(exact[col('Type')]).toBe('Exact')
+  })
+
+  it('says in the document that nothing is running', () => {
+    const drafts = checkAds({
+      title: 'Christmas',
+      google: [google],
+      meta: [meta],
+      notes: 'Start small.'
+    })
+    const doc = adsDocument(drafts, { google: 'marketing/ads/christmas.tsv' })
+    expect(doc).toContain('**Nothing is running and nothing was sent to an ad account.**')
+    expect(doc).toContain('Account > Import > From file')
+    expect(doc).toContain('Fresh bread in Cluj _(19/30)_')
+    expect(doc).toContain('Start small.')
+    expect(doc).toContain('**Button:** Order now')
   })
 })
 

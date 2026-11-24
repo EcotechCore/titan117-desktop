@@ -99,6 +99,8 @@ export interface MarketingAccess {
     id: string,
     action: import('../../lib/marketing/posts').PostStatus | 'remove'
   ): import('../../lib/marketing/posts').Post | null
+  /** What the platform shows for a post (views, likes, clicks…), as the user reported it. */
+  setResults(id: string, results: unknown): import('../../lib/marketing/posts').Post
   /** A video an agent described, checked against the brand kit's look. */
   checkVideo(input: unknown): import('../../lib/marketing/video').VideoSpec
   /** Drawn on the laptop; `load` reads a scene's picture (through the tool's own file access). */

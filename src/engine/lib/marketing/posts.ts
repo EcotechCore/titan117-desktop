@@ -115,9 +115,49 @@ export interface Post {
   /** When the "Time to post" reminder was shown. */
   remindedAt: number | null
   postedAt: number | null
+  /** What the post brought, typed in by the user from the platform's own numbers (15.11). */
+  results: PostResults
   source: string
   createdAt: number
   updatedAt: number
+}
+
+export const RESULT_KEYS = ['views', 'likes', 'comments', 'shares', 'clicks'] as const
+export type PostResults = Partial<Record<(typeof RESULT_KEYS)[number], number>>
+
+/** Whole numbers from 0 up; anything else is left out. */
+export function cleanResults(input: unknown): PostResults {
+  const value = (input ?? {}) as Record<string, unknown>
+  const out: PostResults = {}
+  for (const key of RESULT_KEYS) {
+    const n = typeof value[key] === 'string' && value[key] !== '' ? Number(value[key]) : value[key]
+    if (typeof n === 'number' && Number.isFinite(n) && n >= 0)
+      out[key] = Math.min(Math.round(n), 1_000_000_000)
+  }
+  return out
+}
+
+/**
+ * A post's link with where the visit came from (`utm_source` the platform,
+ * `utm_medium` social, `utm_campaign` the campaign), so the company's own
+ * analytics show what each post brought. A link that already says is left alone.
+ */
+export function trackedLink(post: { platform: Platform; link: string; campaign?: string }): string {
+  if (!post.link) return ''
+  try {
+    const url = new URL(post.link)
+    if (url.searchParams.has('utm_source')) return post.link
+    url.searchParams.set('utm_source', post.platform)
+    url.searchParams.set('utm_medium', 'social')
+    const campaign = (post.campaign ?? '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+    if (campaign) url.searchParams.set('utm_campaign', campaign)
+    return url.toString()
+  } catch {
+    return post.link
+  }
 }
 
 export const MAX_POSTS = 2000
@@ -294,13 +334,16 @@ export function postWarnings(post: Pick<Post, 'platform' | 'media'>): string[] {
  * if they stop doing it the user pastes. The others open and the user pastes
  * and adds the media.
  */
-export function composeUrl(post: Pick<Post, 'platform' | 'text' | 'hashtags' | 'link'>): string {
+export function composeUrl(
+  post: Pick<Post, 'platform' | 'text' | 'hashtags' | 'link'> & { campaign?: string }
+): string {
   const text = fullText(post)
+  const link = trackedLink(post)
   switch (post.platform) {
     case 'x': {
       const url = new URL('https://x.com/intent/post')
       url.searchParams.set('text', text)
-      if (post.link && !text.includes(post.link)) url.searchParams.set('url', post.link)
+      if (post.link && !text.includes(post.link)) url.searchParams.set('url', link)
       return url.toString()
     }
     case 'linkedin': {
@@ -308,7 +351,7 @@ export function composeUrl(post: Pick<Post, 'platform' | 'text' | 'hashtags' | '
       url.searchParams.set('shareActive', 'true')
       url.searchParams.set(
         'text',
-        post.link && !text.includes(post.link) ? `${text}\n\n${post.link}` : text
+        post.link && !text.includes(post.link) ? `${text}\n\n${link}` : text
       )
       return url.toString()
     }
@@ -443,6 +486,7 @@ interface PostRow {
   status: string
   reminded_at: number | null
   posted_at: number | null
+  results: string
   source: string
   created_at: number
   updated_at: number
@@ -464,6 +508,8 @@ export interface PostStore {
   /** New posts, or changes to existing ones (by id): all checked first, then saved together. */
   save(inputs: PostInput[], source: string): Post[]
   setStatus(id: string, status: PostStatus): Post
+  /** What the platform shows for a post; given numbers replace, the others stay. */
+  setResults(id: string, results: unknown): Post
   remove(id: string): void
   /** Ready posts whose time has come and that haven't been reminded yet; marks them reminded. */
   takeDue(): Post[]
@@ -493,6 +539,7 @@ export function createPostStore(deps: {
     status: r.status as PostStatus,
     remindedAt: r.reminded_at,
     postedAt: r.posted_at,
+    results: cleanResults(JSON.parse(r.results || '{}')),
     source: r.source,
     createdAt: r.created_at,
     updatedAt: r.updated_at
@@ -630,6 +677,19 @@ export function createPostStore(deps: {
       db.prepare('update posts set status = ?, posted_at = ?, updated_at = ? where id = ?').run(
         status,
         status === 'posted' ? (post.postedAt ?? now()) : null,
+        now(),
+        post.id
+      )
+      changed()
+      return get(post.id)!
+    },
+
+    setResults(id, results) {
+      const post = get(id)
+      if (!post) throw new MarketingError('There is no such post.')
+      const next = { ...post.results, ...cleanResults(results) }
+      db.prepare('update posts set results = ?, updated_at = ? where id = ?').run(
+        JSON.stringify(next),
         now(),
         post.id
       )
