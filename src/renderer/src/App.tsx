@@ -38,6 +38,7 @@ import { AgentsView } from './Agents'
 import { byTeam } from './agents-lib'
 import { CompareView } from './Compare'
 import { AutomationsView } from './Automations'
+import { MarketingView } from './Marketing'
 import { MediaModelsView } from './Media'
 import type { ReportMode } from '../../shared/protocol'
 
@@ -163,7 +164,13 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     window.titan117.onEngineRestart(() => setAttempt((n) => n + 1))
-    window.titan117.onOpenTask((id) => dispatch({ type: 'view', view: { kind: 'task', id } }))
+    // A notification was clicked: its task, or the Marketing screen for a post that is due (15.4).
+    window.titan117.onOpenTask((id) =>
+      dispatch({
+        type: 'view',
+        view: id === 'view:marketing' ? { kind: 'marketing' } : { kind: 'task', id }
+      })
+    )
     const onUpdate = (s: { state: string; version?: string }): void =>
       setUpdate(s.state === 'ready' ? (s.version ?? '') : null)
     window.titan117.updates.onChange(onUpdate)
@@ -258,14 +265,15 @@ function App(): React.JSX.Element {
   }
 
   /** A new task from another screen (the code builder), whatever task is open. */
-  async function startNew(message: string): Promise<void> {
+  async function startNew(message: string, agent?: string): Promise<void> {
     const api = client.current
     if (!api) return
     if (!model) return dispatch({ type: 'view', view: { kind: 'models' } })
     try {
       const { task: created } = await api.send<{ task: Task }>('POST', '/v1/tasks', {
         text: message,
-        model
+        model,
+        ...(agent ? { agent } : {})
       })
       dispatch({
         type: 'detail',
@@ -502,6 +510,12 @@ function App(): React.JSX.Element {
           }}
         >
           <Icon name="calendar" /> Automations
+        </button>
+        <button
+          className={view.kind === 'marketing' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'marketing' } })}
+        >
+          <Icon name="tag" /> Marketing
         </button>
         <button
           className={view.kind === 'compare' ? 'nav on' : 'nav'}
@@ -814,6 +828,14 @@ function App(): React.JSX.Element {
                 dispatch({ type: 'view', view: { kind: 'automations' } })
               }}
               onProblem={fail}
+            />
+          )}
+          {view.kind === 'marketing' && (
+            <MarketingView
+              client={api}
+              changed={state.changed.marketing ?? 0}
+              onProblem={fail}
+              onAsk={(agent, words) => void startNew(words, agent)}
             />
           )}
           {view.kind === 'automations' && (

@@ -45,6 +45,10 @@ declare global {
         editors(): Promise<{ id: string; name: string }[]>
         open(folder: string, editor: string): Promise<boolean>
       }
+      /** Show a file in the system's file manager: only one inside the allowed folders. */
+      files: {
+        reveal(path: string): Promise<boolean>
+      }
       onEngineRestart(listener: () => void): void
       /** Auto-update (1.10): its state, and installing a downloaded update. */
       updates: {

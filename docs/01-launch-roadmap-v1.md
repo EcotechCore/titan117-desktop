@@ -110,7 +110,7 @@ Feature numbers point to the feature map.
 - Scheduler with schedules in plain words (8.10), web watcher, recorder and replay, logins from the keychain, computer use in a VM and on the user's desktop, recording other desktop apps (5.5, 5.6, §8).
 
 ### 14 · Marketing and video
-- Brand kit, promo video, social posts, content calendar, ready to post with reminders (15.4, no platform APIs, decisions §24), newsletters, sequences, landing pages, images, analytics, reports, lead finding, ad drafts, monitoring (5.1, 5.9, §15). Video on Revideo or Motion Canvas plus FFmpeg; X is a bring-your-own connector with guided setup (decisions §15). Apply for the LinkedIn, Meta and TikTok app reviews early.
+- Brand kit, promo video, social posts, content calendar, ready to post with reminders (15.4, no platform APIs, decisions §24), newsletters, sequences, landing pages, images, analytics, reports, lead finding, ad drafts, monitoring (5.1, 5.9, §15). Video on our own engine in the laptop's browser (decisions §62; Revideo, Motion Canvas and FFmpeg not shipped); X is a bring-your-own connector with guided setup (decisions §15). Apply for the LinkedIn, Meta and TikTok app reviews early.
 
 ### 15 · Remote and channels
 - Device pairing, remote tasks and approvals from the web, chat channels, end-to-end encryption, phone app (9.2–9.7). Telegram first; WhatsApp as a bring-your-own connector on the official Cloud API, with guided setup (decisions §14, §15).

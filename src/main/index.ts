@@ -613,6 +613,20 @@ function registerBridge(): void {
     return (await findEditors()).map(({ id, name }) => ({ id, name }))
   })
 
+  // A post's media, shown in its folder so the user can attach it (15.4): only inside the allowed folders.
+  ipcMain.handle('files:reveal', async (event, path: unknown) => {
+    if (!fromOurPage(event) || typeof path !== 'string') throw new Error('Refused.')
+    if (!connection) throw new Error('The engine is not running.')
+    const { url, token } = await connection
+    const state = (await (
+      await fetch(`${url}/v1/state`, { headers: { Authorization: `Bearer ${token}` } })
+    ).json()) as { folders?: string[] }
+    const real = allowedFolder(path, state.folders ?? [])
+    if (!real) throw new Error('That file isn’t in a folder you allowed.')
+    shell.showItemInFolder(real)
+    return true
+  })
+
   ipcMain.handle('code:open', async (event, folder: unknown, editorId: unknown) => {
     if (!fromOurPage(event) || typeof folder !== 'string' || typeof editorId !== 'string')
       throw new Error('Refused.')

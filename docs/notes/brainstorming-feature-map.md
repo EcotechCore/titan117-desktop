@@ -108,7 +108,7 @@ Example tasks for Titan: sort the downloads folder; build an Excel report from a
 
 | # | Agent | Stage | How it works |
 |---|---|---|---|
-| 5.1 | **Website → promo video** | V1 | Reads the site (text, logo, colours, screenshots, a screen recording), writes a script, adds a voiceover (local or cloud TTS), assembles with an open-source video engine (Revideo or Motion Canvas, plus FFmpeg); AI video clips optional (local GPU, or the user's own fal.ai or Replicate account, decisions §31) |
+| 5.1 | **Website → promo video** | V1 | Reads the site (text, logo, colours, screenshots, a screen recording), writes a script, adds a voiceover (local or cloud TTS), assembles it with our own video engine in the laptop's browser (decisions §62; Revideo, Motion Canvas and FFmpeg not shipped); AI video clips optional (local GPU, or the user's own fal.ai or Replicate account, decisions §31) |
 | 5.2 | **Website or app → QA report and tests** | V1 | Explores with Playwright, writes Playwright tests that then run without AI; accessibility (axe-core) and performance (Lighthouse); fixes broken tests with your OK |
 | 5.3 | **Prompt → app** | V1 | A web, mobile or desktop app, optionally added to the sidebar; see §6 |
 | 5.4 | **Folder agent** | V1 | Questions about your documents, with sources (§7) |

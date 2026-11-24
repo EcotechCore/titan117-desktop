@@ -1,0 +1,14 @@
+Phase 14 live check, 2026-11-24, openrouter:anthropic/claude-haiku-5.5
+
+  Video maker asked (brand_from_site): Open http://127.0.0.1:62272/ in the browser, read its brand, and save its logo and screenshots in marketing/brand
+  Video maker asked (brand_save): Save to the brand kit: name "Brutăria Ana", tagline "Fresh bread, every morning", website http://127.0.0.1:62272/, tone "warm and plain", main colour #b45309, font Georgia, logo marketing/brand/logo.svg, what the company
+  Video maker asked (promo_video): Make the promo video "brutaria-ana-promo": 6 scene(s), landscape, portrait, with a voiceover, saved in videos. It is drawn on this laptop; nothing is sent anywhere.
+Video maker: done, $0.0063; said: I saved the brand kit and made the promo video in landscape and portrait, 32 seconds each, with a voiceover and captions. **Files:** - `videos/brutaria-ana-promo-landscape.mp4` (1920×1080, for LinkedIn, X, Facebook and YouTube) - `videos/brutaria-ana-promo-portrait.mp4` (1080×1920, for TikTok, Reels and Stories) **Scenes, in order:** 1. Title: "Fresh bread, every morning". Order before 18:00, collect it warm from 7:00. 2. Home page screenshot: sourdough, rye and pastries, baked by hand in Cluj f
+Brand kit: Brutăria Ana · #b45309/#1f2937 · logo marketing/brand/logo.svg · tone "warm and plain"
+Videos: videos\brutaria-ana-promo-landscape.mp4 (7.0 MB), videos\brutaria-ana-promo-portrait.mp4 (9.6 MB)
+  Marketing agent asked (post_save): Save 23 post(s) to the content calendar (LinkedIn 10, X 13), 2026-12-01 to 2026-12-31. Nothing is posted: you publish each one yourself. The first: "Every loaf we bake starts before the city wakes up. At Brutăria Ana we 
+Marketing agent: done, $0.0076; said: I saved 23 drafts for December 2026 on the Marketing screen, all with the brand kit's warm, plain voice and Cluj focus. Nothing is marked ready and nothing is posted. - **LinkedIn: 10 posts**, about two a week, at 09:00. They cover how the bread is made, local flour, how to order, the 22 December deadline, a thank-you on Christmas Eve, and a year-end note. - **X: 13 posts**, about three a week, at 12:00 (one on Christmas Day at 10:00). They are short, with the order steps, the 22 December deadli
+Posts for December: 23 (LinkedIn 10, X 13)
+  2026-12-01 09:00 LinkedIn: Every loaf we bake starts before the city wakes up. At Brutăria Ana we bake sourdough, rye with seeds and cinnamon rolls by hand in Cluj, every morning, from local flour. Our day is built around one g
+  2026-12-02 12:00 X: Warm bread from 7:00. Sourdough, rye with seeds and cinnamon rolls, baked by hand in Cluj every morning from local flour. Which one is your pick? #Cluj #FreshBread #Cluj #FreshBread
+  2026-12-03 09:00 LinkedIn: Behind the counter, the work is quiet and early. Our sourdough and rye need time, and we do not rush them. Each batch is shaped and baked by hand, so no two mornings are exactly the same, and that is 

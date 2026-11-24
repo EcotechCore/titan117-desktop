@@ -32,6 +32,7 @@ import { createDataLayer } from '../src/engine/lib/apps/data'
 import { createSidebarService, type SidebarApp } from '../src/engine/lib/apps/sidebar'
 import { createSiteService } from '../src/engine/lib/sites/service'
 import { createAutomation, type AutomationService } from '../src/engine/lib/automation/service'
+import { createMarketing, type MarketingService } from '../src/engine/lib/marketing/service'
 import { createAgentStore } from '../src/engine/lib/agents'
 import { checkRecording } from '../src/engine/lib/automation/recorder'
 import type { Runtime } from '../src/engine/runtime'
@@ -61,6 +62,10 @@ interface Bench {
   automation: AutomationService
   /** Runs the scheduler started (run now). */
   directRuns: string[]
+  /** The brand kit and the content calendar (phase 14). */
+  marketing: MarketingService
+  /** How often marketing tried to start a browser (reading a site, drawing a video). */
+  marketingLaunches(): number
   /** How often a site check tried to start a browser. */
   siteLaunches(): number
   pending(): ReturnType<Store['listApprovals']>
@@ -144,6 +149,16 @@ function bench(
     locked: () => null,
     onChange: () => undefined
   })
+  let marketingLaunches = 0
+  const marketing = createMarketing({
+    db,
+    memory,
+    // No browser in tests: a launch is counted and refused.
+    launch: async () => {
+      marketingLaunches++
+      throw new Error('No browser in tests.')
+    }
+  })
   const services: Services = options.noServices
     ? {}
     : {
@@ -152,6 +167,7 @@ function bench(
         records: createRecordStore({ db, store, sites: () => [] }),
         browser: browser.host,
         automation,
+        marketing,
         speech: fakeSpeech,
         scratchRoot: tempFolder('titan117-scratch-'),
         fetch: web.fetch,
@@ -215,6 +231,8 @@ function bench(
     sidebarData,
     automation,
     directRuns,
+    marketing,
+    marketingLaunches: () => marketingLaunches,
     siteLaunches: () => siteLaunches,
     asked: () => store.listApprovals({ taskId: task.id }).length,
     pending: () => store.listApprovals({ taskId: task.id, status: 'pending' }),
@@ -722,6 +740,176 @@ const DENIALS: Record<string, () => Promise<void>> = {
     expect(approval.answeredBy).toBe('refused')
     const denied = await b.run({ name: 'video_create', input: { prompt: 'a bakery' } }, 'deny')
     expect(denied.status).toBe('refused')
+  },
+
+  async brand_get() {
+    const none = await bench({ noServices: true }).run({ name: 'brand_get', input: {} })
+    expect(none.status).toBe('refused')
+    const b = bench()
+    const empty = await b.run({ name: 'brand_get', input: {} })
+    expect(empty.status).toBe('done')
+    expect(empty.output).toMatch(/empty/)
+  },
+
+  async brand_from_site() {
+    const b = bench()
+    const input = { url: 'https://bakery.example' }
+    // It opens a site and saves files: it asks; denied, no browser starts.
+    const denied = await b.run({ name: 'brand_from_site', input }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.marketingLaunches()).toBe(0)
+    // Not a web address: refused, and still no browser.
+    const bad = await b.run(
+      { name: 'brand_from_site', input: { url: 'file:///C:/secret' } },
+      'approve'
+    )
+    expect(bad.status).toBe('refused')
+    expect(b.marketingLaunches()).toBe(0)
+    // A private task: an address carrying private content never leaves.
+    await makePrivate(b, SECRET_TEXT)
+    const leak = await b.run(
+      {
+        name: 'brand_from_site',
+        input: { url: `https://bakery.example/?q=${encodeURIComponent(SECRET_TEXT)}` }
+      },
+      'approve'
+    )
+    expect(leak.status).toBe('refused')
+    expect(b.marketingLaunches()).toBe(0)
+  },
+
+  async brand_save() {
+    const b = bench()
+    // It changes what every agent says about the company: it asks.
+    const denied = await b.run({ name: 'brand_save', input: { name: 'Northwind' } }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.marketing.brand.get()).toBeNull()
+    // Nothing to save: refused before anyone is asked.
+    const asked = b.asked()
+    expect((await b.run({ name: 'brand_save', input: {} })).status).toBe('refused')
+    expect(b.asked()).toBe(asked)
+    // A logo outside the allowed folders, or a colour that isn't one: nothing is saved.
+    const outside = await b.run(
+      { name: 'brand_save', input: { name: 'Northwind', logo: join(b.outside, 'logo.png') } },
+      'approve'
+    )
+    expect(outside.status).toBe('refused')
+    const colour = await b.run(
+      { name: 'brand_save', input: { name: 'Northwind', primary: 'red; background:url(x)' } },
+      'approve'
+    )
+    expect(colour.status).toBe('refused')
+    expect(b.marketing.brand.get()).toBeNull()
+  },
+
+  async post_save() {
+    const b = bench()
+    const post = { platform: 'linkedin', date: '2026-12-03', text: 'Fresh bread tomorrow.' }
+    // The calendar is the user's: saving to it asks.
+    const denied = await b.run({ name: 'post_save', input: { posts: [post] } }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.marketing.posts.list()).toHaveLength(0)
+    // No posts: refused before anyone is asked.
+    const asked = b.asked()
+    expect((await b.run({ name: 'post_save', input: { posts: [] } })).status).toBe('refused')
+    expect(b.asked()).toBe(asked)
+    // Media outside the allowed folders, or one bad post among good ones: none is saved.
+    const outside = await b.run(
+      {
+        name: 'post_save',
+        input: { posts: [{ ...post, media: [join(b.outside, 'secret.txt')] }] }
+      },
+      'approve'
+    )
+    expect(outside.status).toBe('refused')
+    const asks = b.asked()
+    const mixed = await b.run({
+      name: 'post_save',
+      input: { posts: [post, { platform: 'x', date: '2026-12-04', text: 'x'.repeat(400) }] }
+    })
+    expect(mixed.status).toBe('refused')
+    expect(b.asked()).toBe(asks)
+    expect(b.marketing.posts.list()).toHaveLength(0)
+  },
+
+  async post_list() {
+    const none = await bench({ noServices: true }).run({ name: 'post_list', input: {} })
+    expect(none.status).toBe('refused')
+    const b = bench()
+    expect((await b.run({ name: 'post_list', input: {} })).status).toBe('done')
+  },
+
+  async post_change() {
+    const b = bench()
+    const [post] = b.marketing.posts.save(
+      [{ platform: 'x', date: '2026-12-03', text: 'Fresh bread tomorrow.' }],
+      'you'
+    )
+    // Marking a post ready or removing it asks; denied, nothing changes.
+    for (const action of ['ready', 'remove']) {
+      const denied = await b.run({ name: 'post_change', input: { ids: [post.id], action } }, 'deny')
+      expect(denied.status).toBe('refused')
+    }
+    expect(b.marketing.posts.get(post.id)?.status).toBe('draft')
+    // No ids: refused before anyone is asked.
+    const asked = b.asked()
+    expect(
+      (await b.run({ name: 'post_change', input: { ids: [], action: 'remove' } })).status
+    ).toBe('refused')
+    expect(b.asked()).toBe(asked)
+  },
+
+  async calendar_export() {
+    const b = bench()
+    b.marketing.posts.save(
+      [{ platform: 'x', date: '2026-12-03', text: 'Fresh bread tomorrow.' }],
+      'you'
+    )
+    // It writes files: it asks; denied, nothing is written.
+    const denied = await b.run({ name: 'calendar_export', input: {} }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(existsSync(join(b.allowed, 'marketing'))).toBe(false)
+    // Outside the allowed folders: refused.
+    const outside = await b.run(
+      { name: 'calendar_export', input: { folder: b.outside } },
+      'approve'
+    )
+    expect(outside.status).toBe('refused')
+    expect(existsSync(join(b.outside, 'content-calendar.ics'))).toBe(false)
+  },
+
+  async promo_video() {
+    const b = bench()
+    const input = {
+      title: 'Northwind',
+      scenes: [{ kind: 'title', heading: 'Fresh bread, every morning' }]
+    }
+    // It writes a file: it asks; denied, no browser starts and nothing is written.
+    const denied = await b.run({ name: 'promo_video', input }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.marketingLaunches()).toBe(0)
+    expect(existsSync(join(b.allowed, 'videos'))).toBe(false)
+    // A scene's picture outside the allowed folders is never read, and no browser starts.
+    const outside = await b.run(
+      {
+        name: 'promo_video',
+        input: {
+          title: 'Northwind',
+          scenes: [{ kind: 'image', image: join(b.outside, 'shot.png') }]
+        }
+      },
+      'approve'
+    )
+    expect(outside.status).toBe('refused')
+    expect(b.marketingLaunches()).toBe(0)
+    // A video that isn't one (no scenes, a bad kind) is refused before anyone is asked.
+    const asks = b.asked()
+    for (const scenes of [[], [{ kind: 'explosion' }]]) {
+      const bad = await b.run({ name: 'promo_video', input: { title: 'Northwind', scenes } })
+      expect(bad.status).toBe('refused')
+    }
+    expect(b.asked()).toBe(asks)
+    expect(b.marketingLaunches()).toBe(0)
   },
 
   async agent_delegate() {
@@ -1911,7 +2099,9 @@ describe('tool denial tests', () => {
           () => ctx.media.pick('image'),
           () => ctx.sites.history('https://example.com'),
           () => ctx.automation.schedules(),
-          () => ctx.automation.login('example.com')
+          () => ctx.automation.login('example.com'),
+          () => ctx.marketing.brand(),
+          () => ctx.marketing.savePosts([])
         ]
         const refused: string[] = []
         for (const attempt of tries) {
@@ -1927,7 +2117,7 @@ describe('tool denial tests', () => {
     })
     const b = bench({ extraTools: [greedy] })
     const outcome = await b.run({ name: 'greedy', input: {} })
-    expect(outcome.output.split(',')).toEqual(Array(19).fill('PermissionError'))
+    expect(outcome.output.split(',')).toEqual(Array(21).fill('PermissionError'))
   })
 
   it('every tool declares a risk and its permissions', () => {

@@ -217,16 +217,18 @@ Checked on 24 Nov 2026. Phase 13's first part reuses no code from these: the sch
 
 | Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
 |---|---|---|---|---|---|---|
-| [redotvideo/revideo](https://github.com/redotvideo/revideo) | **Video from code**, rendering API | MIT *to check* | Code | `video/revideo` | MIT | `b5de67a009a5` |
-| [motion-canvas/motion-canvas](https://github.com/motion-canvas/motion-canvas) | Code-driven animation | MIT | Code | `video/motion-canvas` | MIT | `7b91435c301d` |
-| [mifi/editly](https://github.com/mifi/editly) | JSON-to-video edits | MIT *to check* | Code | `video/editly` | MIT | `dc46674052ea` |
-| FFmpeg (LGPL build) | Encoding and formats (separate program) | LGPL | Lib | `video/ffmpeg` | | |
-| [hexgrad/kokoro](https://github.com/hexgrad/kokoro) and kokoro-js | Local voiceover (TTS) | Apache 2.0 | Lib | `video/kokoro` | | |
+| [redotvideo/revideo](https://github.com/redotvideo/revideo) | **Video from code**, rendering API | MIT | Ideas | `video/revideo` | MIT (`LICENSE`, 24 Nov 2026). Its renderer needs Puppeteer and `@revideo/ffmpeg`, which depends on `@ffmpeg-installer/ffmpeg` (LGPL-2.1 package; downloads third-party static FFmpeg builds whose licence its README doesn't state): not shipped (decisions §62) | `b5de67a009a5` |
+| [motion-canvas/motion-canvas](https://github.com/motion-canvas/motion-canvas) | Code-driven animation | MIT | Ideas | `video/motion-canvas` | MIT. Its `@motion-canvas/ffmpeg` exporter needs `fluent-ffmpeg` and an FFmpeg program: not shipped (decisions §62) | `7b91435c301d` |
+| [mifi/editly](https://github.com/mifi/editly) | JSON-to-video edits | MIT | Ideas | `video/editly` | MIT. Its idea, a video as a list of clips in JSON, is how our scenes work; it runs FFmpeg, so no code is used | `dc46674052ea` |
+| FFmpeg (LGPL build) | Encoding and formats (separate program) | LGPL | Not used | — | Not needed: the laptop's own Edge or Chrome encodes H.264 and AAC (WebCodecs) and our own MP4 writer puts the file together (decisions §62) | |
+| [hexgrad/kokoro](https://github.com/hexgrad/kokoro) and kokoro-js | Local voiceover (TTS) | Apache 2.0 | Not used | — | Dropped on 15 Nov 2026 (decisions §43.10): its pronunciation step needs eSpeak NG (GPL). The voiceover is the system's own voice | |
 | Piper TTS | Local TTS | Now GPL *to check* | Ideas | — | | |
-| [inovector/mixpost](https://github.com/inovector/mixpost) | Social scheduling (Lite edition) | MIT *to check* | Code | `marketing/mixpost` | MIT | `df57648b8663` |
+| [inovector/mixpost](https://github.com/inovector/mixpost) | Social scheduling (Lite edition) | MIT | Ideas | `marketing/mixpost` | MIT. It posts through each platform's API, which V1 doesn't (decisions §24): its calendar and per-platform previews are ideas only so far | `df57648b8663` |
 | [gitroomhq/postiz-app](https://github.com/gitroomhq/postiz-app) | Social scheduling, many platforms | AGPL | Ideas | `marketing/postiz` | AGPL: ideas only | `08b1e6b46f49` |
 | [umami-software/umami](https://github.com/umami-software/umami) | Privacy-friendly analytics for built sites | MIT | Code | `marketing/umami` | MIT | `ec0ff50388c2` |
 | Listmonk, Mautic, Plausible | Newsletters, sequences, analytics | AGPL, GPL, AGPL | Ideas | `marketing/…` | | |
+
+Checked on 24 Nov 2026. Phase 14's first part reuses no code from these: the brand kit, the posts and calendar, the video engine and the MP4 writer are our own (decisions §62). No new dependency.
 
 ## Phase 15 · Remote and channels
 

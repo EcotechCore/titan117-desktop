@@ -76,7 +76,10 @@ import {
 import { querySheet, SheetError } from './lib/sheets'
 import { DocumentError } from './lib/documents'
 import { AgentError } from './lib/agents'
-import type { AutomationAccess } from './tools/lib/define-tool'
+import type { AutomationAccess, MarketingAccess } from './tools/lib/define-tool'
+import type { MarketingService } from './lib/marketing/service'
+import { MarketingError } from './lib/marketing/brand'
+import { checkVideo } from './lib/marketing/video'
 import { AutomationError } from './lib/automation/schedule'
 import { checkRecording } from './lib/automation/recorder'
 import type { AutomationService } from './lib/automation/service'
@@ -190,6 +193,8 @@ export interface Services {
   sites?: SiteService
   /** Schedules, web watches, recordings and saved logins (phase 13; decisions §61). */
   automation?: AutomationService
+  /** The brand kit, the content calendar and the promo video (phase 14; decisions §62). */
+  marketing?: MarketingService
 }
 
 /** The engine's side of the team tools; the layer hands each call its own task. */
@@ -581,6 +586,59 @@ export function createPermissionLayer(deps: {
           }
         }
       : denied<AutomationAccess>('schedules, watches and recordings')
+
+    const market = (): MarketingService => needService(services.marketing, 'Marketing')
+    const marketWrite = (): void => {
+      if (p.marketing !== 'write')
+        throw new PermissionError('This tool may read the brand kit and the calendar only.')
+    }
+    const marketing: MarketingAccess = p.marketing
+      ? {
+          brand: () => market().brand.get(),
+          saveBrand(input) {
+            marketWrite()
+            return market().brand.save(input)
+          },
+          readSite(urls, options = {}) {
+            // A site is read through this task's own network policy, or not at all.
+            if (!p.network)
+              throw new PermissionError('This tool did not declare access to the network.')
+            return market().readSite(urls, options, { net, signal: ctx.signal })
+          },
+          posts: (filter) => market().posts.list(filter),
+          savePosts(inputs) {
+            marketWrite()
+            return market().posts.save(inputs, madeBy())
+          },
+          changePost(id, action) {
+            marketWrite()
+            if (action === 'remove') {
+              market().posts.remove(id)
+              return null
+            }
+            return market().posts.setStatus(id, action)
+          },
+          checkVideo(input) {
+            const brand = market().brand.get()
+            return checkVideo(
+              input,
+              brand
+                ? {
+                    primary: brand.primary,
+                    accent: brand.accent,
+                    font: brand.headingFont,
+                    name: brand.name,
+                    logo: brand.logo
+                  }
+                : {}
+            )
+          },
+          video(spec, load) {
+            marketWrite()
+            return market().video(spec, load, { signal: ctx.signal })
+          }
+        }
+      : denied<MarketingAccess>('the brand kit, posts and videos')
 
     const records: RecordAccess = p.records
       ? {
@@ -1074,6 +1132,7 @@ export function createPermissionLayer(deps: {
       media,
       sites,
       automation,
+      marketing,
       search,
       documents,
       pages,
@@ -1163,7 +1222,8 @@ export function createPermissionLayer(deps: {
           error instanceof AgentError ||
           error instanceof MediaError ||
           error instanceof SiteError ||
-          error instanceof AutomationError
+          error instanceof AutomationError ||
+          error instanceof MarketingError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }

@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('titan117', {
     editors: () => ipcRenderer.invoke('code:editors'),
     open: (folder: string, editor: string) => ipcRenderer.invoke('code:open', folder, editor)
   },
+  /** Show a file in the system's file manager: only one inside the allowed folders. */
+  files: {
+    reveal: (path: string) => ipcRenderer.invoke('files:reveal', path)
+  },
   onEngineRestart: (listener: () => void) => {
     ipcRenderer.on('engine:restarted', () => listener())
   },
