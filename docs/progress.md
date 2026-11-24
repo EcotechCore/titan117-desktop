@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 24 Nov 2026 · Phase 14's first two parts merged
+
+The phase 14 pull requests are merged in all three repos (web #56 first, then desktop #51 and pop #43 after their docs check). CI caught a test that only failed on Linux (a `C:/Windows/…` path is relative there); fixed with a separate temporary folder. Run the desktop app from `main`.
+
 ### 24 Nov 2026 · Phase 14: campaign reports, tracked links, ad drafts, leads and monitoring
 
 - **Campaign reports (15.11)** (`marketing/report.ts`, `post_results`, `campaign_report`): planned, posted and overdue per platform and campaign, and what posts brought, from numbers the user types in (a new `results` column on `posts`, a migration). **Tracked links** (`trackedLink` in `posts.ts`): `utm_source`, `utm_medium=social`, `utm_campaign`, used by Copy and open and the export.

@@ -2,7 +2,7 @@
 
 Everything waiting on the owner, in the order to do it. Gathered from every repo's progress log; last rewritten 15 Nov 2026 after phase 4's leftovers and the first part of phase 5. Shared doc: edited in `titan117-web`, copied to the other repos. When an item is done, tick it here and add a line to `progress.md`; when the build adds a new one, it goes here in the same commit.
 
-**Where the code is:** everything up to phase 13's first part is merged into `main` in all three repos (24 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
+**Where the code is:** everything up to phase 14's first two parts is merged into `main` in all three repos (24 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
 
 ## Step 1 · Push and review
 
@@ -101,7 +101,7 @@ Nothing here blocks other phases. Phase 13's first part is merged into `main` (2
 
 ## Phase 14 · Marketing and video (started 24 Nov 2026)
 
-Nothing here blocks other phases. Built on the `phase-14-marketing` branches; once merged, run the desktop app from `main` with `pnpm dev` and open **Marketing** in the sidebar.
+Nothing here blocks other phases. Merged into `main` (24 Nov 2026); run the desktop app from `main` with `pnpm dev` and open **Marketing** in the sidebar.
 
 - [ ] **Your development profile's brand kit was overwritten on 24 Nov 2026.** A check of the Marketing screen meant for a throwaway profile ran in yours (Electron took its data folder from Windows, not from the setting the script changed). Its 12 test posts and one test memory were removed the same evening; the brand kit now holds the test bakery ("Brutăria Ana", `#b45309`), and whatever kit you had before (on the Apps screen) couldn't be recovered. Open **Marketing → Brand kit** and put yours back, or clear it. The welcome dialog's **Skip setup** may also have been pressed there. The script now uses its own profile, checked.
 - [ ] **Close phase 14's check: publish a real post from its reminder on two platforms.** Ask the Marketing agent for a few posts, mark two **Ready** for a few minutes from now (one for LinkedIn, one for X), wait for the "Time to post" notification, press **Copy and open**, post it on the platform, then **I posted it**. Tell Claude whether X and LinkedIn opened with the text filled in (neither address is in their public docs). The phone's share sheet half waits for the phone app (phase 15).
