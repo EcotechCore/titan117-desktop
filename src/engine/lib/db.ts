@@ -266,6 +266,53 @@ const MIGRATIONS: string[] = [
     at integer not null
   );
   create index agent_messages_root on agent_messages(root_task_id, at);
+  `,
+  // Phase 13: schedules (8.1, 8.10) and web watches (5.5); decisions §61. Local only.
+  `
+  create table schedules (
+    id text primary key,
+    name text not null,
+    -- JSON: when it runs and what it runs (lib/automation/schedule.ts).
+    when_json text not null,
+    action_json text not null,
+    enabled integer not null default 1,
+    next_at integer,
+    last_at integer,
+    last_task_id text,
+    last_note text,
+    source text not null,
+    created_at integer not null
+  );
+  create index schedules_next on schedules(enabled, next_at);
+
+  create table watches (
+    id text primary key,
+    name text not null unique,
+    urls text not null,
+    about text not null default '',
+    source text not null,
+    created_at integer not null,
+    last_checked_at integer,
+    last_changed_at integer
+  );
+  -- Each watched page's text as last read, to compare with the next time.
+  create table watch_pages (
+    watch_id text not null references watches(id) on delete cascade,
+    url text not null,
+    text text not null,
+    hash text not null,
+    checked_at integer not null,
+    primary key (watch_id, url)
+  );
+  create table watch_changes (
+    id text primary key,
+    watch_id text not null references watches(id) on delete cascade,
+    url text not null,
+    at integer not null,
+    added text not null,
+    removed text not null
+  );
+  create index watch_changes_watch on watch_changes(watch_id, at);
   `
 ]
 

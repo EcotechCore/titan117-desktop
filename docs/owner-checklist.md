@@ -2,7 +2,7 @@
 
 Everything waiting on the owner, in the order to do it. Gathered from every repo's progress log; last rewritten 15 Nov 2026 after phase 4's leftovers and the first part of phase 5. Shared doc: edited in `titan117-web`, copied to the other repos. When an item is done, tick it here and add a line to `progress.md`; when the build adds a new one, it goes here in the same commit.
 
-**Where the code is:** everything up to phase 11 is merged into `main` in all three repos (22 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
+**Where the code is:** everything up to phase 12 is merged into `main` in all three repos (22 Nov 2026); run the desktop app from `main` with `pnpm dev`. Phase 13 is on the branch `phase-13-automation` in the desktop repo until its pull request is merged. **Production waits** (decisions §52): everything is checked locally first.
 
 ## Step 1 · Push and review
 
@@ -85,6 +85,18 @@ Nothing here blocks other phases. Phase 12 is merged into `main` (22 Nov 2026); 
 - [ ] **Decisions §60** (to be confirmed): our own polite crawler (robots.txt kept, 30 pages by default), axe-core for accessibility (MPL 2.0, unchanged), Lighthouse not shipped (PageSpeed Insights with your own free Google key instead), saved tests that run without AI, AI visibility through OpenRouter with OpenAI, Perplexity and Google models, past audits kept on the laptop.
 - [ ] **For Search Console (when you want rankings and search data, 14.5–14.6):** register our own Google sign-in app: in Google Cloud Console, **Google Auth Platform → Branding** (app name Titan117, support email, the titan117.com homepage and privacy policy), **Data access → add the scope `…/auth/webmasters.readonly`** (and tell us whether the console lists it as sensitive), then **Clients → Create client → Desktop app** and send us the client ID. If the scope is sensitive, Google's verification needs titan117.com verified, the privacy policy live, a short demo video and up to 10 days; until then up to 100 users can use it after a warning screen. Not urgent: it waits for titan117.com to be live (§52).
 - [ ] **Decide on keyword data (14.7):** DataForSEO on each user's own account ($50 minimum top-up, about $0.0006 a results page) is the planned default, built after Search Console. Say if you'd rather start with something else, or skip paid keyword data for V1.
+
+## Phase 13 · Automation (started 24 Nov 2026)
+
+Nothing here blocks other phases. Until the pull requests are merged, run the desktop app from the branch `phase-13-automation` with `pnpm dev`; after that, from `main`.
+
+- [ ] **Close phase 13's check: see the law watcher report a real change** (two visits, a day or more apart). Open **Automations → Add a web watch**: a name, the page that *lists* new acts for the law you care about, and what matters to your company. Press **Check now** (the first check only sets the starting point). Then say in plain words "Every Monday at 9, check the web watch …", approve the card, and look at the run after the page has really changed. Tell Claude what it said. A change on a real law page hasn't been seen yet; only on a test page and on a fast-moving page that isn't a law source.
+- [ ] **Tell Claude which law pages you want watched by default,** and whether they open for you: `legislatie.just.ro` didn't answer from this laptop on 24 Nov 2026, and EUR-Lex answered our reader with an empty page (a bot check). Until that's settled, no source is built in: you pick the pages.
+- [ ] **Record something yourself** (it was recorded by a page script while building, not by a person): **Automations → Record new**, give the address where it starts, do your steps in the browser window that opens, come back, name it and press **Stop and save**. Look at **Steps**, press **Run**, and check that a button that sends, pays or publishes waits for your OK. If the site signs in, add its login under **Saved logins** first.
+- [ ] **Try a schedule for a recording:** "Every month on the 1st at 9, replay the recording …". Close the app over a run time and open it again: it should run once and say it caught up.
+- [ ] **Decisions §61** (to be confirmed): schedules run only while the app is open, with one catch-up run; every new schedule and every recording saved by an agent asks on the laptop; a scheduled replay runs without asking each time, but its final steps always ask; watch checks are free and the agent is asked only when something changed; saved logins are in the keychain and filled in only on their own site; our own recorder instead of Playwright's.
+- [ ] **Decide how computer use is built (8.7–8.9), not built yet:** the proposal is the virtual machine first (Windows Sandbox, which still has to be switched on, see phase 9), then your own desktop with a visible bar, a stop hotkey and a list of allowed apps; Anthropic's computer use tool with your own Anthropic key first (it isn't offered through OpenRouter, so not through credits), a local model later; our own code on Windows' UI Automation, no nut.js (no licence) and no UI-TARS desktop code (archived). Say yes, or what to change.
+- [ ] **Recording other desktop apps (8.6)** follows computer use: say whether it stays in V1 or moves after launch (the feature map already calls it much harder than the browser).
 
 ## Step 2 · Confirm the decisions (about an hour of reading)
 

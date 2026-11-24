@@ -76,6 +76,10 @@ import {
 import { querySheet, SheetError } from './lib/sheets'
 import { DocumentError } from './lib/documents'
 import { AgentError } from './lib/agents'
+import type { AutomationAccess } from './tools/lib/define-tool'
+import { AutomationError } from './lib/automation/schedule'
+import { checkRecording } from './lib/automation/recorder'
+import type { AutomationService } from './lib/automation/service'
 
 export interface CallContext {
   taskId: string
@@ -184,6 +188,8 @@ export interface Services {
   media?: MediaService
   /** Site checks for the QA tester and the SEO agent (5.2, 5.8; decisions §60). */
   sites?: SiteService
+  /** Schedules, web watches, recordings and saved logins (phase 13; decisions §61). */
+  automation?: AutomationService
 }
 
 /** The engine's side of the team tools; the layer hands each call its own task. */
@@ -528,6 +534,54 @@ export function createPermissionLayer(deps: {
         })()
       : denied<SiteAccess>('site checks')
 
+    const auto = (): AutomationService => needService(services.automation, 'Automation')
+    const autoWrite = (): void => {
+      if (p.automation !== 'write')
+        throw new PermissionError('This tool may read schedules, watches and recordings only.')
+    }
+    const madeBy = (): string =>
+      `${ctx.agent}, in the task "${(store.getTask(ctx.taskId)?.title ?? '').slice(0, 80)}"`
+    const automation: AutomationAccess = p.automation
+      ? {
+          schedules: () => auto().schedules.list(),
+          createSchedule(input) {
+            autoWrite()
+            return auto().schedules.create({ ...input, source: madeBy() })
+          },
+          changeSchedule(name, action) {
+            autoWrite()
+            if (action === 'remove') {
+              auto().schedules.remove(name)
+              return null
+            }
+            if (action === 'run_now') return auto().schedules.runNow(name)
+            return auto().schedules.setEnabled(name, action === 'resume')
+          },
+          watches: () => auto().watches.list(),
+          watchChanges: (name) => auto().watches.changes(name),
+          saveWatch(input) {
+            autoWrite()
+            return auto().watches.save({ ...input, source: madeBy() })
+          },
+          checkWatch(name, read) {
+            autoWrite()
+            return auto().watches.check(name, read)
+          },
+          recordings: () => auto().recordings.list(),
+          recording: (name) => auto().recordings.get(name),
+          saveRecording(input) {
+            autoWrite()
+            return auto().recordings.save(checkRecording(input, madeBy()))
+          },
+          login(site) {
+            // Only a tool that replays in the browser gets a saved login.
+            if (p.automation !== 'write' || !p.browser)
+              throw new PermissionError('This tool may not use saved logins.')
+            return auto().logins.get(site)
+          }
+        }
+      : denied<AutomationAccess>('schedules, watches and recordings')
+
     const records: RecordAccess = p.records
       ? {
           search: (query, limit = 5) =>
@@ -554,7 +608,7 @@ export function createPermissionLayer(deps: {
     const siteOk = (host: string): boolean => searchService?.allowedSite(ctx.agent, host) ?? true
     const pages: PageAccess = p.network
       ? {
-          async read(url) {
+          async read(url, options) {
             let host: string
             try {
               host = new URL(url).hostname
@@ -563,7 +617,7 @@ export function createPermissionLayer(deps: {
             }
             if (!siteOk(host))
               throw new PermissionError(`${host} is not on ${ctx.agent}'s list of sites to use.`)
-            return needService(services.pages, 'Reading pages').read(url, net, ctx.signal)
+            return needService(services.pages, 'Reading pages').read(url, net, ctx.signal, options)
           },
           allowedByRobots: (url) =>
             needService(services.pages, 'Reading pages').allowedByRobots(url, net, ctx.signal),
@@ -1019,6 +1073,7 @@ export function createPermissionLayer(deps: {
       team,
       media,
       sites,
+      automation,
       search,
       documents,
       pages,
@@ -1107,7 +1162,8 @@ export function createPermissionLayer(deps: {
           error instanceof DataError ||
           error instanceof AgentError ||
           error instanceof MediaError ||
-          error instanceof SiteError
+          error instanceof SiteError ||
+          error instanceof AutomationError
         ) {
           activity(ctx, 'error', tool.name, `${tool.name}: ${error.message}`, approvedBy)
           return { status: 'failed', output: error.message }

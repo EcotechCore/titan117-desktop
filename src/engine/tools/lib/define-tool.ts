@@ -72,6 +72,40 @@ export interface ToolPermissions {
   media?: boolean
   /** Site checks for QA and SEO: the audit crawler, QA runs, PageSpeed, AI visibility (5.2, 5.8; decisions §60). */
   sites?: boolean
+  /** Schedules, web watches and recordings (phase 13, decisions §61): reading them, or also making, checking and running them. */
+  automation?: 'read' | 'write'
+}
+
+/** Schedules, web watches and recordings (5.5, 5.6, §8; decisions §61). */
+export interface AutomationAccess {
+  schedules(): import('../../lib/automation/schedule').Schedule[]
+  createSchedule(input: {
+    name: unknown
+    when: unknown
+    action: unknown
+  }): import('../../lib/automation/schedule').Schedule
+  /** Null when it was removed. */
+  changeSchedule(
+    name: string,
+    action: 'pause' | 'resume' | 'remove' | 'run_now'
+  ): import('../../lib/automation/schedule').Schedule | null
+  watches(): import('../../lib/automation/watch').Watch[]
+  watchChanges(name: string): import('../../lib/automation/watch').StoredChange[]
+  saveWatch(input: {
+    name: unknown
+    urls: unknown
+    about?: unknown
+  }): import('../../lib/automation/watch').Watch
+  checkWatch(
+    name: string,
+    read: (url: string) => Promise<string>
+  ): Promise<import('../../lib/automation/watch').WatchCheck>
+  recordings(): import('../../lib/automation/recorder').Recording[]
+  recording(name: string): import('../../lib/automation/recorder').Recording | null
+  /** Checked before it's saved. */
+  saveRecording(input: unknown): import('../../lib/automation/recorder').Recording
+  /** A saved site login from the keychain, for a replay only; never shown to a model. */
+  login(site: string): { username: string; password: string } | null
 }
 
 /** Site checks (5.2, 5.8): every request goes through the task's network policy. */
@@ -280,7 +314,8 @@ export interface DocumentsAccess {
 
 /** Reading pages as clean text (16.5), through the task's network policy and the agent's site lists. */
 export interface PageAccess {
-  read(url: string): Promise<Page>
+  /** `fresh` skips the 15-minute page cache (a watch check). */
+  read(url: string, options?: { fresh?: boolean }): Promise<Page>
   allowedByRobots(url: string): Promise<boolean>
   /** Whether the agent's trusted and blocked lists allow this site (16.9). */
   allowedSite(host: string): boolean
@@ -309,6 +344,7 @@ export interface ToolContext {
   team: TeamAccess
   media: MediaAccess
   sites: SiteAccess
+  automation: AutomationAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.

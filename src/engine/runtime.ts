@@ -81,6 +81,7 @@ export function systemPrompt(folders: string[], context: PromptContext = {}): st
     'When the user asks to search in the browser, or on a specific search engine such as Google or Bing, do that search in the browser (browser_open) instead of web_search, then read the results there.',
     'In the browser, never solve CAPTCHAs or hide that you are automated; stop before the final publish, send or pay step and let the user approve it.',
     'Save to memory what the user tells you about themselves, their company and their preferences (memory_save). Never save keys or passwords.',
+    'When the user wants something done regularly ("every weekday at 8…", "each Monday…"), make a schedule with schedule_create instead of doing it once; a page to keep an eye on is a web watch (watch_save, watch_check).',
     'Before a kind of task you may have done before, check past_tasks. After finishing a task the user is likely to repeat, offer to save it as a skill (skill_save).',
     UNTRUSTED_RULE
   ]
@@ -155,6 +156,19 @@ export interface TaskAgent {
 export interface Runtime {
   /** `agent` is an agent's name; Titan when absent. */
   start(text: string, model: string, mode?: Task['mode'], agent?: string): Task
+  /**
+   * One tool call run as its own task, without a model (a scheduled replay or
+   * watch check, decisions §61): the same permission layer, approvals and
+   * activity log as any call. `allow` lists tools the user already agreed to
+   * for this run (when they approved the schedule).
+   */
+  runDirect(input: {
+    title: string
+    agent: string
+    text: string
+    call: { name: string; input: Record<string, unknown> }
+    allow?: string[]
+  }): Task
   /** A part of a task, handed to another agent (4.6): its own task, linked to the first. */
   startPart(input: { parentId: string; agent: string; text: string; model: string }): Task
   /** The agent of a task, or null when it was removed. */
@@ -175,6 +189,9 @@ export interface Runtime {
    */
   resume(taskId: string, why: string): Task
 }
+
+/** The "model" of a task that ran without one (a scheduled replay). */
+export const NO_MODEL = 'none'
 
 export const LOCAL_ONLY_NOTE =
   'This task read files from a folder kept for local models only, so a cloud model may not continue it. Continue with a local model.'
@@ -615,6 +632,77 @@ export function createRuntime(deps: {
       })
       launch(taskId)
       return updated
+    },
+
+    runDirect({ title, agent: agentName, text, call, allow = [] }) {
+      const lock = deps.locked?.()
+      if (lock) throw new RuntimeError('LOCKED', lock)
+      const def = findAgent(agentName)
+      const tool = tools.get(call.name)
+      if (!tool || !agentMayUse(def, tool, { isPart: false }))
+        throw new RuntimeError('BAD_REQUEST', `${def.name} wasn't given ${call.name}.`)
+      const task = store.createTask({
+        title: title.slice(0, 80),
+        agent: def.name,
+        model: NO_MODEL
+      })
+      const taskId = task.id
+      store.log({
+        taskId,
+        kind: 'task',
+        agent: def.name,
+        model: null,
+        tool: null,
+        summary: 'Run started without AI',
+        costUsd: 0,
+        approvedBy: null
+      })
+      store.addMessage(taskId, { role: 'user', text })
+      permissions.userSaid(taskId, text)
+      for (const name of allow) store.allowAlways(taskId, name)
+      const toolCall = { id: `direct-${taskId.slice(0, 8)}`, ...call }
+      store.addMessage(taskId, { role: 'assistant', text: '', toolCalls: [toolCall] })
+      const abort = new AbortController()
+      const done = (async () => {
+        let status: Task['status'] = 'done'
+        let note: string | null = null
+        try {
+          const outcome = await permissions.execute(toolCall, {
+            taskId,
+            agent: def.name,
+            model: NO_MODEL,
+            signal: abort.signal,
+            alwaysAsk: def.alwaysAsk,
+            ownMemory: def.memory === 'own'
+          })
+          store.addMessage(taskId, {
+            role: 'tool',
+            callId: toolCall.id,
+            name: toolCall.name,
+            output: outcome.output,
+            ...(outcome.status === 'done' ? {} : { isError: true })
+          })
+          if (abort.signal.aborted) {
+            status = 'stopped'
+            note = 'You stopped this task.'
+          } else if (outcome.status !== 'done') {
+            status = 'error'
+            note = outcome.output.slice(0, 300)
+          }
+        } catch (error) {
+          const id = log.capture('runtime', error, { taskId })
+          status = 'error'
+          note = `Something went wrong (ref ${id.slice(0, 8)}). It was saved to the local log.`
+        }
+        store.updateTask(taskId, { status, note, steps: 1 })
+        void permissions.release(taskId)
+      })().finally(() => {
+        if (running.get(taskId)?.abort === abort) running.delete(taskId)
+      })
+      running.set(taskId, { abort, done })
+      deps.onBusy?.(running.size)
+      void done.finally(() => deps.onBusy?.(running.size))
+      return task
     },
 
     startPart({ parentId, agent: agentName, text, model: chosen }) {

@@ -88,6 +88,16 @@ declare global {
         ): Promise<{ ok: true } | { ok: false; problem: string }>
         removeSecrets(id: string): Promise<boolean>
       }
+      /** Saved site logins for recordings (8.5): a password goes in and never comes back. */
+      logins: {
+        saved(): Promise<{ site: string; username: string }[]>
+        save(
+          site: string,
+          username: string,
+          password: string
+        ): Promise<{ ok: true } | { ok: false; problem: string }>
+        remove(site: string): Promise<boolean>
+      }
       /** Artifacts (§17): shown in a sandbox, printed and saved by the shell. */
       artifacts: {
         /** The sandboxed address to show a page at. */

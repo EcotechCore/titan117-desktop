@@ -205,11 +205,13 @@ Checked on 22 Nov 2026 (axe-core and Lighthouse cloned shallow and sparse). Phas
 
 | Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
 |---|---|---|---|---|---|---|
-| [puppeteer/replay](https://github.com/puppeteer/replay) | Replaying recorded browser steps | Apache 2.0 | Code | `auto/puppeteer-replay` | Apache 2.0 | `6b51dcb1df24` |
-| Playwright codegen (in Playwright) | Recording browser actions | Apache 2.0 | Code | — | | |
-| [bytedance/UI-TARS-desktop](https://github.com/bytedance/UI-TARS-desktop) | Computer use: screenshots, actions | Apache 2.0 *to check* | Code | `auto/ui-tars-desktop` | Apache 2.0 | `3ac2cb8d946d` |
-| [nut-tree/nut.js](https://github.com/nut-tree/nut.js) | Mouse and keyboard control | No licence file found | Ideas | `auto/nutjs` | No licence file in repo: ideas only | `e413fa1f19a1` |
+| [puppeteer/replay](https://github.com/puppeteer/replay) | Replaying recorded browser steps; several selectors per element, tried in turn | Apache 2.0 | Ideas | `auto/puppeteer-replay` | Apache 2.0 (`LICENSE`, 24 Nov 2026). Its step schema (`src/Schema.ts`) read for ideas; nothing copied | `6b51dcb1df24` |
+| Playwright codegen (in [microsoft/playwright](https://github.com/microsoft/playwright)) | Recording browser actions: role, text and test id first | Apache 2.0 | Ideas | — | Apache 2.0 (24 Nov 2026). No public library call to record (decisions §61.9), so our own page script; `playwright-core` itself is already a dependency | |
+| [bytedance/UI-TARS-desktop](https://github.com/bytedance/UI-TARS-desktop) | Computer use: screenshots, actions | Apache 2.0 | Ideas | `auto/ui-tars-desktop` | Apache 2.0 (`LICENSE`); **archived by its owner on 9 Nov 2026**, read-only: ideas only. The model UI-TARS-1.5-7B is Apache 2.0 on its model card | `3ac2cb8d946d` |
+| [nut-tree/nut.js](https://github.com/nut-tree/nut.js) | Mouse and keyboard control | No licence file found | Not used | `auto/nutjs` | No licence file; its README says the public npm packages were removed and pre-built ones are sold by subscription (24 Nov 2026): not used | `e413fa1f19a1` |
 | Open Interpreter | Computer use | AGPL | Ideas | — | | |
+
+Checked on 24 Nov 2026. Phase 13's first part reuses no code from these: the schedules, the web watcher, the recorder's page script and the replay are our own (decisions §61). No new dependency.
 
 ## Phase 14 · Marketing and video
 

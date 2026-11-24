@@ -13,6 +13,7 @@ type FromShell =
   | { type: 'keys'; keys: OwnKeys }
   | { type: 'connectorSecrets'; secrets: Record<string, Record<string, string>> }
   | { type: 'github'; token: string | null }
+  | { type: 'logins'; logins: Record<string, { username: string; password: string }> }
   | { type: 'shutdown' }
   /** The engine before this one stopped unexpectedly (19.1): kept as a caught error. */
   | { type: 'crashed'; code: number }
@@ -54,6 +55,7 @@ async function main(): Promise<void> {
       else if (data.type === 'keys') engine.setKeys(data.keys)
       else if (data.type === 'connectorSecrets') engine.setConnectorSecrets(data.secrets)
       else if (data.type === 'github') engine.setGitHubToken(data.token)
+      else if (data.type === 'logins') engine.setLogins(data.logins)
       else if (data.type === 'crashed')
         engine.parts.log.capture(
           'engine crash',

@@ -2148,3 +2148,46 @@ textarea.edit {
   font: 11px/1 var(--mono);
   color: var(--faint);
 }
+
+/* Automations (phase 13): folds, recorded steps and a watch's changes. */
+.fold {
+  margin: 6px 0 10px;
+}
+.fold > summary {
+  cursor: pointer;
+  color: var(--accent-deep);
+  font-size: 13px;
+  padding: 4px 0;
+}
+.fold .rec-steps,
+ol.rec-steps {
+  margin: 6px 0 0 20px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.change {
+  margin: 6px 0 10px;
+}
+.diff-add,
+.diff-del {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  margin: 1px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.diff-add {
+  color: #0f7b4f;
+}
+.diff-del {
+  color: var(--accent-deep);
+}
+.warn {
+  color: var(--accent-deep);
+  font-size: 13px;
+  margin: 4px 0;
+}
+.row-title.faint {
+  color: var(--faint);
+}

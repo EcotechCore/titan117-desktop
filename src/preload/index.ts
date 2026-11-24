@@ -51,6 +51,13 @@ contextBridge.exposeInMainWorld('titan117', {
       ipcRenderer.invoke('connectors:setSecrets', id, secrets),
     removeSecrets: (id: string) => ipcRenderer.invoke('connectors:removeSecrets', id)
   },
+  /** Saved site logins for recordings (8.5): a password goes in and never comes back. */
+  logins: {
+    saved: () => ipcRenderer.invoke('logins:saved'),
+    save: (site: string, username: string, password: string) =>
+      ipcRenderer.invoke('logins:save', site, username, password),
+    remove: (site: string) => ipcRenderer.invoke('logins:remove', site)
+  },
   artifacts: {
     stage: (html: string) => ipcRenderer.invoke('artifacts:stage', html),
     pdf: (html: string, name: string, pageSize: 'A4' | 'Letter') =>

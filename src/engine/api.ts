@@ -47,6 +47,7 @@ import { NodeDownloadError } from './lib/apps/node'
 import { AndroidError } from './lib/apps/android'
 import { GitError } from './lib/git'
 import { PermissionError } from './lib/folders'
+import { AutomationError } from './lib/automation/schedule'
 import type { SetupInterest, SetupState } from '../shared/protocol'
 import { SEARCH_KEY_PROVIDERS, type SearchSettings } from '../shared/protocol'
 
@@ -197,6 +198,22 @@ export function createApi(deps: {
     remove(id: string, deleteData: boolean): Promise<void>
     call(id: string, method: string, args: unknown): unknown
   }
+  /** The Automations screen (phase 13; decisions §61): schedules, web watches and recordings. */
+  automation?: {
+    list(): unknown
+    createSchedule(input: { name: unknown; when: unknown; action: unknown }): unknown
+    setSchedule(id: string, enabled: boolean): unknown
+    runSchedule(id: string): unknown
+    removeSchedule(id: string): void
+    saveWatch(input: { name: unknown; urls: unknown; about?: unknown }): unknown
+    removeWatch(id: string): void
+    checkWatch(id: string): unknown
+    startRecording(url: string): Promise<unknown>
+    stopRecording(input: { name?: unknown; title?: unknown; discard?: boolean }): Promise<unknown>
+    saveRecording(input: unknown): unknown
+    removeRecording(name: string): void
+    runRecording(name: string, values: Record<string, string>): unknown
+  }
   setup?: {
     state(): Promise<SetupState>
     runHealth(): Promise<SetupState>
@@ -311,6 +328,86 @@ export function createApi(deps: {
         }
     }
     return null
+  }
+
+  /** Schedules, web watches and recordings for the window. Null when the route isn't one of these. */
+  async function automationRoutes(
+    key: string,
+    id: string | undefined,
+    body: unknown
+  ): Promise<unknown | null> {
+    if (key === 'GET automations') return need(deps.automation).list()
+    if (key !== 'POST automations/:id') return null
+    const a = need(deps.automation)
+    const text = (name: string): string => {
+      const value = field(body, name)
+      if (typeof value !== 'string' || !value.trim())
+        throw new ApiError(400, 'BAD_REQUEST', `"${name}" is missing.`)
+      return value.trim()
+    }
+    switch (id) {
+      case 'schedule':
+        a.createSchedule({
+          name: field(body, 'name'),
+          when: field(body, 'when'),
+          action: field(body, 'action')
+        })
+        break
+      case 'schedule-set': {
+        const enabled = field(body, 'enabled')
+        if (typeof enabled !== 'boolean')
+          throw new ApiError(400, 'BAD_REQUEST', '"enabled" is true or false.')
+        a.setSchedule(text('id'), enabled)
+        break
+      }
+      case 'schedule-run':
+        a.runSchedule(text('id'))
+        break
+      case 'schedule-remove':
+        a.removeSchedule(text('id'))
+        break
+      case 'watch':
+        a.saveWatch({
+          name: field(body, 'name'),
+          urls: field(body, 'urls'),
+          about: field(body, 'about')
+        })
+        break
+      case 'watch-remove':
+        a.removeWatch(text('id'))
+        break
+      case 'watch-check':
+        return { task: a.checkWatch(text('id')), ...(a.list() as object) }
+      case 'record-start':
+        await a.startRecording(text('url'))
+        break
+      case 'record-stop': {
+        const discard = field(body, 'discard') === true
+        const result = (await a.stopRecording({
+          name: field(body, 'name'),
+          title: field(body, 'title'),
+          discard
+        })) as object
+        return { ...result, ...(a.list() as object) }
+      }
+      case 'recording-save':
+        a.saveRecording(field(body, 'recording'))
+        break
+      case 'recording-remove':
+        a.removeRecording(text('name'))
+        break
+      case 'recording-run': {
+        const raw = field(body, 'values')
+        const values: Record<string, string> = {}
+        if (raw && typeof raw === 'object')
+          for (const [k, v] of Object.entries(raw as Record<string, unknown>))
+            if (typeof v === 'string') values[k] = v
+        return { task: a.runRecording(text('name'), values), ...(a.list() as object) }
+      }
+      default:
+        throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+    }
+    return a.list()
   }
 
   /** Memory, skills, past tasks, connectors and speech for the window. Null when the route isn't one of these. */
@@ -925,6 +1022,9 @@ export function createApi(deps: {
     const team = await agentRoutes(key, id, body, query)
     if (team !== null) return team
 
+    const auto = await automationRoutes(key, id, body)
+    if (auto !== null) return auto
+
     switch (key) {
       case 'GET state': {
         const state: EngineState = {
@@ -1066,7 +1166,8 @@ export function createApi(deps: {
         error instanceof AndroidError ||
         error instanceof PermissionError ||
         error instanceof AgentError ||
-        error instanceof CompareError
+        error instanceof CompareError ||
+        error instanceof AutomationError
       )
         return { status: 400, body: { error: 'BAD_REQUEST', message: error.message } }
       if (error instanceof ArtifactError)

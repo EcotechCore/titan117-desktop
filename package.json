@@ -25,7 +25,8 @@
     "eval:code": "vitest run -c vitest.live.config.mts test/live/code.live.ts",
     "eval:pr": "vitest run -c vitest.live.config.mts test/live/code-pr.live.ts",
     "eval:apps": "vitest run -c vitest.live.config.mts test/live/apps.live.ts",
-    "eval:samples": "vitest run -c vitest.live.config.mts test/live/apps-samples.live.ts"
+    "eval:samples": "vitest run -c vitest.live.config.mts test/live/apps-samples.live.ts",
+    "eval:automation": "vitest run -c vitest.live.config.mts test/live/automation.live.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.8.0",
