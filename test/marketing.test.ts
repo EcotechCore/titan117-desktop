@@ -3,6 +3,8 @@
 // writer. No network and no real browser: the video is drawn for real in
 // test/live/marketing.live.ts.
 import { describe, expect, it } from 'vitest'
+import { writeFileSync } from 'fs'
+import { join } from 'path'
 
 import { openDb } from '../src/engine/lib/db'
 import { BUILT_IN_AGENTS, agentMayUse } from '../src/engine/lib/agents'
@@ -710,6 +712,10 @@ describe('marketing in the app', () => {
 
   it('serves the Marketing screen: brand kit, posts, statuses and exports', async () => {
     const folder = tempFolder()
+    // Files outside the allowed folder, as a real absolute path on every system.
+    const outside = tempFolder()
+    writeFileSync(join(outside, 'logo.png'), 'not a logo')
+    writeFileSync(join(outside, 'secret.ini'), 'secret')
     const engine = await testEngine({ folder })
     try {
       const empty = await call(engine, 'GET', '/v1/marketing')
@@ -723,7 +729,7 @@ describe('marketing in the app', () => {
       expect(brand.body.brand).toMatchObject({ name: 'Northwind', primary: '#0f766e' })
       // A logo outside the allowed folders is refused.
       const logo = await call(engine, 'POST', '/v1/marketing/brand', {
-        brand: { logo: 'C:/Windows/logo.png' }
+        brand: { logo: join(outside, 'logo.png') }
       })
       expect(logo.status).toBe(400)
       // The Apps screen's look keeps what marketing knows.
@@ -762,7 +768,8 @@ describe('marketing in the app', () => {
       ).toBe(400)
       // Media is read only from inside the allowed folders.
       expect(
-        (await call(engine, 'POST', '/v1/marketing/media', { path: 'C:/Windows/win.ini' })).status
+        (await call(engine, 'POST', '/v1/marketing/media', { path: join(outside, 'secret.ini') }))
+          .status
       ).toBe(400)
       const removed = await call(engine, 'POST', '/v1/marketing/post-remove', { id: post.id })
       expect(removed.body.posts).toEqual([])
