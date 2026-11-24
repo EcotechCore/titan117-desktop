@@ -191,6 +191,7 @@ export type EngineEvent =
         | 'apps'
         | 'sidebar'
         | 'agents'
+        | 'automations'
     }
   /** The engine went offline or came back online (1.22). */
   | { type: 'online'; online: boolean }
@@ -285,6 +286,7 @@ export type ToolGroup =
   | 'speech'
   | 'media'
   | 'sites'
+  | 'automation'
   | 'connectors'
 
 export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
@@ -301,6 +303,7 @@ export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
   { id: 'speech', label: 'Speech' },
   { id: 'media', label: 'Images and video (cost credits)' },
   { id: 'sites', label: 'Site checks (QA and SEO)' },
+  { id: 'automation', label: 'Schedules, web watches and recordings' },
   { id: 'connectors', label: 'Your connectors' }
 ]
 

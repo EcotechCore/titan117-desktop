@@ -153,7 +153,12 @@ export function robotsAllows(
 
 export interface PageReader {
   /** Read one page as text. Throws ReadError when it can't. */
-  read(url: string, net: TaskNet, signal?: AbortSignal): Promise<Page>
+  read(
+    url: string,
+    net: TaskNet,
+    signal?: AbortSignal,
+    options?: { fresh?: boolean }
+  ): Promise<Page>
   /** Whether robots.txt lets us read this address. */
   allowedByRobots(url: string, net: TaskNet, signal?: AbortSignal): Promise<boolean>
 }
@@ -193,7 +198,7 @@ export function createPageReader(now: () => number = Date.now): PageReader {
       return robotsAllows(rules, `${target.pathname}${target.search}`)
     },
 
-    async read(url, net, signal) {
+    async read(url, net, signal, options = {}) {
       let target: URL
       try {
         target = new URL(url)
@@ -202,7 +207,8 @@ export function createPageReader(now: () => number = Date.now): PageReader {
       }
       target.hash = ''
       const hit = pages.get(target.href)
-      if (hit && now() - hit.at < PAGE_CACHE_MS) {
+      // A watch check reads the page again every time (5.5).
+      if (hit && !options.fresh && now() - hit.at < PAGE_CACHE_MS) {
         // Cached, but the network policy still decides whether this task may read it.
         await net.check(target.href, null, 'navigate')
         return hit.page

@@ -37,6 +37,7 @@ import { SidebarAppView, type SidebarAppInfo } from './SidebarApp'
 import { AgentsView } from './Agents'
 import { byTeam } from './agents-lib'
 import { CompareView } from './Compare'
+import { AutomationsView } from './Automations'
 import { MediaModelsView } from './Media'
 import type { ReportMode } from '../../shared/protocol'
 
@@ -492,6 +493,12 @@ function App(): React.JSX.Element {
           <Icon name="chip" /> Models
         </button>
         <button
+          className={view.kind === 'automations' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'automations' } })}
+        >
+          <Icon name="calendar" /> Automations
+        </button>
+        <button
           className={view.kind === 'compare' ? 'nav on' : 'nav'}
           onClick={() => dispatch({ type: 'view', view: { kind: 'compare' } })}
         >
@@ -798,6 +805,21 @@ function App(): React.JSX.Element {
                 setTimeout(() => input.current?.focus(), 0)
               }}
               onProblem={fail}
+            />
+          )}
+          {view.kind === 'automations' && (
+            <AutomationsView
+              client={api}
+              changed={state.changed.automations ?? 0}
+              onProblem={fail}
+              onOpenTask={(id) => dispatch({ type: 'view', view: { kind: 'task', id } })}
+              onAskTitan={(words) =>
+                void startNew(
+                  `${words}
+
+(Make this a schedule with schedule_create; add a web watch or use a recording if it needs one.)`
+                )
+              }
             />
           )}
           {view.kind === 'compare' && (

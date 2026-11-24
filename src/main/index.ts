@@ -34,6 +34,7 @@ import { startUpdates, type UpdateState } from './lib/updates'
 import { isSidebarNavigation, sidebarAppOf, sidebarResponse } from './lib/sidebar-files'
 import { Keys } from './lib/keys'
 import { ConnectorSecrets } from './lib/connector-secrets'
+import { SiteLogins } from './lib/site-logins'
 import {
   APP_ORIGIN,
   APP_SCHEME,
@@ -126,6 +127,7 @@ function accountConfig(): { webUrl: string | null; apiUrl: string | null } {
 let account: Account | null = null
 let keys: Keys | null = null
 let connectorSecrets: ConnectorSecrets | null = null
+let siteLogins: SiteLogins | null = null
 let github: GitHubSignIn | null = null
 
 function keychain(): { encrypt(text: string): Buffer; decrypt(data: Buffer): string } | null {
@@ -149,6 +151,8 @@ function pushKeys(): void {
   // Connector tokens too (feature 3.6): to the engine only.
   if (connectorSecrets)
     engine?.postMessage({ type: 'connectorSecrets', secrets: connectorSecrets.all() })
+  // Saved site logins for recordings (8.5): to the engine only.
+  if (siteLogins) engine?.postMessage({ type: 'logins', logins: siteLogins.all() })
 }
 /** How often a running app asks for a fresh lease, so an ended plan locks soon after (decisions §17). */
 const RENEW_EVERY_MS = 30 * 60 * 1000
@@ -206,6 +210,7 @@ function startAccount(): void {
   })
   keys = new Keys(app.getPath('userData'), keychain())
   connectorSecrets = new ConnectorSecrets(app.getPath('userData'), keychain())
+  siteLogins = new SiteLogins(app.getPath('userData'), keychain())
   github = new GitHubSignIn(app.getPath('userData'), keychain(), githubClientId(), fetch, () => {
     void pushGitHub()
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('github:changed')
@@ -542,6 +547,29 @@ function registerBridge(): void {
     connectorSecrets.remove(id)
     pushKeys()
     return true
+  })
+
+  // Site logins for recordings go in from the window; a password never comes back out.
+  ipcMain.handle('logins:saved', async (event) => {
+    if (!fromOurPage(event) || !siteLogins) throw new Error('Refused.')
+    return siteLogins.saved()
+  })
+
+  ipcMain.handle(
+    'logins:save',
+    async (event, site: unknown, username: unknown, password: unknown) => {
+      if (!fromOurPage(event) || !siteLogins) throw new Error('Refused.')
+      const result = siteLogins.set(site, username, password)
+      if (result.ok) pushKeys()
+      return result
+    }
+  )
+
+  ipcMain.handle('logins:remove', async (event, site: unknown) => {
+    if (!fromOurPage(event) || !siteLogins) throw new Error('Refused.')
+    const removed = siteLogins.remove(site)
+    pushKeys()
+    return removed
   })
 
   ipcMain.handle('folders:remove', async (event, path: unknown) => {

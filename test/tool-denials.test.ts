@@ -31,6 +31,10 @@ import type { BrowserTests } from '../src/engine/lib/apps/browsers'
 import { createDataLayer } from '../src/engine/lib/apps/data'
 import { createSidebarService, type SidebarApp } from '../src/engine/lib/apps/sidebar'
 import { createSiteService } from '../src/engine/lib/sites/service'
+import { createAutomation, type AutomationService } from '../src/engine/lib/automation/service'
+import { createAgentStore } from '../src/engine/lib/agents'
+import { checkRecording } from '../src/engine/lib/automation/recorder'
+import type { Runtime } from '../src/engine/runtime'
 
 interface Bench {
   allowed: string
@@ -53,9 +57,15 @@ interface Bench {
   /** The sidebar's apps (6.2): tests put an app there directly. */
   sidebarApps: SidebarApp[]
   sidebarData: ReturnType<typeof createDataLayer>
+  /** Schedules, watches, recordings and saved logins (phase 13). */
+  automation: AutomationService
+  /** Runs the scheduler started (run now). */
+  directRuns: string[]
   /** How often a site check tried to start a browser. */
   siteLaunches(): number
   pending(): ReturnType<Store['listApprovals']>
+  /** Answer one approval by its id. */
+  answer(id: string, answer: 'approve' | 'deny' | 'always', from?: 'window' | 'remote'): void
   /** Start a call that will ask, and return its approval (then expire it). */
   approvalOf(call: Omit<ToolCall, 'id'>): Promise<ReturnType<Store['listApprovals']>[number]>
 }
@@ -111,6 +121,29 @@ function bench(
     registry: () => sidebarApps,
     setRegistry: (next) => void sidebarApps.splice(0, sidebarApps.length, ...next)
   })
+  const directRuns: string[] = []
+  const automation = createAutomation({
+    db,
+    dataDir: null,
+    // A runtime that only notes what it was asked to start.
+    runtime: () =>
+      ({
+        isRunning: () => false,
+        settled: async () => undefined,
+        runDirect: (input: { call: { name: string } }) => {
+          directRuns.push(input.call.name)
+          return { id: `run${directRuns.length}` }
+        },
+        start: (text: string) => {
+          directRuns.push(`task:${text}`)
+          return { id: `run${directRuns.length}` }
+        }
+      }) as unknown as Runtime,
+    agents: createAgentStore({ dir: null }),
+    defaultModel: () => 'openrouter:test/model',
+    locked: () => null,
+    onChange: () => undefined
+  })
   const services: Services = options.noServices
     ? {}
     : {
@@ -118,6 +151,7 @@ function bench(
         skills: createSkillStore(null),
         records: createRecordStore({ db, store, sites: () => [] }),
         browser: browser.host,
+        automation,
         speech: fakeSpeech,
         scratchRoot: tempFolder('titan117-scratch-'),
         fetch: web.fetch,
@@ -179,9 +213,12 @@ function bench(
     taskId: task.id,
     sidebarApps,
     sidebarData,
+    automation,
+    directRuns,
     siteLaunches: () => siteLaunches,
     asked: () => store.listApprovals({ taskId: task.id }).length,
     pending: () => store.listApprovals({ taskId: task.id, status: 'pending' }),
+    answer: (id, answer, from = 'window') => layer.answer(id, answer, from),
     async run(call, answer, from = 'window') {
       const outcome = layer.execute(
         { id: `c${++n}`, ...call },
@@ -301,7 +338,194 @@ function gitRepo(b: Bench): string {
   return repo
 }
 
+const RECORDING = {
+  name: 'send-report',
+  title: 'Send the report',
+  url: 'https://portal.example/reports',
+  steps: [
+    { action: 'fill', target: { label: 'Month' }, value: '{{month}}' },
+    {
+      action: 'fill_login',
+      target: { label: 'Password' },
+      field: 'password',
+      site: 'portal.example'
+    },
+    { action: 'click', target: { role: 'button', name: 'Send report' } }
+  ],
+  variables: [{ name: 'month', label: 'Month', default: 'May' }]
+}
+
 const DENIALS: Record<string, () => Promise<void>> = {
+  async schedule_list() {
+    // Without the service there is nothing to read.
+    const none = await bench({ noServices: true }).run({ name: 'schedule_list', input: {} })
+    expect(none.status).toBe('refused')
+    const b = bench()
+    expect((await b.run({ name: 'schedule_list', input: {} })).status).toBe('done')
+    expect(b.asked()).toBe(0)
+  },
+
+  async schedule_create() {
+    const b = bench()
+    const input = {
+      name: 'Morning briefing',
+      when: { kind: 'daily', time: '08:00', days: [1, 2, 3, 4, 5] },
+      prompt: 'Brief me on new invoices.'
+    }
+    // A standing instruction: it asks; denied, nothing is saved.
+    const denied = await b.run({ name: 'schedule_create', input }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.automation.schedules.list()).toHaveLength(0)
+    // Never "always", and only on the laptop.
+    const approval = await b.approvalOf({ name: 'schedule_create', input })
+    expect(approval.canAlways).toBe(false)
+    expect(approval.summary).toContain('Every weekday at 08:00')
+    expect(approval.answeredBy).toBe('refused')
+    // A time that makes no sense, or faster than every 15 minutes: refused before asking.
+    const asked = b.asked()
+    for (const when of [
+      { kind: 'daily', time: '25:00' },
+      { kind: 'interval', minutes: 1 }
+    ])
+      expect((await b.run({ name: 'schedule_create', input: { ...input, when } })).status).toBe(
+        'refused'
+      )
+    expect(b.asked()).toBe(asked)
+    // A recording or watch that doesn't exist: refused even when approved.
+    const missing = await b.run(
+      { name: 'schedule_create', input: { name: 'x', when: input.when, recording: 'nope' } },
+      'approve'
+    )
+    expect(missing.status).toBe('failed')
+    expect(b.automation.schedules.list()).toHaveLength(0)
+  },
+
+  async schedule_change() {
+    const b = bench()
+    b.automation.schedules.create({
+      name: 'Nightly',
+      when: { kind: 'daily', time: '23:00' },
+      action: { kind: 'task', agent: 'Titan', prompt: 'Tidy up.' },
+      source: 'you'
+    })
+    // It changes what runs by itself: asks; denied, nothing changes and nothing runs.
+    for (const action of ['remove', 'pause', 'run_now']) {
+      const denied = await b.run(
+        { name: 'schedule_change', input: { name: 'Nightly', action } },
+        'deny'
+      )
+      expect(denied.status).toBe('refused')
+    }
+    expect(b.automation.schedules.get('Nightly')?.enabled).toBe(true)
+    expect(b.directRuns).toHaveLength(0)
+    // An action that isn't one of ours: refused before asking.
+    const bad = await b.run({ name: 'schedule_change', input: { name: 'Nightly', action: 'x' } })
+    expect(bad.status).toBe('refused')
+  },
+
+  async watch_list() {
+    const none = await bench({ noServices: true }).run({ name: 'watch_list', input: {} })
+    expect(none.status).toBe('refused')
+    const b = bench()
+    expect((await b.run({ name: 'watch_list', input: {} })).status).toBe('done')
+  },
+
+  async watch_save() {
+    const b = bench()
+    const input = { name: 'Laws', urls: ['https://laws.example/new'] }
+    const denied = await b.run({ name: 'watch_save', input }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.automation.watches.list()).toHaveLength(0)
+    // Not web pages, or an address with a login in it: refused before asking.
+    const asked = b.asked()
+    for (const urls of [['file:///C:/secret.txt'], ['https://me:pw@laws.example/']])
+      expect((await b.run({ name: 'watch_save', input: { ...input, urls } })).status).toBe(
+        'refused'
+      )
+    expect(b.asked()).toBe(asked)
+  },
+
+  async watch_check() {
+    const b = bench()
+    b.automation.watches.save({
+      name: 'Laws',
+      urls: ['https://laws.example/new'],
+      source: 'you'
+    })
+    // A private task: the site waits for the user; denied, the page is never requested.
+    await makePrivate(b, SECRET_TEXT)
+    const denied = await b.run({ name: 'watch_check', input: { watch: 'Laws' } }, 'deny')
+    expect(denied.status).toBe('done')
+    expect(denied.output).toContain("didn't allow")
+    expect(b.web.requests.some((r) => r.url.includes('laws.example'))).toBe(false)
+    expect(b.automation.watches.get('Laws')?.lastChangedAt).toBeNull()
+    // A watch that doesn't exist.
+    const none = await b.run({ name: 'watch_check', input: { watch: 'Nope' } })
+    expect(none.status).toBe('failed')
+  },
+
+  async recording_list() {
+    const none = await bench({ noServices: true }).run({ name: 'recording_list', input: {} })
+    expect(none.status).toBe('refused')
+    const b = bench()
+    const missing = await b.run({ name: 'recording_list', input: { name: 'nope' } })
+    expect(missing.status).toBe('refused')
+  },
+
+  async recording_save() {
+    const b = bench()
+    // A standing instruction: it asks, with the steps shown; denied, nothing is saved.
+    const approval = await b.approvalOf({ name: 'recording_save', input: RECORDING })
+    expect(approval.canAlways).toBe(false)
+    expect(approval.summary).toContain('Send report')
+    expect(approval.summary).toContain('saved password for portal.example')
+    const denied = await b.run({ name: 'recording_save', input: RECORDING }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.automation.recordings.list()).toHaveLength(0)
+    // A step that isn't one of ours, or a start that isn't a web address: refused before asking.
+    const asked = b.asked()
+    const bad = await b.run({
+      name: 'recording_save',
+      input: { ...RECORDING, steps: [{ action: 'eval', code: 'alert(1)' }] }
+    })
+    expect(bad.status).toBe('refused')
+    const file = await b.run({
+      name: 'recording_save',
+      input: { ...RECORDING, url: 'file:///C:/x.html' }
+    })
+    expect(file.status).toBe('refused')
+    expect(b.asked()).toBe(asked)
+  },
+
+  async recording_run() {
+    const b = bench()
+    b.automation.recordings.save(checkRecording(RECORDING, 'you'))
+    b.automation.logins.set({ 'portal.example': { username: 'ana', password: 'pw-not-real' } })
+    // It clicks through a live site: asks; denied, the browser opens nothing.
+    const denied = await b.run({ name: 'recording_run', input: { name: 'send-report' } }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.browser.opened).toHaveLength(0)
+    // Approved: the final step ("Send report") still asks; denied, it is never clicked.
+    const run = b.run({ name: 'recording_run', input: { name: 'send-report' } })
+    const first = await until(() => b.pending()[0])
+    b.answer(first.id, 'approve')
+    const final = await until(() => b.pending().find((a) => a.id !== first.id))
+    expect(final.summary).toContain('Send report')
+    expect(final.canAlways).toBe(false)
+    b.answer(final.id, 'deny')
+    expect((await run).status).toBe('refused')
+    expect(b.browser.clicked).not.toContain('Send report')
+    // The password never shows in what the model gets back.
+    expect((await run).output).not.toContain('pw-not-real')
+    // Discord is never automated.
+    b.automation.recordings.save(
+      checkRecording({ ...RECORDING, name: 'chat', url: 'https://discord.com/channels/1' }, 'you')
+    )
+    const never = await b.run({ name: 'recording_run', input: { name: 'chat' } }, 'approve')
+    expect(never.status).toBe('refused')
+    expect(b.browser.opened.some((u) => u.includes('discord'))).toBe(false)
+  },
+
   async site_audit() {
     const b = bench()
     // A private task: a new site waits for the user; denied, not even robots.txt is fetched.
@@ -1670,7 +1894,9 @@ describe('tool denial tests', () => {
           () => ctx.sidebar.apps(),
           () => ctx.team.delegate([]),
           () => ctx.media.pick('image'),
-          () => ctx.sites.history('https://example.com')
+          () => ctx.sites.history('https://example.com'),
+          () => ctx.automation.schedules(),
+          () => ctx.automation.login('example.com')
         ]
         const refused: string[] = []
         for (const attempt of tries) {
@@ -1686,7 +1912,7 @@ describe('tool denial tests', () => {
     })
     const b = bench({ extraTools: [greedy] })
     const outcome = await b.run({ name: 'greedy', input: {} })
-    expect(outcome.output.split(',')).toEqual(Array(17).fill('PermissionError'))
+    expect(outcome.output.split(',')).toEqual(Array(19).fill('PermissionError'))
   })
 
   it('every tool declares a risk and its permissions', () => {

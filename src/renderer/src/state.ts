@@ -28,6 +28,8 @@ export type View =
   /** The team (4.2-4.4) and comparing models (2.8). */
   | { kind: 'agents' }
   | { kind: 'compare' }
+  /** Schedules, web watches and recordings (phase 13). */
+  | { kind: 'automations' }
   /** A sidebar app (6.2), by its id. */
   | { kind: 'sidebar-app'; id: string }
 

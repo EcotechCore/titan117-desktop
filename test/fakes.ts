@@ -1,6 +1,7 @@
 // Fakes for the network, the browser and speech, so tool tests run offline
 // and still go through the real network policy.
 import type { BrowserAccess, BrowserHost, PageView } from '../src/engine/lib/browser'
+import type { RunResult } from '../src/engine/lib/automation/recorder'
 import type { FileAccess } from '../src/engine/lib/folders'
 import type { SpeechAccess } from '../src/engine/lib/speech'
 import type { TaskNet } from '../src/engine/lib/web'
@@ -91,6 +92,38 @@ export function fakeBrowser(): FakeBrowser {
           state.clicked.push(ref)
           await net.check(file.url, null, 'resource')
           return file
+        },
+        async replay(recording, hooks) {
+          await net.check(recording.url, null, 'navigate')
+          state.opened.push(recording.url)
+          current = recording.url
+          let done = 0
+          const result = (failed: string | null): RunResult => ({
+            name: recording.name,
+            passed: failed === null,
+            done,
+            failedStep: failed === null ? null : done + 1,
+            error: failed,
+            url: current,
+            title: 'Fake page',
+            ms: 1
+          })
+          for (const step of recording.steps) {
+            if (step.action === 'click') {
+              const label = step.target.name ?? step.target.text ?? ''
+              await hooks.beforeClick(label)
+              state.clicked.push(label)
+            }
+            if (step.action === 'fill') state.typed.push({ ref: 'replay', text: step.value })
+            if (step.action === 'fill_login') {
+              if (!hooks.login(step.site))
+                return result(`There is no saved login for ${step.site}.`)
+              state.typed.push({ ref: 'login', text: step.field })
+            }
+            if (step.action === 'pause') await hooks.pause(step.note)
+            done++
+          }
+          return result(null)
         }
       }
     },

@@ -15,6 +15,14 @@ import type { BrowserContext, Page } from 'playwright-core'
 
 import { PermissionError } from './folders'
 import type { TaskNet } from './web'
+import {
+  captureScript,
+  replayOn,
+  type RecordedEvent,
+  type Recording,
+  type ReplayHooks,
+  type RunResult
+} from './automation/recorder'
 
 export interface PageView {
   url: string
@@ -38,6 +46,15 @@ export interface BrowserAccess {
   back(): Promise<PageView>
   /** Click a control that downloads a file, and hand the file over (decisions §50). */
   download(ref: string): Promise<{ name: string; data: Buffer; url: string }>
+  /** Replay a recording on the task's page, without a model (8.2; decisions §61). */
+  replay(recording: Recording, hooks: ReplayHooks): Promise<RunResult>
+}
+
+/** What the user is recording now (8.2), for the Automations screen. */
+export interface RecordingSession {
+  url: string
+  startedAt: number
+  events: number
 }
 
 /** A download bigger than this is stopped (decisions §50). */
@@ -49,6 +66,14 @@ export interface BrowserHost {
   /** Close a task's pages (the task ended). */
   release(taskId: string): Promise<void>
   close(): Promise<void>
+  /**
+   * The user records their own steps (8.2): a page they drive themselves, in
+   * the same profile. One recording at a time.
+   */
+  startRecording?(url: string): Promise<RecordingSession>
+  recording?(): RecordingSession | null
+  /** Stop and hand over what was recorded; the page closes. */
+  stopRecording?(): Promise<{ url: string; events: RecordedEvent[] }>
 }
 
 const TEXT_LIMIT = 15_000
@@ -164,6 +189,36 @@ export function createBrowserHost(options: {
   let context: Promise<BrowserContext> | null = null
   const pages = new Map<string, Page>()
   const nets = new Map<string, TaskNet>()
+  /**
+   * Saved logins a task's replay filled in (8.5). A password may leave only in a
+   * request to its own site; anywhere else the network policy still blocks it.
+   */
+  const usedLogins = new Map<string, { site: string; password: string }[]>()
+  function withoutOwnLogin(
+    taskId: string | undefined,
+    url: string,
+    body: string | null
+  ): string | null {
+    const used = taskId ? usedLogins.get(taskId) : undefined
+    if (!used?.length || !body) return body
+    const host = URL.canParse(url) ? new URL(url).hostname.toLowerCase() : null
+    if (!host) return body
+    let out = body
+    for (const { site, password } of used) {
+      if (host !== site && !host.endsWith(`.${site}`)) continue
+      const encoded = encodeURIComponent(password)
+      for (const form of [
+        password,
+        encoded,
+        encoded.replace(/%20/g, '+'),
+        JSON.stringify(password).slice(1, -1)
+      ])
+        out = out.split(form).join('')
+    }
+    return out
+  }
+  /** The page the user is recording on (8.2): theirs to drive, like their own browser. */
+  let session: { page: Page; url: string; startedAt: number; events: RecordedEvent[] } | null = null
 
   async function launch(): Promise<BrowserContext> {
     const channel = options.channel === undefined ? findBrowserChannel() : options.channel
@@ -190,13 +245,16 @@ export function createBrowserHost(options: {
       const net = taskId ? nets.get(taskId) : undefined
       const url = request.url()
       if (url.startsWith('data:') || url.startsWith('blob:')) return route.continue()
+      // The user's own recording: they browse as in their own browser; only web addresses.
+      if (session && page === session.page)
+        return /^https?:/i.test(url) ? route.continue() : route.abort('blockedbyclient')
       if (!net) return route.abort('blockedbyclient')
       const kind =
         request.isNavigationRequest() && request.frame() === page.mainFrame()
           ? 'navigate'
           : 'resource'
       try {
-        await net.check(url, request.postData(), kind)
+        await net.check(url, withoutOwnLogin(taskId, url, request.postData()), kind)
         await route.continue()
       } catch {
         await route.abort('blockedbyclient')
@@ -327,11 +385,77 @@ export function createBrowserHost(options: {
           }
           await file.delete().catch(() => undefined)
           return { name: file.suggestedFilename(), data: Buffer.concat(chunks), url: file.url() }
+        },
+        async replay(recording, hooks) {
+          await net.check(recording.url, null, 'navigate')
+          const page = await pageFor(taskId)
+          return replayOn(page, recording, {
+            ...hooks,
+            login(site) {
+              const login = hooks.login(site)
+              if (login) {
+                const used = usedLogins.get(taskId) ?? []
+                if (!used.some((u) => u.site === site && u.password === login.password))
+                  used.push({ site, password: login.password })
+                usedLogins.set(taskId, used)
+              }
+              return login
+            },
+            // What a step types may not carry private content either.
+            beforeType: async (url, text) => {
+              await net.check(url, text, 'resource')
+              await hooks.beforeType?.(url, text)
+            }
+          })
         }
       }
     },
+    async startRecording(url) {
+      if (session && !session.page.isClosed())
+        throw new PermissionError('A recording is already going. Stop it first.')
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        throw new PermissionError('That is not a web address.')
+      }
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')
+        throw new PermissionError('A recording starts at a web address.')
+      context ??= launch().catch((error) => {
+        context = null
+        throw error
+      })
+      const ctx = await context
+      const page = await ctx.newPage()
+      const events: RecordedEvent[] = []
+      session = { page, url: parsed.toString(), startedAt: Date.now(), events }
+      await page.exposeBinding('__titanRecord', (_source, event: RecordedEvent) => {
+        if (events.length < 2000 && event && typeof event === 'object') events.push(event)
+      })
+      await page.addInitScript(captureScript)
+      await page.goto(parsed.toString(), { waitUntil: 'domcontentloaded', timeout: 30_000 })
+      await page.bringToFront().catch(() => undefined)
+      return { url: session.url, startedAt: session.startedAt, events: 0 }
+    },
+    recording() {
+      if (!session || session.page.isClosed()) return null
+      return { url: session.url, startedAt: session.startedAt, events: session.events.length }
+    },
+    async stopRecording() {
+      if (!session) throw new PermissionError('Nothing is being recorded.')
+      const { page, url, events } = session
+      // A field still being typed in reports its value when it loses focus.
+      await page
+        .evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.())
+        .catch(() => undefined)
+      await page.waitForTimeout(150).catch(() => undefined)
+      session = null
+      await page.close().catch(() => undefined)
+      return { url, events: [...events] }
+    },
     async release(taskId) {
       nets.delete(taskId)
+      usedLogins.delete(taskId)
       const page = pages.get(taskId)
       pages.delete(taskId)
       await page?.close().catch(() => undefined)
@@ -339,6 +463,7 @@ export function createBrowserHost(options: {
     async close() {
       const ctx = context
       context = null
+      session = null
       pages.clear()
       nets.clear()
       if (ctx) await (await ctx).close().catch(() => undefined)

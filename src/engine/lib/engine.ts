@@ -76,6 +76,10 @@ import { cleanBrand, STARTERS, type BrandKit } from './apps/starters'
 import { assess, probeDevice, type DeviceCheck } from './apps/devices'
 import { AndroidError, createAndroidComponent } from './apps/android'
 import { cleanEnv } from './shell'
+import { createAutomation, RECORDER, WATCHER, type SiteLogin } from './automation/service'
+import { AutomationError } from './automation/schedule'
+import { checkRecording, describeStep, stepsFromEvents } from './automation/recorder'
+import { describeAction, describeWhen } from './automation/schedule'
 import type { AppModels } from '../tools/lib/define-tool'
 
 export interface AccountState {
@@ -150,6 +154,8 @@ export interface Engine {
   setConnectorSecrets(secrets: Record<string, Record<string, string>>): void
   /** The user's GitHub sign-in (decisions §25): kept in memory only, scrubbed from every log. */
   setGitHubToken(token: string | null): void
+  /** Saved site logins for recordings (8.5): kept in memory only, scrubbed from every log. */
+  setLogins(logins: Record<string, SiteLogin>): void
   close(): Promise<void>
   /** For tests. */
   parts: {
@@ -169,6 +175,7 @@ export interface Engine {
     reports: ReportService
     connectivity: Connectivity
     documents: DocIndex
+    automation: ReturnType<typeof createAutomation>
     /** The token a running task's scripts use (feature 4.10). */
     scriptToken(taskId: string): string | null
   }
@@ -410,6 +417,21 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     }
   }
 
+  // Automation (phase 13; decisions §61): schedules, web watches, recordings and saved logins.
+  const automation = createAutomation({
+    db,
+    dataDir: options.dataDir,
+    runtime: () => {
+      if (!runtimeRef) throw new Error('The runtime is not ready.')
+      return runtimeRef
+    },
+    agents,
+    defaultModel: () => getMeta<string | null>(db, 'defaultModel', null),
+    locked: () => (account.locked ? (account.reason ?? 'Titan117 is locked.') : null),
+    onChange: () => emit({ type: 'changed', what: 'automations' }),
+    onError: (error, context) => void log.capture('automation', error, context)
+  })
+
   const tools = createRegistry(options.tools ?? builtInTools, () => connectors.tools())
   const permissions = createPermissionLayer({
     tools,
@@ -450,6 +472,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         }
       }),
       browser,
+      automation,
       speech: (files) => speech.access(files),
       scratchRoot,
       fetch: connectivity.track(options.toolFetch ?? fetch),
@@ -1081,6 +1104,114 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     remove: (id: string, deleteData: boolean) => sidebar.remove(id, { deleteData }),
     call: (id: string, method: string, args: unknown) => sidebar.call(id, method, args)
   }
+  /** The Automations screen: the user's own clicks. */
+  const automationView = {
+    list() {
+      return {
+        schedules: automation.schedules.list().map((s) => ({
+          ...s,
+          whenText: describeWhen(s.when),
+          actionText: describeAction(s.action)
+        })),
+        watches: automation.watches.list().map((w) => ({
+          ...w,
+          changes: automation.watches.changes(w.id, 5)
+        })),
+        recordings: automation.recordings.list().map((r) => ({
+          ...r,
+          stepsText: r.steps.map(describeStep),
+          missingLogins: [
+            ...new Set(r.steps.flatMap((s) => (s.action === 'fill_login' ? [s.site] : [])))
+          ].filter((site) => !automation.logins.get(site))
+        })),
+        session: browser.recording?.() ?? null,
+        agents: agents.list().map((a) => a.name)
+      }
+    },
+    createSchedule: (input: { name: unknown; when: unknown; action: unknown }) =>
+      automation.schedules.create({ ...input, source: 'you' }),
+    setSchedule: (id: string, enabled: boolean) => automation.schedules.setEnabled(id, enabled),
+    runSchedule: (id: string) => automation.schedules.runNow(id),
+    removeSchedule: (id: string) => automation.schedules.remove(id),
+    saveWatch: (input: { name: unknown; urls: unknown; about?: unknown }) =>
+      automation.watches.save({ ...input, source: 'you' }),
+    removeWatch: (id: string) => automation.watches.remove(id),
+    /** Check now: reading runs without AI; the agent sums up only when something changed. */
+    checkWatch(id: string) {
+      const watch = automation.watches.get(id)
+      if (!watch) throw new AutomationError('There is no such watch.')
+      const task = runtime.runDirect({
+        title: `Check ${watch.name}`,
+        agent: WATCHER,
+        text: `Check the watch "${watch.name}".`,
+        call: { name: 'watch_check', input: { watch: watch.name } }
+      })
+      const before = watch.lastChangedAt
+      void runtime.settled(task.id).then(() => {
+        const after = automation.watches.get(watch.id)
+        const model = getMeta<string | null>(db, 'defaultModel', null)
+        if (!after || after.lastChangedAt === before || !model || account.locked) return
+        try {
+          runtime.send(
+            task.id,
+            'Something changed. In a few short points, say what changed and what matters to us (use what memory says about the company), with the page address next to each point. If none of it matters, say so in one line.',
+            model
+          )
+        } catch (error) {
+          log.capture('automation', error, { part: 'watch explain' })
+        }
+      })
+      return task
+    },
+    async startRecording(url: string) {
+      if (!browser.startRecording) throw new AutomationError('The browser can’t record here.')
+      const session = await browser.startRecording(
+        /^https?:\/\//i.test(url) ? url : `https://${url}`
+      )
+      emit({ type: 'changed', what: 'automations' })
+      return session
+    },
+    /** Stop and save what was recorded, or throw it away. */
+    async stopRecording(input: { name?: unknown; title?: unknown; discard?: boolean }) {
+      if (!browser.stopRecording) throw new AutomationError('Nothing is being recorded.')
+      // Checked before the recording is stopped, so a bad name loses nothing.
+      if (!input.discard) {
+        if (!/^[a-z0-9][a-z0-9-]{0,59}$/.test(String(input.name ?? '')))
+          throw new AutomationError(
+            'Name the recording in small letters with dashes, like monthly-report.'
+          )
+        if (automation.recordings.get(String(input.name)))
+          throw new AutomationError(`There is already a recording called "${String(input.name)}".`)
+      }
+      const { url, events } = await browser.stopRecording()
+      emit({ type: 'changed', what: 'automations' })
+      if (input.discard) return { recording: null }
+      const steps = stepsFromEvents(events, url)
+      if (!steps.length)
+        throw new AutomationError(
+          'Nothing was recorded: no clicks or typing were seen on the page.'
+        )
+      const recording = automation.recordings.save(
+        checkRecording({ name: input.name, title: input.title, url, steps }, 'you (recorded)')
+      )
+      return { recording }
+    },
+    /** The user's edit of a recording's steps and variables (8.3). */
+    saveRecording: (input: unknown) => automation.recordings.save(checkRecording(input, 'you')),
+    removeRecording: (name: string) => automation.recordings.remove(name),
+    /** The user's click is the OK for this replay; its final steps still ask. */
+    runRecording(name: string, values: Record<string, string>) {
+      const recording = automation.recordings.get(name)
+      if (!recording) throw new AutomationError('There is no such recording.')
+      return runtime.runDirect({
+        title: `Replay ${recording.title}`,
+        agent: RECORDER,
+        text: `Replay the recording "${recording.name}".`,
+        call: { name: 'recording_run', input: { name: recording.name, values } },
+        allow: ['recording_run']
+      })
+    }
+  }
   const handle = createApi({
     appVersion: options.appVersion,
     store,
@@ -1112,6 +1243,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     code: codeView,
     apps: appView,
     sidebar: sidebarView,
+    automation: automationView,
     notifications: {
       get: () => getMeta<boolean>(db, 'notifications', true),
       set: (on) => setMeta(db, 'notifications', on)
@@ -1219,6 +1351,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   publish = server.publish
   void connectors.connectAll()
   documents.start()
+  automation.start()
   log.info('engine started', { port: server.port, version: options.appVersion })
 
   function saveFolders(next: string[]): string[] {
@@ -1247,6 +1380,11 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       registerSecret(next)
       githubToken = next
     },
+    setLogins(next) {
+      for (const login of Object.values(next)) registerSecret(login.password)
+      automation.logins.set(next)
+      emit({ type: 'changed', what: 'automations' })
+    },
     setConnectorSecrets(next) {
       for (const values of Object.values(next))
         for (const value of Object.values(values)) registerSecret(value)
@@ -1261,6 +1399,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         toResume = []
         autoResume(ids, 'Titan117 started again')
       }
+      // Unlocked: schedules that came due while the app was closed or locked catch up (8.1).
+      if (!next.locked) queueMicrotask(() => automation.tick())
       // Signed in again: reports waiting in the queue go, and fixes are checked (19.5, 19.8).
       void reports.flush().then(() => reports.checkFixed())
       void checkKillSwitches()
@@ -1268,6 +1408,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       emit({ type: 'settings', defaultModel: getMeta<string | null>(db, 'defaultModel', null) })
     },
     async close() {
+      automation.stop()
       reports.close()
       connectivity.close()
       documents.close()
@@ -1300,6 +1441,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       reports,
       connectivity,
       documents,
+      automation,
       scriptToken
     }
   }
