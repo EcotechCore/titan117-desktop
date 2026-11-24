@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 24 Nov 2026 · Phase 13's first part merged
+
+- The phase 13 pull requests are merged (web #53, desktop #48, pop #40). Run the desktop app from `main` to try Automations.
+
 ### 24 Nov 2026 · Phase 13 started: schedules, the web watcher and the recorder
 
 - **Schedules** (`src/engine/lib/automation/schedule.ts`, `service.ts`): daily (with weekdays), monthly, every N minutes (15 at least) or once, in local time; kept in the local database (new tables `schedules`, `watches`, `watch_pages`, `watch_changes`). The scheduler looks every 30 seconds, runs each due schedule **once** however many times it was missed, does nothing while the app is locked and catches up when unlocked, and skips a run while the last one is still going.
