@@ -2,7 +2,7 @@
 
 Everything waiting on the owner, in the order to do it. Gathered from every repo's progress log; last rewritten 15 Nov 2026 after phase 4's leftovers and the first part of phase 5. Shared doc: edited in `titan117-web`, copied to the other repos. When an item is done, tick it here and add a line to `progress.md`; when the build adds a new one, it goes here in the same commit.
 
-**Where the code is:** everything up to phase 12 is merged into `main` in all three repos (22 Nov 2026); run the desktop app from `main` with `pnpm dev`. Phase 13 is on the branch `phase-13-automation` in the desktop repo until its pull request is merged. **Production waits** (decisions §52): everything is checked locally first.
+**Where the code is:** everything up to phase 13's first part is merged into `main` in all three repos (24 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
 
 ## Step 1 · Push and review
 
@@ -88,7 +88,7 @@ Nothing here blocks other phases. Phase 12 is merged into `main` (22 Nov 2026); 
 
 ## Phase 13 · Automation (started 24 Nov 2026)
 
-Nothing here blocks other phases. Until the pull requests are merged, run the desktop app from the branch `phase-13-automation` with `pnpm dev`; after that, from `main`.
+Nothing here blocks other phases. Phase 13's first part is merged into `main` (24 Nov 2026); run the desktop app from `main` with `pnpm dev` and open **Automations** in the sidebar.
 
 - [ ] **Close phase 13's check: see the law watcher report a real change** (two visits, a day or more apart). Open **Automations → Add a web watch**: a name, the page that *lists* new acts for the law you care about, and what matters to your company. Press **Check now** (the first check only sets the starting point). Then say in plain words "Every Monday at 9, check the web watch …", approve the card, and look at the run after the page has really changed. Tell Claude what it said. A change on a real law page hasn't been seen yet; only on a test page and on a fast-moving page that isn't a law source.
 - [ ] **Tell Claude which law pages you want watched by default,** and whether they open for you: `legislatie.just.ro` didn't answer from this laptop on 24 Nov 2026, and EUR-Lex answered our reader with an empty page (a bot check). Until that's settled, no source is built in: you pick the pages.
