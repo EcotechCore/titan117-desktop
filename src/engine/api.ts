@@ -1229,6 +1229,33 @@ export function createApi(deps: {
         return { ok: true }
       }
 
+      // Remote control (decisions §64): what a paired phone, browser or chat may see,
+      // asked by the shell's remote bridge. Approvals say whether they're laptop-only.
+      case 'GET remote':
+        return {
+          tasks: store
+            .listTasks()
+            .filter((t) => !t.parentId)
+            .slice(0, 20),
+          approvals: store.listApprovals({ status: 'pending' }).map((a) => ({
+            id: a.id,
+            taskId: a.taskId,
+            tool: a.tool,
+            summary: a.summary,
+            laptopOnly: permissions.laptopOnly(a.id)
+          }))
+        }
+
+      // An answer from a paired device or a chat: never "always", and never to a
+      // laptop-only approval (the permission layer refuses those, guardrails §9).
+      case 'POST remote-approvals/:id': {
+        const answer = field(body, 'answer')
+        if (answer !== 'approve' && answer !== 'deny')
+          throw new ApiError(400, 'BAD_REQUEST', 'Answer approve or deny.')
+        permissions.answer(id, answer, 'remote')
+        return { ok: true }
+      }
+
       case 'GET models':
         return {
           local: await local.list(),

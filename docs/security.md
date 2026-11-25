@@ -31,7 +31,7 @@ Requests, step summaries and results travel between the user's devices and their
 
 - **Keys:** every device (each laptop, each browser, each phone) has its own key pair, made on the device. Private keys never leave it: the OS keychain on desktop and phone, a non-extractable key in the browser.
 - **Pairing:** the new device and the laptop swap public keys through Convex; the user confirms the matching 6-character code on the laptop (A1), so a server in the middle can't swap in its own key.
-- **Messages:** a command is encrypted to the target laptop's key; events and results to every paired device of the account. Library: libsodium (ISC), X25519 key exchange with XChaCha20-Poly1305.
+- **Messages:** a command is encrypted to the target laptop's key; events and results to every paired device of the account. X25519 key exchange, HKDF-SHA-256 and AES-256-GCM from the platform itself (Web Crypto in the browser, Node in the app), so a browser key can be non-extractable (decisions §64.3; libsodium was the first plan).
 - **What our servers still see:** the minimum needed to route and limit, never content: which device, the command type, times, sizes and status.
 - **Removing a device:** its key is dropped from the account; the laptop rotates its own key and re-shares it with the remaining devices, so the removed device can't read anything new. "Revoke all devices" does this for all of them.
 - **A browser that loses its storage** (cleared data, private window) simply pairs again.

@@ -167,6 +167,18 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [ ] A separate domain for shared pages, so shared content never runs under titan117.com (decisions §44).
 - [ ] Read access to `@ecotechcore/titan117-shared` for the desktop and portal repos (when they first install it).
 
+- [ ] **Phase 15, remote control and chat channels (decisions §64)** (added 25 Nov 2026):
+  - [ ] **Confirm or change §64**, above all: encryption without libsodium (item 3), the second factor read from Clerk's session token in a Convex action (item 4, which also fixes the portal's staff check), the phone app as an installable web app first (item 10), and **WhatsApp through a Worker in your own Cloudflare account** (item 12; Meta only delivers to a public address).
+  - [ ] **Clerk Pro** with two-factor (above): remote control can't be switched on without it. For a passkey to count as the second factor, Clerk's API version 2026-08-20 or later.
+  - [ ] **A Telegram bot of your own** for the live check: in Telegram, message @BotFather, `/newbot`, pick a name; paste the token into the app's Telegram card when it's built (never into a chat with us or a file).
+  - [ ] **Phase 15's check, once Clerk Pro and the bot are ready** (the build is ready for it): run the web app and the desktop app against the development Convex (`npx convex dev` in `packages/backend` puts the new functions there), sign in on the laptop, Remote control → **Switch on** and confirm with your second factor, **Pair a phone or browser** and scan the QR with your phone, check the codes match and click **Allow**; connect your bot on the same screen and **Link my chat**; then start a task from the phone's `/remote` page that writes a file, and tap **Approve** in Telegram. Also try a laptop-only one (for example "make a new agent"): the phone and Telegram say it must be approved on the laptop.
+  - [ ] **Until Clerk Pro, to try it in development only:** `REMOTE_TWO_FACTOR=off-until-clerk-pro` in the development Convex's environment skips the second factor. **Never in production; remove it once Clerk Pro is on** (decisions §64.17).
+  - [ ] **Your phone** for the check: open the web app's Remote page, pair it with the laptop, add it to the Home Screen and allow notifications; then start a task from it and approve it in Telegram.
+  - [ ] **Later in phase 15, when Web Push is built:** a VAPID key pair for it in Convex's environment (the build will say how).
+  - [ ] **For WhatsApp later:** a Meta Business account, a phone number that isn't on the WhatsApp app, and your Cloudflare account. Meta charges service messages after 1,000 free a month per number (since 1 Oct 2026).
+  - [ ] **Decide the alert email:** a "Revoke all" link by email needs a sending service of our own (we send no email today). Leaning: skip it in V1; Revoke all stays on the laptop, web and phone.
+  - [ ] **For the native phone app later:** Apple Developer Program and Google Play developer accounts.
+
 ## Step 5 · Legal and business (before launch)
 
 - [ ] Company details on the legal pages: registered name, registration number, VAT number, address (`apps/web/content/legal.ts`).

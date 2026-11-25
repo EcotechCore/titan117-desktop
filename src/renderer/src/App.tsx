@@ -39,6 +39,7 @@ import { byTeam } from './agents-lib'
 import { CompareView } from './Compare'
 import { AutomationsView } from './Automations'
 import { MarketingView } from './Marketing'
+import { RemoteView } from './Remote'
 import { MediaModelsView } from './Media'
 import type { KeyProvider, ReportMode } from '../../shared/protocol'
 
@@ -518,6 +519,12 @@ function App(): React.JSX.Element {
           <Icon name="tag" /> Marketing
         </button>
         <button
+          className={view.kind === 'remote' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'remote' } })}
+        >
+          <Icon name="send" /> Remote control
+        </button>
+        <button
           className={view.kind === 'compare' ? 'nav on' : 'nav'}
           onClick={() => dispatch({ type: 'view', view: { kind: 'compare' } })}
         >
@@ -839,6 +846,9 @@ function App(): React.JSX.Element {
               savedKeys={(engine?.ownKeys ?? {}) as Record<KeyProvider, boolean>}
               onKeysChanged={() => void reloadModels().catch(fail)}
             />
+          )}
+          {view.kind === 'remote' && (
+            <RemoteView folders={engine?.folders ?? []} onProblem={fail} />
           )}
           {view.kind === 'automations' && (
             <AutomationsView

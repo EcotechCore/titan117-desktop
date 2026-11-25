@@ -108,6 +108,8 @@ export interface PermissionLayer {
   execute(call: ToolCall, ctx: CallContext): Promise<CallOutcome>
   /** The user's answer to an approval. `from` is where it was answered. */
   answer(approvalId: string, answer: ApprovalAnswer, from: 'window' | 'remote'): void
+  /** Whether an approval can only be answered on the laptop (guardrails §9); true when unsure. */
+  laptopOnly(approvalId: string): boolean
   /** Give up on a task's waiting approvals (the task was cancelled). */
   cancelTask(taskId: string): void
   /** The user wrote a message: the sites it names join the task's site list. */
@@ -1292,6 +1294,13 @@ export function createPermissionLayer(deps: {
       if (!pending) throw new ApprovalError('CONFLICT', 'That task is no longer waiting.')
       store.answerApproval(approvalId, answer === 'deny' ? 'denied' : 'approved', from)
       pending.resolve(answer)
+    },
+
+    laptopOnly(approvalId) {
+      const approval = store.getApproval(approvalId)
+      const pending = waiting.get(approvalId)
+      const tool = approval ? tools.get(approval.tool) : undefined
+      return !approval || !tool || !pending || tool.laptopOnly || pending.laptopOnly
     },
 
     cancelTask(taskId) {

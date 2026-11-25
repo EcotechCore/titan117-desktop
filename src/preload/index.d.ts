@@ -1,3 +1,5 @@
+import type { RemoteView, TelegramView } from '../shared/remote-views'
+export type { RemoteView, TelegramView }
 export interface AccountView {
   signedIn: boolean
   locked: boolean
@@ -112,6 +114,27 @@ declare global {
         pdf(html: string, name: string, pageSize: 'A4' | 'Letter'): Promise<string | null>
         png(html: string, name: string): Promise<string | null>
         save(name: string, base64: string): Promise<string | null>
+      }
+      /** Remote control (decisions §64). Never a key. */
+      remote: {
+        status(): Promise<RemoteView>
+        switchOn(): Promise<RemoteView>
+        switchOff(): Promise<RemoteView>
+        pair(): Promise<RemoteView>
+        answerPairing(pairingId: string, accept: boolean): Promise<RemoteView>
+        remove(publicKey: string): Promise<RemoteView>
+        revokeAll(): Promise<RemoteView>
+        setInbox(folder: string | null): Promise<RemoteView>
+        onChange(listener: (view: RemoteView) => void): void
+      }
+      /** The user's own Telegram bot (decisions §64.11). The token goes in, never out. */
+      telegram: {
+        status(): Promise<TelegramView>
+        connect(token: string): Promise<{ ok: true } | { ok: false; message: string }>
+        disconnect(): Promise<TelegramView>
+        link(): Promise<TelegramView>
+        unlink(): Promise<TelegramView>
+        onChange(listener: (view: TelegramView) => void): void
       }
       /** The Titan117 account on this laptop (decisions §17, §39). Never the device token. */
       account: {
