@@ -2409,3 +2409,20 @@ ol.rec-steps {
   margin: 8px 0;
   background: #f4f4f5;
 }
+
+/* Remote control (phase 15): the pairing and link codes, and Slack's manifest. */
+.pair-code {
+  font-family: ui-monospace, 'Cascadia Mono', Menlo, monospace;
+  font-size: 1.1em;
+  letter-spacing: 0.08em;
+  color: var(--accent-deep);
+}
+.code-block {
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: pre;
+}

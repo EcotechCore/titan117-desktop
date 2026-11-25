@@ -226,6 +226,8 @@ export function createApi(deps: {
     }
     media(path: string): Promise<unknown>
     export(month: string | null): unknown
+    /** Due posts for the phone's share sheet (decisions §64.13). */
+    shareable(): Promise<unknown>
   }
   /** The Automations screen (phase 13; decisions §61): schedules, web watches and recordings. */
   automation?: {
@@ -366,6 +368,8 @@ export function createApi(deps: {
     body: unknown
   ): Promise<unknown | null> {
     if (key === 'GET marketing') return need(deps.marketing).list()
+    // Due posts for a paired phone's share sheet (decisions §64.13); asked by the shell's remote bridge.
+    if (key === 'GET remote-share') return { posts: await need(deps.marketing).shareable() }
     if (key !== 'POST marketing/:id') return null
     const m = need(deps.marketing)
     const text = (name: string): string => {
@@ -1226,6 +1230,33 @@ export function createApi(deps: {
         // The local API is the laptop's own window. Remote answers will come
         // through the cloud bridge (phase 15) marked as remote.
         permissions.answer(id, answer as ApprovalAnswer, 'window')
+        return { ok: true }
+      }
+
+      // Remote control (decisions §64): what a paired phone, browser or chat may see,
+      // asked by the shell's remote bridge. Approvals say whether they're laptop-only.
+      case 'GET remote':
+        return {
+          tasks: store
+            .listTasks()
+            .filter((t) => !t.parentId)
+            .slice(0, 20),
+          approvals: store.listApprovals({ status: 'pending' }).map((a) => ({
+            id: a.id,
+            taskId: a.taskId,
+            tool: a.tool,
+            summary: a.summary,
+            laptopOnly: permissions.laptopOnly(a.id)
+          }))
+        }
+
+      // An answer from a paired device or a chat: never "always", and never to a
+      // laptop-only approval (the permission layer refuses those, guardrails §9).
+      case 'POST remote-approvals/:id': {
+        const answer = field(body, 'answer')
+        if (answer !== 'approve' && answer !== 'deny')
+          throw new ApiError(400, 'BAD_REQUEST', 'Answer approve or deny.')
+        permissions.answer(id, answer, 'remote')
         return { ok: true }
       }
 

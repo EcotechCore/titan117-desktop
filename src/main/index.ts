@@ -35,6 +35,7 @@ import { isSidebarNavigation, sidebarAppOf, sidebarResponse } from './lib/sideba
 import { Keys } from './lib/keys'
 import { ConnectorSecrets } from './lib/connector-secrets'
 import { SiteLogins } from './lib/site-logins'
+import { startRemote, type RemoteHooks } from './lib/remote-ipc'
 import {
   APP_ORIGIN,
   APP_SCHEME,
@@ -72,6 +73,7 @@ interface Connection {
 let engine: UtilityProcess | null = null
 let connection: Promise<Connection> | null = null
 let quitting = false
+let remoteHooks: RemoteHooks | null = null
 let restarts = 0
 /** The exit code of an engine that stopped unexpectedly, until the next one has heard it. */
 let crashed: number | null = null
@@ -269,7 +271,10 @@ function startEngine(): void {
     }) => {
       if (message?.type === 'online') renewLease()
       else if (message?.type === 'busy') keepAwake((message.running ?? 0) > 0)
-      else if (message?.type === 'notify' && message.note) notify(message.note)
+      else if (message?.type === 'notify' && message.note) {
+        notify(message.note)
+        remoteHooks?.notice(message.note)
+      }
     }
   )
 
@@ -297,6 +302,12 @@ function keepAwake(busy: boolean): void {
     powerSaveBlocker.stop(awakeBlocker)
     awakeBlocker = null
   }
+}
+
+/** Remote alerts (decisions §64.8): quiet, shown even when the window is in front. */
+function quietNotice(title: string, body: string): void {
+  if (!Notification.isSupported()) return
+  new Notification({ title: title.slice(0, 80), body: body.slice(0, 200), silent: true }).show()
 }
 
 /** Done, failed, paused or needs approval (1.9): only when the window isn't in front. */
@@ -768,6 +779,19 @@ function start(): void {
   registerUpdates()
   startAccount()
   startEngine()
+  // Remote control and chat channels (decisions §64): off until the user switches them on.
+  remoteHooks = startRemote({
+    dataDir: app.getPath('userData'),
+    keychain: keychain(),
+    engine: () => connection ?? Promise.reject(new Error('The engine is not running.')),
+    apiUrl: () => accountConfig().apiUrl,
+    webUrl: () => accountConfig().webUrl,
+    deviceToken: () => account?.deviceToken() ?? null,
+    deviceId: () => account?.deviceIdentifier() ?? null,
+    openExternal: (url) => shell.openExternal(url),
+    notify: quietNotice,
+    fromOurPage
+  })
   createWindow()
 
   app.on('activate', function () {

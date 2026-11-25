@@ -71,6 +71,11 @@ export class Account {
     return this.token
   }
 
+  /** This laptop's device id in our cloud, for remote control's switch-on page. Not a secret. */
+  deviceIdentifier(): string | null {
+    return this.deviceId
+  }
+
   status(): AccountView {
     this.remember(this.now())
     return {

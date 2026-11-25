@@ -8,7 +8,7 @@
  * announced once. One that came due while the laptop was off is announced
  * when the app opens again, unless its day passed long ago.
  */
-import { extname } from 'node:path'
+import { basename, extname } from 'node:path'
 
 import { getMeta, setMeta, type Db } from '../db'
 import type { MemoryStore } from '../../memory'
@@ -23,7 +23,14 @@ import {
   type SiteBrand,
   type SiteReadDeps
 } from './brand'
-import { createPostStore, type Post, type PostStore } from './posts'
+import {
+  createPostStore,
+  fullText,
+  PLATFORM_INFO,
+  trackedLink,
+  type Post,
+  type PostStore
+} from './posts'
 import { createMailer, type Mailer } from './mailer'
 import type { MailProviderId, Sequence } from './mail'
 import {
@@ -84,6 +91,31 @@ export interface MarketingService {
   stop(): void
   /** Look for posts that are due now (also called when the app unlocks). */
   tick(): void
+  /**
+   * Ready posts whose time has come, for the phone's share sheet (decisions
+   * §64.13, §62.5): the full text with tags and the tracked link, and the
+   * pictures small enough to send sealed. Larger media stay on the laptop.
+   */
+  shareable(read: (path: string) => Promise<Buffer | null>): Promise<ShareablePost[]>
+}
+
+export interface ShareablePost {
+  id: string
+  platform: string
+  text: string
+  files: { name: string; type: string; data: string }[]
+  /** Media too large to send, by file name. */
+  left: string[]
+}
+
+/** Sealed messages are at most 700 KB (decisions §64.16); pictures share 450 KB of it. */
+const SHARE_PICTURES_BYTES = 450 * 1024
+const PICTURE_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif'
 }
 
 export function createMarketing(deps: {
@@ -241,6 +273,32 @@ export function createMarketing(deps: {
         { signal: options.signal, launch: deps.launch }
       )
       return { ...video, voiced }
+    },
+
+    async shareable(read) {
+      const out: ShareablePost[] = []
+      for (const post of posts.due().slice(0, 5)) {
+        const link = post.link ? trackedLink(post) : ''
+        const text = [fullText(post), link && !post.text.includes(post.link) ? link : '']
+          .filter(Boolean)
+          .join('\n\n')
+        const files: ShareablePost['files'] = []
+        const left: string[] = []
+        let budget = SHARE_PICTURES_BYTES
+        for (const path of post.media) {
+          const name = basename(path)
+          const type = PICTURE_TYPES[extname(path).toLowerCase()]
+          const bytes = type ? await read(path).catch(() => null) : null
+          if (!type || !bytes || bytes.length > budget) {
+            left.push(name)
+            continue
+          }
+          budget -= bytes.length
+          files.push({ name, type, data: bytes.toString('base64') })
+        }
+        out.push({ id: post.id, platform: PLATFORM_INFO[post.platform].label, text, files, left })
+      }
+      return out
     },
 
     tick() {

@@ -1395,6 +1395,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       if (info.size > 8_000_000) return { path: real, mediaType: null, base64: null }
       return { path: real, mediaType: type, base64: (await readFile(real)).toString('base64') }
     },
+    // Pictures are read only inside the allowed folders, as for every post's media.
+    shareable: () =>
+      marketing.shareable(async (path) => {
+        const real = await resolveAllowed(policy(), path).catch(() => null)
+        return real ? readFile(real) : null
+      }),
     export(month: string | null) {
       const posts = month
         ? marketing.posts.list({ month })

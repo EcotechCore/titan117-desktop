@@ -133,7 +133,7 @@ A separate Next.js app, in its own repo (`titan117-pop`), at its own address (fo
 
 - **Keys:** each device (laptop, browser, phone) makes its own X25519 key pair; private keys stay in the OS keychain or as a non-extractable browser key. Convex stores public keys per device.
 - **Pairing:** the new device scans the laptop's QR; both show the same 6-character code derived from the two public keys; the user confirms on the laptop, which then trusts that key.
-- **Messages:** commands are sealed to the target laptop's key; events and results to every paired device of the account (libsodium, XChaCha20-Poly1305). Convex keeps ciphertext plus routing metadata: device, command type, time, size, status.
+- **Messages:** commands are sealed to the target laptop's key; events and results to every paired device of the account (X25519, HKDF-SHA-256 and AES-256-GCM from Web Crypto and Node, decisions §64.3). Convex keeps ciphertext plus routing metadata: device, command type, time, size, status.
 - **Revoking:** the removed device's key is deleted, and the laptop rotates its own key and re-shares it with the remaining devices; "Revoke all devices" resets every pairing.
 - **Chat channels are not end-to-end** (the platform sees the message); the app says so when a channel is linked.
 

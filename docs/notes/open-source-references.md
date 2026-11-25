@@ -235,11 +235,13 @@ Checked on 24 Nov 2026. Phase 14's first part reuses no code from these: the bra
 
 | Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
 |---|---|---|---|---|---|---|
-| [grammyjs/grammY](https://github.com/grammyjs/grammY) | Telegram bots | MIT | Lib | `remote/grammy` | | |
-| [slackapi/bolt-js](https://github.com/slackapi/bolt-js) | Slack app | MIT | Lib | `remote/slack-bolt` | | |
-| [discordjs/discord.js](https://github.com/discordjs/discord.js) | Discord bot | Apache 2.0 | Lib | `remote/discordjs` | | |
-| Meta WhatsApp Cloud API docs and samples | Official WhatsApp API (bring-your-own) | *to check* | Lib | `remote/whatsapp` | | |
-| [jedisct1/libsodium.js](https://github.com/jedisct1/libsodium.js) | End-to-end encryption | ISC | Lib | `remote/libsodium` | | |
+| [grammyjs/grammY](https://github.com/grammyjs/grammY) | Telegram bots: ideas for our own Bot API client (long polling, buttons, files); not shipped (it brings node-fetch and calls outside the engine's network code) | MIT | Ideas | `remote/grammy` | MIT (KnorpelSenf, 2021–2024) | `6388c2ad2a8e` |
+| [slackapi/bolt-js](https://github.com/slackapi/bolt-js) | Slack app: Socket Mode handshake and acknowledgements; not shipped (it brings Express and the web API client) | MIT | Ideas | `remote/slack-bolt` | MIT (Robots & Pencils 2016–2018, Slack Technologies 2019–) | `c000eeb8b58f` |
+| [discordjs/discord.js](https://github.com/discordjs/discord.js) | Discord bot: Gateway heartbeat, identify and resume; not shipped (a dozen packages, undici) | Apache 2.0 | Ideas | `remote/discordjs` | Apache 2.0 | `32f16f4b6500` |
+| Meta WhatsApp Cloud API docs | Official WhatsApp API (bring-your-own): the webhook check and send call, read on Meta's pages (external-services.md) | Docs, no code taken | Ideas | not cloned | n/a | |
+| [jedisct1/libsodium.js](https://github.com/jedisct1/libsodium.js) | End-to-end encryption: the sealed-box design; not shipped, since Web Crypto and Node's crypto give X25519, HKDF and AES-256-GCM with non-extractable browser keys (decisions §64.1) | ISC | Ideas | `remote/libsodium` | ISC (Ahmad Ben Mrad, Frank Denis, Ryan Lester, 2015–2026) | `1f541855af3c` |
+
+Checked on 25 Nov 2026 (decisions §64). Phase 15 ships none of these as a dependency: every channel is a small client of our own on the engine's network code, and encryption uses the platform's own crypto. Nothing copied yet; anything copied goes into `SOURCES.md` with its licence.
 
 ## Phase 16 · Marketplace
 
