@@ -40,7 +40,7 @@ import { CompareView } from './Compare'
 import { AutomationsView } from './Automations'
 import { MarketingView } from './Marketing'
 import { MediaModelsView } from './Media'
-import type { ReportMode } from '../../shared/protocol'
+import type { KeyProvider, ReportMode } from '../../shared/protocol'
 
 const PROMPTS = [
   'Find every invoice in my folder and total them in a CSV.',
@@ -836,6 +836,8 @@ function App(): React.JSX.Element {
               changed={state.changed.marketing ?? 0}
               onProblem={fail}
               onAsk={(agent, words) => void startNew(words, agent)}
+              savedKeys={(engine?.ownKeys ?? {}) as Record<KeyProvider, boolean>}
+              onKeysChanged={() => void reloadModels().catch(fail)}
             />
           )}
           {view.kind === 'automations' && (

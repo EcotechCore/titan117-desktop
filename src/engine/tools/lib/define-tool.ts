@@ -101,6 +101,32 @@ export interface MarketingAccess {
   ): import('../../lib/marketing/posts').Post | null
   /** What the platform shows for a post (views, likes, clicks…), as the user reported it. */
   setResults(id: string, results: unknown): import('../../lib/marketing/posts').Post
+  /** A published site's visits, from the user's own Cloudflare account (15.10). */
+  visits(site: string, days: number): Promise<import('../../lib/apps/cloudflare').SiteVisits>
+  /** Newsletters and sequences through the user's own email provider (15.5, 15.6). */
+  mail: {
+    state(): import('../../lib/marketing/mailer').MailState
+    saveList(input: { name: unknown; about?: unknown }): import('../../lib/marketing/mail').MailList
+    addSubscribers(
+      list: string,
+      people: { email: unknown; name?: unknown }[],
+      how: unknown
+    ): { added: number; already: number; unsubscribed: number; invalid: number }
+    saveNewsletter(input: Record<string, unknown>): import('../../lib/marketing/mail').Newsletter
+    audience(id: string): {
+      list: import('../../lib/marketing/mail').MailList
+      count: number
+      from: string
+      provider: string
+    }
+    test(id: string): Promise<{ to: string }>
+    send(id: string): Promise<{ sentTo: number; refused: number; list: string }>
+    saveSequence(input: {
+      name: unknown
+      list: unknown
+      steps: unknown
+    }): import('../../lib/marketing/mail').Sequence
+  }
   /** A video an agent described, checked against the brand kit's look. */
   checkVideo(input: unknown): import('../../lib/marketing/video').VideoSpec
   /** Drawn on the laptop; `load` reads a scene's picture (through the tool's own file access). */

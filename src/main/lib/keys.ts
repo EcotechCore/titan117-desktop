@@ -56,6 +56,20 @@ async function tryKey(provider: KeyProvider, key: string, fetchFn: typeof fetch)
     if ([400, 401, 403].includes(res.status)) return false
     throw new Error(`Google answered ${res.status}.`)
   }
+  // Email providers (decisions §63): each one's own read-only account call.
+  if (provider === 'brevo' || provider === 'postmark') {
+    const res =
+      provider === 'brevo'
+        ? await fetchFn('https://api.brevo.com/v3/account', {
+            headers: { 'api-key': key, Accept: 'application/json' }
+          })
+        : await fetchFn('https://api.postmarkapp.com/server', {
+            headers: { 'X-Postmark-Server-Token': key, Accept: 'application/json' }
+          })
+    if (res.ok) return true
+    if ([400, 401, 403, 422].includes(res.status)) return false
+    throw new Error(`The provider answered ${res.status}.`)
+  }
   // Search keys (decisions §44): one small search, the only check these providers offer.
   if (provider === 'brave') {
     const res = await fetchFn('https://api.search.brave.com/res/v1/web/search?q=titan117&count=1', {

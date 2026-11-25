@@ -77,7 +77,9 @@ declare global {
             | 'tavily'
             | 'brave'
             | 'cloudflare'
-            | 'pagespeed',
+            | 'pagespeed'
+            | 'brevo'
+            | 'postmark',
             boolean
           >
         >

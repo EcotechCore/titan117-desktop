@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { EngineClient } from './engine'
 import { monthGrid, pad } from './marketing-lib'
+import { NewslettersSection, type MailView } from './Newsletters'
+import type { KeyProvider } from '../../shared/protocol'
 import { Icon } from './ui'
 
 type Platform = 'linkedin' | 'facebook' | 'instagram' | 'x' | 'tiktok'
@@ -66,6 +68,7 @@ interface Listing {
   due: string[]
   platforms: PlatformInfo[]
   folders: string[]
+  mail: MailView
 }
 
 interface Exported {
@@ -180,10 +183,15 @@ export function MarketingView({
   client,
   changed,
   onProblem,
-  onAsk
+  onAsk,
+  savedKeys,
+  onKeysChanged
 }: {
   client: EngineClient | null
   changed: number
+  /** Which of the user's own keys are saved (the email provider's among them). */
+  savedKeys: Record<KeyProvider, boolean>
+  onKeysChanged(): void
   onProblem(error: unknown): void
   /** Start a task for one of the marketing agents with these words. */
   onAsk(agent: string, text: string): void
@@ -679,6 +687,16 @@ export function MarketingView({
           </div>
         </div>
       )}
+
+      <NewslettersSection
+        client={client}
+        mail={data.mail}
+        savedKeys={savedKeys}
+        onData={(next) => setData(next as Listing)}
+        onProblem={onProblem}
+        onAsk={onAsk}
+        onKeysChanged={onKeysChanged}
+      />
 
       <h2 className="section">Brand kit</h2>
       <p className="muted">

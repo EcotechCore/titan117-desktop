@@ -48,6 +48,21 @@ export type Scene =
     }
   | { kind: 'quote'; text: string; by: string; seconds: number; say: string }
   | { kind: 'outro'; heading: string; text: string; url: string; seconds: number; say: string }
+  | {
+      /**
+       * A video clip (15.15): one made with video_create, or the user's own
+       * footage, inside the allowed folders. It fills the frame; its own sound
+       * isn't used (the voiceover is).
+       */
+      kind: 'clip'
+      video: string
+      /** Where in the clip to start, in seconds. */
+      from: number
+      heading: string
+      text: string
+      seconds: number
+      say: string
+    }
 
 export interface VideoLook {
   /** `#rrggbb`. */
@@ -72,16 +87,19 @@ export interface VideoSpec {
   look: VideoLook
 }
 
-const SCENE_KINDS = ['title', 'points', 'image', 'quote', 'outro']
+const SCENE_KINDS = ['title', 'points', 'image', 'clip', 'quote', 'outro']
 const DEFAULT_SECONDS: Record<Scene['kind'], number> = {
   title: 4,
   points: 6,
   image: 5,
   quote: 5,
-  outro: 4
+  outro: 4,
+  clip: 5
 }
 const HEX = /^#[0-9a-fA-F]{6}$/
 const IMAGE_FILE = /\.(png|jpe?g|webp)$/i
+/** What Edge and Chrome can play: MP4 (H.264) and WebM. */
+export const CLIP_FILE = /\.(mp4|m4v|webm)$/i
 const LOGO_FILE = /\.(png|jpe?g|webp|svg)$/i
 
 function line(value: unknown, max: number): string {
@@ -138,6 +156,20 @@ export function checkVideo(input: unknown, brand: Partial<VideoLook> = {}): Vide
           heading: line(s.heading, 80),
           text: line(s.text, 160),
           frame,
+          seconds,
+          say
+        }
+      }
+      case 'clip': {
+        const video = line(s.video, 500)
+        if (!CLIP_FILE.test(video)) fail('give an MP4 or WebM video in the allowed folders.')
+        const from = typeof s.from === 'number' && Number.isFinite(s.from) ? Math.max(0, s.from) : 0
+        return {
+          kind,
+          video,
+          from: Math.min(from, 3600),
+          heading: line(s.heading, 80),
+          text: line(s.text, 160),
           seconds,
           say
         }
@@ -304,6 +336,9 @@ interface PageScene {
   frame: 'browser' | 'phone' | 'none'
   /** An index into the job's images, or -1. */
   image: number
+  /** An index into the job's clips, or -1, and where in it to start. */
+  clip: number
+  clipFrom: number
   captions: { text: string; from: number; to: number }[]
 }
 
@@ -315,6 +350,8 @@ interface PageJob {
   bitrate: number
   scenes: PageScene[]
   images: string[]
+  /** Video clips as data URLs. */
+  clips: string[]
   /** A data URL, or empty. */
   logo: string
   name: string
@@ -396,6 +433,36 @@ async function renderInPage(job: PageJob): Promise<PageResult> {
     }
     const images = await Promise.all(job.images.map(load))
     const logo = await load(job.logo)
+    // Clips play from memory (a blob), so every frame can be found by seeking.
+    const clips = await Promise.all(
+      job.clips.map(async (src) => {
+        const video = document.createElement('video')
+        video.muted = true
+        video.playsInline = true
+        video.preload = 'auto'
+        video.src = URL.createObjectURL(await (await fetch(src)).blob())
+        await new Promise<void>((resolve, reject) => {
+          video.onloadeddata = () => resolve()
+          video.onerror = () =>
+            reject(new Error('A clip couldn’t be played (MP4 with H.264, or WebM).'))
+        })
+        return video
+      })
+    )
+    /** Put a clip at the right moment before the frame is drawn. */
+    const seekClip = async (scene: PageScene, t: number): Promise<void> => {
+      const video = clips[scene.clip]
+      if (!video) return
+      const length = video.duration || 1
+      const at = (scene.clipFrom + Math.max(0, t)) % length
+      if (Math.abs(video.currentTime - at) < 0.5 / job.fps) return
+      await new Promise<void>((resolve) => {
+        const done = (): void => resolve()
+        video.addEventListener('seeked', done, { once: true })
+        setTimeout(done, 2000)
+        video.currentTime = at
+      })
+    }
     const sizeOf = (img: HTMLImageElement): { w: number; h: number } => ({
       w: img.naturalWidth || 300,
       h: img.naturalHeight || 150
@@ -648,6 +715,41 @@ async function renderInPage(job: PageJob): Promise<PageResult> {
           ctx.restore()
           y = block(lines, margin + 5 * u, y, size, 500, theme.fg, shown) + size * 0.9
         })
+      } else if (scene.kind === 'clip') {
+        const video = clips[scene.clip]
+        if (video) {
+          // Fill the frame (cover), with a slow push-in.
+          const vw = video.videoWidth || W
+          const vh = video.videoHeight || H
+          const scale =
+            Math.max(W / vw, H / vh) * (1 + 0.03 * clamp(t / Math.max(scene.seconds, 1)))
+          ctx.drawImage(video, (W - vw * scale) / 2, (H - vh * scale) / 2, vw * scale, vh * scale)
+        }
+        if (scene.heading || scene.text) {
+          // A dark band at the bottom keeps the words readable over any picture.
+          const band = ctx.createLinearGradient(0, H * 0.5, 0, H)
+          band.addColorStop(0, 'rgba(0,0,0,0)')
+          band.addColorStop(1, 'rgba(0,0,0,0.72)')
+          ctx.fillStyle = band
+          ctx.fillRect(0, H * 0.5, W, H * 0.5)
+          const head = scene.heading ? fit(scene.heading, inner, 2, 6.4 * u, 3.6 * u, 800) : null
+          const sub = scene.text ? fit(scene.text, inner, 2, 3.6 * u, 2.6 * u, 400) : null
+          const height =
+            (head ? head.lines.length * head.size * 1.22 : 0) +
+            (sub ? sub.lines.length * sub.size * 1.22 + 1.5 * u : 0)
+          let y = H - margin - (tall ? 16 : 9) * u - height - (scene.captions.length ? 8 * u : 0)
+          if (head) y = block(head.lines, margin, y, head.size, 800, '#ffffff', t / 0.6)
+          if (sub)
+            block(
+              sub.lines,
+              margin,
+              y + 1.5 * u,
+              sub.size,
+              400,
+              'rgba(255,255,255,0.86)',
+              (t - 0.2) / 0.6
+            )
+        }
       } else if (scene.kind === 'image') {
         let y = top
         if (scene.heading) {
@@ -810,6 +912,7 @@ async function renderInPage(job: PageJob): Promise<PageResult> {
       )
         sceneIndex++
       const scene = job.scenes[sceneIndex]
+      if (scene.kind === 'clip') await seekClip(scene, now - scene.start)
       drawScene(scene, sceneIndex, now - scene.start, sceneIndex === job.scenes.length - 1)
       const frame = new VideoFrame(canvas, {
         timestamp: Math.round((f * 1e6) / job.fps),
@@ -896,6 +999,8 @@ async function renderInPage(job: PageJob): Promise<PageResult> {
 export interface VideoAssets {
   /** Each picture a scene names, as a data URL; a missing one throws before this. */
   images: Map<string, string>
+  /** Each clip a scene names, as a data URL. */
+  clips?: Map<string, string>
   /** The logo as a data URL, or empty. */
   logo: string
   /** The whole voice track at `AUDIO_RATE`, or null for a silent video. */
@@ -933,6 +1038,7 @@ export function pageJob(spec: VideoSpec, assets: VideoAssets): PageJob {
   const size = VIDEO_FORMATS[spec.format]
   const last = assets.timed[assets.timed.length - 1]
   const order = [...assets.images.keys()]
+  const clipOrder = [...(assets.clips?.keys() ?? [])]
   return {
     width: size.width,
     height: size.height,
@@ -950,12 +1056,15 @@ export function pageJob(spec: VideoSpec, assets: VideoAssets): PageJob {
       url: scene.kind === 'outro' ? scene.url : '',
       frame: scene.kind === 'image' ? scene.frame : 'none',
       image: scene.kind === 'image' ? order.indexOf(scene.image) : -1,
+      clip: scene.kind === 'clip' ? clipOrder.indexOf(scene.video) : -1,
+      clipFrom: scene.kind === 'clip' ? scene.from : 0,
       captions:
         spec.captions && spec.voiceover && voice && scene.say
           ? captionsFor(scene.say, voice.at, voice.seconds)
           : []
     })),
     images: order.map((path) => assets.images.get(path)!),
+    clips: clipOrder.map((path) => assets.clips!.get(path)!),
     logo: assets.logo,
     name: spec.look.name,
     font: spec.look.font,

@@ -11,3 +11,4 @@ out
 build/vendor/*.exe
 .cache/
 test/live/results/video/
+test/live/results/newsletter-preview.html

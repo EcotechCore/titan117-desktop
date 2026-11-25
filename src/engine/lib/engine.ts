@@ -26,7 +26,11 @@ import { createComparer } from '../compare'
 import { createMediaService, type MediaService } from './media'
 import { createSiteService } from './sites/service'
 import { createMarketing } from './marketing/service'
+import { PROVIDER_HOSTS } from './marketing/mail-providers'
+import { readVisits } from './apps/cloudflare'
+import { resolveTxt } from 'node:dns/promises'
 import { MarketingError, cleanMarketingBrand } from './marketing/brand'
+import { parseSubscribers } from './marketing/mail'
 import {
   PLATFORM_INFO,
   calendarCsv,
@@ -505,6 +509,45 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
                     `${PLATFORM_INFO[p.platform].label}: ${p.text.replace(/\s+/g, ' ').slice(0, 40)}`
                 )
                 .join('\n'),
+        taskId: 'view:marketing'
+      })
+    },
+    // Newsletters and sequences (15.5, 15.6): the user's own provider, straight from the laptop.
+    mailKeys: () => ({ brevo: ownKeys.brevo, postmark: ownKeys.postmark }),
+    mailFetch: connectivity.track(engineFetch(options.fetch, () => PROVIDER_HOSTS)),
+    resolveTxt: (name) => resolveTxt(name),
+    async visits(site, days) {
+      const token = ownKeys.cloudflare
+      if (!token)
+        throw new MarketingError('Add your Cloudflare token first (Apps screen, Your hosting).')
+      const published = Object.values(getMeta<Record<string, Published>>(db, 'appPublished', {}))
+      const wanted = site
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, '')
+        .replace(/\/.*$/, '')
+      const found = published.find((p) => {
+        const host = new URL(p.url).hostname
+        return host === wanted || host.split('.')[0] === wanted
+      })
+      if (!found)
+        throw new MarketingError(
+          `"${site.slice(0, 80)}" isn't a site published from Titan117. Published: ${published.map((p) => p.url).join(', ') || 'none yet'}.`
+        )
+      return readVisits({
+        fetch: connectivity.track(engineFetch(options.fetch, () => ['https://api.cloudflare.com'])),
+        token,
+        name: new URL(found.url).hostname.split('.')[0],
+        days
+      })
+    },
+    onSequence(sequence, note, failed) {
+      if (!options.onNotify || !getMeta<boolean>(db, 'notifications', true)) return
+      options.onNotify({
+        title: failed
+          ? `The "${sequence.name}" emails couldn't go out`
+          : `"${sequence.name}" emails sent`,
+        body: note.slice(0, 160),
         taskId: 'view:marketing'
       })
     },
@@ -1288,7 +1331,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         posts: marketing.posts.list().map(postView),
         due: marketing.posts.due().map((p) => p.id),
         platforms: Object.values(PLATFORM_INFO),
-        folders: folders()
+        folders: folders(),
+        mail: marketing.mail.state()
       }
     },
     async saveBrand(next: unknown) {
@@ -1309,6 +1353,31 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     setPost: (id: string, status: PostStatus) => void marketing.posts.setStatus(id, status),
     removePost: (id: string) => marketing.posts.remove(id),
     setResults: (id: string, results: unknown) => void marketing.posts.setResults(id, results),
+    /** Newsletters: the user's own clicks. Sending still checks everything the tools check. */
+    mail: {
+      saveSettings: (input: unknown) => void marketing.mail.saveSettings(input),
+      check: () => marketing.mail.check(),
+      saveList: (input: { name: unknown; about?: unknown }) =>
+        void marketing.mail.store.saveList(input),
+      removeList: (id: string) => marketing.mail.store.removeList(id),
+      subscribers: (listId: string) => marketing.mail.store.subscribers(listId),
+      addSubscribers: (listId: string, text: string, how: unknown) => {
+        const people = parseSubscribers(text)
+        if (!people.length) throw new MarketingError('No email addresses were found in that text.')
+        return marketing.mail.store.addSubscribers(listId, people, { how })
+      },
+      unsubscribe: (id: string) => marketing.mail.store.removeSubscriber(id),
+      saveNewsletter: (input: Record<string, unknown>) =>
+        marketing.mail.store.saveNewsletter(input, 'you'),
+      removeNewsletter: (id: string) => marketing.mail.store.removeNewsletter(id),
+      preview: (id: string) => marketing.mail.preview(id),
+      test: (id: string) => marketing.mail.test(id),
+      send: (id: string) => marketing.mail.send(id),
+      sync: () => marketing.mail.sync(),
+      setSequence: (id: string, enabled: boolean) =>
+        void marketing.mail.store.setSequence(id, enabled),
+      removeSequence: (id: string) => marketing.mail.store.removeSequence(id)
+    },
     /** A post's picture for the window, read only from inside the allowed folders. */
     async media(path: string) {
       const type = (

@@ -13,6 +13,27 @@ import { defineTool } from './lib/define-tool'
 
 const ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:4']
 
+/**
+ * Camera moves for a clip (the video studio, 15.15): plain words added to the
+ * prompt, which every video model reads. Our own names and wording.
+ */
+export const CAMERA_MOVES: Record<string, string> = {
+  still: 'Locked-off camera, no camera movement.',
+  'push-in': 'The camera slowly pushes in towards the subject.',
+  'pull-out': 'The camera slowly pulls back to reveal the scene.',
+  'pan-left': 'The camera pans slowly from right to left.',
+  'pan-right': 'The camera pans slowly from left to right.',
+  orbit: 'The camera orbits slowly around the subject.',
+  'crane-up': 'The camera rises slowly, like a crane shot.',
+  handheld: 'Handheld camera with gentle natural movement.',
+  drone: 'An aerial drone shot moving slowly forward.'
+}
+
+export function withCamera(prompt: string, camera?: string): string {
+  const move = camera ? CAMERA_MOVES[camera] : undefined
+  return move ? `${prompt.trim()} ${move}` : prompt
+}
+
 function slug(text: string): string {
   return (
     text
@@ -112,7 +133,7 @@ export const imageCreate = defineTool<MediaInput>({
   }
 })
 
-export const videoCreate = defineTool<MediaInput & { seconds?: number }>({
+export const videoCreate = defineTool<MediaInput & { seconds?: number; camera?: string }>({
   name: 'video_create',
   description: [
     'Make a short video clip from a description and save it in an allowed folder. It takes minutes and can cost dollars,',
@@ -135,7 +156,12 @@ export const videoCreate = defineTool<MediaInput & { seconds?: number }>({
         type: 'string',
         description: 'An OpenRouter video model id, only if the user named one.'
       },
-      aspect_ratio: { type: 'string', description: 'The shape.', enum: ASPECTS }
+      aspect_ratio: { type: 'string', description: 'The shape.', enum: ASPECTS },
+      camera: {
+        type: 'string',
+        description: 'A camera move for the clip (the video studio).',
+        enum: Object.keys(CAMERA_MOVES)
+      }
     },
     required: ['prompt']
   },
@@ -150,14 +176,14 @@ export const videoCreate = defineTool<MediaInput & { seconds?: number }>({
         `Make a ${input.seconds ? `${input.seconds}-second ` : ''}video${input.model ? ` with ${input.model}` : ''}: "${String(input.prompt ?? '').slice(0, 160)}". ` +
         'Video can cost dollars in credits; the description leaves this laptop and the provider keeps it (no zero data retention for video).',
       alwaysAsks: true,
-      outgoing: String(input.prompt ?? '')
+      outgoing: withCamera(String(input.prompt ?? ''), input.camera)
     }
   },
   async run(input, ctx) {
     const model = await ctx.media.pick('video', input.model)
     const video = await ctx.media.video({
       model,
-      prompt: input.prompt,
+      prompt: withCamera(input.prompt, input.camera),
       seconds: typeof input.seconds === 'number' ? Math.round(input.seconds) : undefined,
       aspectRatio: input.aspect_ratio
     })

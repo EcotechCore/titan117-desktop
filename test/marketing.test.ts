@@ -53,6 +53,7 @@ import {
   timeline
 } from '../src/engine/lib/marketing/video'
 import { createMemoryStore } from '../src/engine/memory'
+import { CAMERA_MOVES, withCamera } from '../src/engine/tools/media'
 import { builtInTools } from '../src/engine/tools'
 import { monthGrid } from '../src/renderer/src/marketing-lib'
 import { call, testEngine, tempFolder } from './helpers'
@@ -593,6 +594,56 @@ describe('ad drafts', () => {
     expect(doc).toContain('Fresh bread in Cluj _(19/30)_')
     expect(doc).toContain('Start small.')
     expect(doc).toContain('**Button:** Order now')
+  })
+})
+
+describe('the video studio', () => {
+  it('takes clips in the timeline, MP4 or WebM, from a point in the clip', () => {
+    const spec = checkVideo({
+      scenes: [
+        { kind: 'title', heading: 'Fresh bread' },
+        {
+          kind: 'clip',
+          video: 'videos/clips/oven.mp4',
+          from: 2.5,
+          heading: 'Baked at 4 am',
+          seconds: 4
+        },
+        { kind: 'clip', video: 'videos/mine.webm' }
+      ]
+    })
+    expect(spec.scenes[1]).toMatchObject({
+      kind: 'clip',
+      video: 'videos/clips/oven.mp4',
+      from: 2.5,
+      seconds: 4
+    })
+    expect(spec.scenes[2]).toMatchObject({ from: 0, seconds: 5 })
+    expect(() => checkVideo({ scenes: [{ kind: 'clip', video: 'notes.txt' }] })).toThrow(
+      /MP4 or WebM/
+    )
+    const timed = timeline(spec, [null, null, null])
+    const job = pageJob(spec, {
+      images: new Map(),
+      clips: new Map([
+        ['videos/clips/oven.mp4', 'data:video/mp4;base64,AAAA'],
+        ['videos/mine.webm', 'data:video/webm;base64,BBBB']
+      ]),
+      logo: '',
+      voice: null,
+      timed
+    })
+    expect(job.clips).toHaveLength(2)
+    expect(job.scenes.map((s) => s.clip)).toEqual([-1, 0, 1])
+    expect(job.scenes[1].clipFrom).toBe(2.5)
+  })
+
+  it('adds a camera move to a clip’s prompt in plain words', () => {
+    expect(withCamera('A loaf on a wooden table.', 'push-in')).toBe(
+      'A loaf on a wooden table. The camera slowly pushes in towards the subject.'
+    )
+    expect(withCamera('A loaf.', 'nonsense')).toBe('A loaf.')
+    expect(Object.keys(CAMERA_MOVES)).toContain('orbit')
   })
 })
 

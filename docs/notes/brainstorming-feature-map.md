@@ -339,7 +339,7 @@ Out of reach with open source: backlink databases, competitors' traffic estimate
 | 15.7 | Landing pages | V1 | Built by the app builder (§6), with SEO (§14) and a form that feeds the CRM |
 | 15.8 | Images for posts and ads | V1 | Image models through OpenRouter or local, on the brand kit |
 | 15.9 | Videos | V1 | The promo video agent (5.1), cut to each platform's format |
-| 15.10 | Website analytics | V1 | Privacy-friendly analytics built into sites we generate (ideas from Umami, MIT; Plausible is AGPL), stored in the site's own backend in the user's account, never in our cloud; reads Google Analytics for other sites, as the user (decisions §32) |
+| 15.10 | Website analytics | V1 | Privacy-friendly analytics built into sites we generate (ideas from Umami, MIT; Plausible is AGPL; built on Cloudflare Workers Analytics Engine, decisions §63), stored in the site's own backend in the user's account, never in our cloud; reads Google Analytics for other sites, as the user (decisions §32) |
 | 15.11 | Campaign reports | V1 | What was posted and sent, and what it brought: clicks, sign-ups, leads |
 | 15.12 | Lead finding | V1 | Web research into a list in the CRM, for example local businesses without a website; respects site terms and privacy law (GDPR) |
 | 15.13 | Ad drafts | V1 | Google and Meta ads written, with images and targeting; you launch them and set the budget. Ready-to-use ads plus a bulk-upload file for Google's and Meta's import tools; or the user's own developer access; or, as the user's choice after a warning, the agent fills in Ads Manager and stops before Launch (decisions §28, §29) |

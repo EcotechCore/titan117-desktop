@@ -57,7 +57,7 @@ import type {
   GitAccess,
   ServerAccess
 } from './tools/lib/define-tool'
-import { AppError, type AppService } from './lib/apps/service'
+import { AppError, countsVisits, type AppService } from './lib/apps/service'
 import { DataError } from './lib/apps/data'
 import type { SidebarService } from './lib/apps/sidebar'
 import { NodeDownloadError } from './lib/apps/node'
@@ -622,6 +622,38 @@ export function createPermissionLayer(deps: {
             marketWrite()
             return market().posts.setResults(id, results)
           },
+          visits: (site, days) => market().visits(site, days),
+          mail: {
+            state: () => market().mail.state(),
+            saveList(input) {
+              marketWrite()
+              return market().mail.store.saveList(input)
+            },
+            addSubscribers(list, people, how) {
+              marketWrite()
+              const found = market().mail.store.list(list)
+              if (!found)
+                throw new PermissionError(`There is no list called "${String(list).slice(0, 80)}".`)
+              return market().mail.store.addSubscribers(found.id, people, { how })
+            },
+            saveNewsletter(input) {
+              marketWrite()
+              return market().mail.store.saveNewsletter(input, madeBy())
+            },
+            audience: (id) => market().mail.audience(id),
+            test(id) {
+              marketWrite()
+              return market().mail.test(id, ctx.signal)
+            },
+            send(id) {
+              marketWrite()
+              return market().mail.send(id, ctx.signal)
+            },
+            saveSequence(input) {
+              marketWrite()
+              return market().mail.store.saveSequence(input, madeBy())
+            }
+          },
           checkVideo(input) {
             const brand = market().brand.get()
             return checkVideo(
@@ -956,7 +988,7 @@ export function createPermissionLayer(deps: {
               { folder },
               {
                 risk: 'external',
-                summary: `Publish "${app.title}" to your Cloudflare account: anyone with its address can see it${app.published ? ` (it replaces ${app.published.url})` : ''}`
+                summary: `Publish "${app.title}" to your Cloudflare account: anyone with its address can see it${app.published ? ` (it replaces ${app.published.url})` : ''}. ${countsVisits(real) ? 'It counts its visits in your own Cloudflare account, without cookies or IP addresses ("analytics": false in site.config.json turns that off).' : 'It doesn’t count visits.'}`
               },
               true
             )

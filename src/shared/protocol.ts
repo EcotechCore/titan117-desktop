@@ -224,11 +224,14 @@ export type SearchKeyProvider = (typeof SEARCH_KEY_PROVIDERS)[number]
 export const HOSTING_KEY_PROVIDERS = ['cloudflare'] as const
 /** Site checks (decisions §60): the user's own free Google API key for PageSpeed Insights. */
 export const SITE_KEY_PROVIDERS = ['pagespeed'] as const
+/** Email providers for newsletters (15.5, decisions §63): the user's own account. */
+export const MAIL_KEY_PROVIDERS = ['brevo', 'postmark'] as const
 export const KEY_PROVIDERS = [
   ...MODEL_KEY_PROVIDERS,
   ...SEARCH_KEY_PROVIDERS,
   ...HOSTING_KEY_PROVIDERS,
-  ...SITE_KEY_PROVIDERS
+  ...SITE_KEY_PROVIDERS,
+  ...MAIL_KEY_PROVIDERS
 ] as const
 export type KeyProvider = (typeof KEY_PROVIDERS)[number]
 

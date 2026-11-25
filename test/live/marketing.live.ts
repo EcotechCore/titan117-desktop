@@ -171,6 +171,34 @@ describe('the promo video engine, live', () => {
     }, 180_000)
 })
 
+describe('the video studio, live', () => {
+  it('puts a clip in the timeline: it plays inside the new video, under a title', async () => {
+    // A clip of our own: the landscape sample made above, used as footage.
+    const { readFileSync } = await import('fs')
+    const clip = readFileSync(join(OUT, 'sample-landscape.mp4'))
+    const marketing = createMarketing({ db: openDb(':memory:') })
+    const spec = checkVideo(
+      {
+        title: 'Studio test',
+        format: 'portrait',
+        scenes: [
+          { kind: 'title', heading: 'From the oven', seconds: 2 },
+          { kind: 'clip', video: 'clips/oven.mp4', from: 4, heading: 'Baked at 4 am', seconds: 3 },
+          { kind: 'outro', heading: 'Order now', url: 'bakery.example', seconds: 2 }
+        ]
+      },
+      { primary: '#b45309', name: 'Brutăria Ana' }
+    )
+    const video = await marketing.video(spec, async () => clip)
+    writeFileSync(join(OUT, 'studio-clip.mp4'), video.mp4)
+    const seen = await probe(video.mp4)
+    console.log({ seconds: video.seconds, bytes: video.mp4.length, seen })
+    expect(seen.error).toBeNull()
+    expect([seen.width, seen.height]).toEqual([1080, 1920])
+    expect(Math.abs(seen.duration - 7)).toBeLessThan(0.2)
+  }, 240_000)
+})
+
 /** A public practice site that welcomes crawlers (as in phase 12's check). */
 const SITE = process.env.TITAN_BRAND_URL ?? 'https://books.toscrape.com/'
 

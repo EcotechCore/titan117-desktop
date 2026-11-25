@@ -207,6 +207,23 @@ export function createApi(deps: {
     setPost(id: string, status: import('./lib/marketing/posts').PostStatus): void
     removePost(id: string): void
     setResults(id: string, results: unknown): void
+    mail: {
+      saveSettings(input: unknown): void
+      check(): Promise<unknown>
+      saveList(input: { name: unknown; about?: unknown }): void
+      removeList(id: string): void
+      subscribers(listId: string): unknown
+      addSubscribers(listId: string, text: string, how: unknown): unknown
+      unsubscribe(id: string): void
+      saveNewsletter(input: Record<string, unknown>): unknown
+      removeNewsletter(id: string): void
+      preview(id: string): unknown
+      test(id: string): Promise<unknown>
+      send(id: string): Promise<unknown>
+      sync(): Promise<number>
+      setSequence(id: string, enabled: boolean): void
+      removeSequence(id: string): void
+    }
     media(path: string): Promise<unknown>
     export(month: string | null): unknown
   }
@@ -380,6 +397,54 @@ export function createApi(deps: {
         break
       case 'post-results':
         m.setResults(text('id'), field(body, 'results'))
+        break
+      case 'mail-settings':
+        m.mail.saveSettings(field(body, 'settings'))
+        break
+      case 'mail-check':
+        return { check: await m.mail.check(), ...(m.list() as object) }
+      case 'mail-list':
+        m.mail.saveList({ name: field(body, 'name'), about: field(body, 'about') })
+        break
+      case 'mail-list-remove':
+        m.mail.removeList(text('id'))
+        break
+      case 'mail-subscribers':
+        return { subscribers: m.mail.subscribers(text('id')) }
+      case 'mail-subscribers-add': {
+        const result = m.mail.addSubscribers(text('id'), text('text'), field(body, 'how'))
+        return { added: result, ...(m.list() as object) }
+      }
+      case 'mail-unsubscribe':
+        m.mail.unsubscribe(text('id'))
+        break
+      case 'newsletter': {
+        const input = field(body, 'newsletter')
+        if (!input || typeof input !== 'object' || Array.isArray(input))
+          throw new ApiError(400, 'BAD_REQUEST', '"newsletter" is missing.')
+        m.mail.saveNewsletter(input as Record<string, unknown>)
+        break
+      }
+      case 'newsletter-remove':
+        m.mail.removeNewsletter(text('id'))
+        break
+      case 'newsletter-preview':
+        return m.mail.preview(text('id'))
+      case 'newsletter-test':
+        return { test: await m.mail.test(text('id')), ...(m.list() as object) }
+      case 'newsletter-send':
+        return { sent: await m.mail.send(text('id')), ...(m.list() as object) }
+      case 'mail-sync':
+        return { marked: await m.mail.sync(), ...(m.list() as object) }
+      case 'sequence-set': {
+        const enabled = field(body, 'enabled')
+        if (typeof enabled !== 'boolean')
+          throw new ApiError(400, 'BAD_REQUEST', '"enabled" is true or false.')
+        m.mail.setSequence(text('id'), enabled)
+        break
+      }
+      case 'sequence-remove':
+        m.mail.removeSequence(text('id'))
         break
       case 'media':
         return m.media(text('path'))
