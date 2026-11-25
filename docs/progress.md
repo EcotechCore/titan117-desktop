@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 25 Nov 2026 · Phase 14's newsletters, analytics and video studio merged
+
+The pull requests are merged in all three repos (web #58 first, then desktop #53 and pop #45 after their docs check). Run the desktop app from `main`. Phase 14 stays in progress: a real newsletter send, real visits, a post published from its reminder (the phone half waits for phase 15) and the drag-and-drop timeline editor; decisions §62 and §63 wait for the owner.
+
 ### 25 Nov 2026 · Phase 14: newsletters, sequences, website analytics and the video studio
 
 - **Newsletters and sequences (15.5, 15.6)** (`marketing/mail.ts`, `mail-providers.ts`, `mailer.ts`; new local tables `mail_lists`, `subscribers`, `newsletters`, `mail_sequences`, `mail_sequence_sent`): lists with each person's consent words, imports from CSV, unsubscribes kept for good, Markdown emails in the brand with a footer (sender, postal address, why, unsubscribe), the set-up check (settings, the provider's own sender and domain state, SPF and DMARC from DNS), a test before every send, suppressions read back first; Brevo (list, import, campaign, `sendNow`/`sendTest`) and Postmark (broadcast stream, batches of 500); sequences by day for people who join after they were made, looked at hourly. Keys `brevo` and `postmark` (each checked with its read-only account call). Tools `mail_state`, `mail_list_save`, `subscribers_add`, `newsletter_save`, `newsletter_test`, `newsletter_send` (outward, every time, laptop only), `sequence_save` (every time, laptop only). The **Newsletters** section of the Marketing screen (`Newsletters.tsx`), with a sandboxed preview.
