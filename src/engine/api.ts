@@ -226,6 +226,8 @@ export function createApi(deps: {
     }
     media(path: string): Promise<unknown>
     export(month: string | null): unknown
+    /** Due posts for the phone's share sheet (decisions §64.13). */
+    shareable(): Promise<unknown>
   }
   /** The Automations screen (phase 13; decisions §61): schedules, web watches and recordings. */
   automation?: {
@@ -366,6 +368,8 @@ export function createApi(deps: {
     body: unknown
   ): Promise<unknown | null> {
     if (key === 'GET marketing') return need(deps.marketing).list()
+    // Due posts for a paired phone's share sheet (decisions §64.13); asked by the shell's remote bridge.
+    if (key === 'GET remote-share') return { posts: await need(deps.marketing).shareable() }
     if (key !== 'POST marketing/:id') return null
     const m = need(deps.marketing)
     const text = (name: string): string => {

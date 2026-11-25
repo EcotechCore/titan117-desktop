@@ -19,6 +19,8 @@ export interface RemoteView {
   /** Devices that claimed a pairing and wait for Allow, with the code to compare. */
   waiting: { pairingId: string; name: string; code: string }[]
   inboxFolder: string | null
+  /** Results of scheduled runs go to the phone and chat too. */
+  scheduleResults: boolean
   keychain: boolean
 }
 
@@ -28,4 +30,14 @@ export interface TelegramView {
   linked: { name: string } | null
   code: { code: string; expiresAt: number } | null
   problem: string | null
+}
+
+export interface SlackView {
+  connected: boolean
+  team: string | null
+  linked: { name: string } | null
+  code: { code: string; expiresAt: number } | null
+  problem: string | null
+  /** The app manifest to paste in Slack's "From a manifest". */
+  manifest: string
 }

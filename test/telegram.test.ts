@@ -216,6 +216,18 @@ describe('the Telegram channel', () => {
     expect(api.sent.filter((s) => s.method === 'answerCallbackQuery')).toHaveLength(2)
   })
 
+  it('sends a schedule’s result to the linked chat only while remote control is on', async () => {
+    const off = await linkedBot([], false)
+    off.bot.announce('Morning briefing: Titan finished')
+    const on = await linkedBot([], true)
+    on.bot.announce('Morning briefing: Titan finished')
+    await new Promise((r) => setTimeout(r, 1300))
+    const said = (api: FakeBotApi): string[] =>
+      api.sent.filter((s) => s.method === 'sendMessage').map((s) => String(s.params['text']))
+    expect(said(off.api).some((t) => t.startsWith('Morning briefing'))).toBe(false)
+    expect(said(on.api).some((t) => t.startsWith('Morning briefing'))).toBe(true)
+  })
+
   it('unlinks, and forgets the bot', async () => {
     const { bot } = await linkedBot()
     bot.unlink()

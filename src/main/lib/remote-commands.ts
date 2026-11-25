@@ -134,6 +134,36 @@ export class RemoteCommands {
     return basename(target)
   }
 
+  /** Whether a task is a schedule's run (Automations, decisions §61), and the schedule's name. */
+  async scheduleOf(taskId: string): Promise<string | null> {
+    const { schedules } = await this.deps.engine<{
+      schedules: { name: string; lastTaskId: string | null }[]
+    }>('GET', '/v1/automations')
+    return schedules.find((s) => s.lastTaskId === taskId)?.name ?? null
+  }
+
+  /** Ready posts whose time has come, with the pictures that fit (decisions §64.13). */
+  async shareable(): Promise<
+    {
+      id: string
+      platform: string
+      text: string
+      files: { name: string; type: string; data: string }[]
+      left: string[]
+    }[]
+  > {
+    const { posts } = await this.deps.engine<{
+      posts: {
+        id: string
+        platform: string
+        text: string
+        files: { name: string; type: string; data: string }[]
+        left: string[]
+      }[]
+    }>('GET', '/v1/remote-share')
+    return posts
+  }
+
   async state(): Promise<RemoteState> {
     const s = await this.deps.engine<{
       tasks: EngineTask[]

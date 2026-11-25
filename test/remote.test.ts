@@ -100,8 +100,11 @@ describe('remote commands on the engine', () => {
       'Telegram'
     )
     expect(answered.ok).toBe(true)
-    await until(() => existsSync(join(folder, 'out.txt')))
-    expect(readFileSync(join(folder, 'out.txt'), 'utf8')).toBe('from the phone')
+    await until(
+      () =>
+        existsSync(join(folder, 'out.txt')) &&
+        readFileSync(join(folder, 'out.txt'), 'utf8') === 'from the phone'
+    )
     const detail = await until(async () => {
       const d = await commands.task(taskId)
       return d.task.status === 'done' ? d : null
@@ -207,14 +210,23 @@ function bridge(
   })
 }
 
+const approvals: {
+  id: string
+  taskId: string
+  tool: string
+  summary: string
+  laptopOnly: boolean
+}[] = []
+
 function fakeCommands(): { commands: RemoteCommands; ran: string[] } {
+  approvals.length = 0
   const ran: string[] = []
   const commands = {
     run: async (c: { type: string; text?: string }, source: string) => {
       ran.push(`${source}:${c.type}:${c.text ?? ''}`)
       return { ok: true, taskId: 't_1' }
     },
-    state: async () => ({ tasks: [], approvals: [] }),
+    state: async () => ({ tasks: [], approvals: [...approvals] }),
     task: async () => ({
       task: {
         id: 't_1',
@@ -325,6 +337,18 @@ describe('the remote bridge', () => {
     )
     expect(opened.map((o) => (o as { event: { type: string } }).event.type)).toContain('done')
     expect(JSON.stringify(cloud.fromLaptop)).not.toContain('summarise')
+    // A new approval on the laptop wakes the phone; the same state again doesn't.
+    approvals.push({
+      id: 'ap_1',
+      taskId: 't_1',
+      tool: 'write_file',
+      summary: 'Write a file',
+      laptopOnly: false
+    })
+    await remote.tick()
+    expect(cloud.fromLaptop.filter((m) => m.notify)).toHaveLength(1)
+    await remote.tick()
+    expect(cloud.fromLaptop.filter((m) => m.notify)).toHaveLength(1)
   })
 
   it('removing a device rotates the key, announced under the old one; Revoke all unlinks chats', async () => {
@@ -383,5 +407,36 @@ describe('the remote bridge', () => {
     await remote.tick()
     expect(cloud.calls).toBe(calls)
     expect(ran).toEqual([])
+  })
+})
+
+describe('the phone’s share sheet', () => {
+  it('gives a due post’s text with its tags and link, and the pictures that fit', async () => {
+    const folder = tempFolder()
+    const { writeFileSync } = await import('fs')
+    writeFileSync(join(folder, 'small.png'), Buffer.alloc(2000, 1))
+    writeFileSync(join(folder, 'big.png'), Buffer.alloc(600 * 1024, 1))
+    engine = await testEngine({ folder })
+    const saved = await call(engine, 'POST', '/v1/marketing/post', {
+      post: {
+        platform: 'linkedin',
+        date: '2020-01-02',
+        time: '09:00',
+        text: 'Fresh sourdough every morning',
+        hashtags: ['bakery'],
+        link: 'https://bakery.test/',
+        media: [join(folder, 'small.png'), join(folder, 'big.png')],
+        status: 'ready'
+      }
+    })
+    expect(saved.status).toBe(200)
+    const { posts } = (await call(engine, 'GET', '/v1/remote-share')).body
+    expect(posts).toHaveLength(1)
+    expect(posts[0].platform).toBe('LinkedIn')
+    expect(posts[0].text).toMatch(
+      /Fresh sourdough every morning\n\n#bakery\n\nhttps:\/\/bakery\.test\/\?utm_source=linkedin/
+    )
+    expect(posts[0].files.map((f: { name: string }) => f.name)).toEqual(['small.png'])
+    expect(posts[0].left).toEqual(['big.png'])
   })
 })

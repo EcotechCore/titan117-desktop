@@ -152,7 +152,16 @@ export type RemoteEvent =
   | { type: "done"; commandId: string; ok: true; taskId?: string }
   | { type: "done"; commandId: string; ok: false; error: string }
   | { type: "alert"; text: string }
-  | { type: "share"; postId: string; text: string; files: { name: string; type: string; data: string }[] };
+  /** A ready post whose time has come, for the phone's share sheet (decisions §64.13, §62.5). */
+  | {
+      type: "share";
+      postId: string;
+      platform: string;
+      text: string;
+      files: { name: string; type: string; data: string }[];
+      /** Media too large to send, by name: they stay on the laptop. */
+      left: string[];
+    };
 
 export interface RemoteEventEnvelope {
   v: typeof REMOTE_PROTOCOL_VERSION;

@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react'
 import { renderSVG } from 'uqr'
 
-import type { RemoteView, TelegramView } from '../../preload/index.d'
+import type { RemoteView, SlackView, TelegramView } from '../../preload/index.d'
 
 function PairCode({ link }: { link: string }): React.JSX.Element | null {
   if (!/^https?:\/\/[^\s"<>]+$/.test(link)) return null
@@ -29,6 +29,9 @@ export function RemoteView({
 }): React.JSX.Element {
   const [remote, setRemote] = useState<RemoteView | null>(null)
   const [telegram, setTelegram] = useState<TelegramView | null>(null)
+  const [slack, setSlack] = useState<SlackView | null>(null)
+  const [slackTokens, setSlackTokens] = useState({ app: '', bot: '' })
+  const [slackProblem, setSlackProblem] = useState<string | null>(null)
   const [token, setToken] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [tokenProblem, setTokenProblem] = useState<string | null>(null)
@@ -39,6 +42,8 @@ export function RemoteView({
     void window.titan117.telegram.status().then(setTelegram).catch(onProblem)
     window.titan117.remote.onChange(setRemote)
     window.titan117.telegram.onChange(setTelegram)
+    void window.titan117.slack.status().then(setSlack).catch(onProblem)
+    window.titan117.slack.onChange(setSlack)
     // Pairing links and link codes run out: redraw once a second.
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
@@ -52,7 +57,7 @@ export function RemoteView({
     }
   }
 
-  if (!remote || !telegram) return <div className="list-view" />
+  if (!remote || !telegram || !slack) return <div className="list-view" />
   const r = window.titan117.remote
   const t = window.titan117.telegram
   const left = (until: number): string => {
@@ -171,6 +176,16 @@ export function RemoteView({
             </div>
           ))}
 
+          <h2 className="section">Scheduled runs</h2>
+          <label className="row choice">
+            <input
+              type="checkbox"
+              checked={remote.scheduleResults}
+              onChange={(e) => void act(() => r.setScheduleResults(e.target.checked), setRemote)}
+            />{' '}
+            Send the result of each scheduled run to my phone and chat
+          </label>
+
           <h2 className="section">Files sent from your phone or chat</h2>
           <label className="field">
             Save them in
@@ -265,6 +280,113 @@ export function RemoteView({
           )}
           <button className="btn" onClick={() => void act(t.disconnect, setTelegram)}>
             Remove bot
+          </button>
+        </div>
+      )}
+
+      <h2 className="section">Slack</h2>
+      <p className="muted">
+        An app you make in your own Slack workspace talks to this laptop directly, with Socket Mode;
+        nothing goes through Titan117’s servers. Slack can read these messages. Only your direct
+        messages with the app count.
+      </p>
+      {slack.problem && <p className="warn">{slack.problem}</p>}
+      {!slack.connected ? (
+        <>
+          <ol className="steps">
+            <li>
+              On api.slack.com/apps choose Create New App, then From a manifest, pick your workspace
+              and paste the manifest below.
+            </li>
+            <li>
+              Under Basic Information, make an App-Level Token with the connections:write scope (it
+              starts with xapp-).
+            </li>
+            <li>
+              Install the app to your workspace and copy the Bot User OAuth Token (it starts with
+              xoxb-).
+            </li>
+          </ol>
+          <details>
+            <summary>Manifest</summary>
+            <pre className="code-block">{slack.manifest}</pre>
+            <button
+              className="btn"
+              onClick={() => void navigator.clipboard.writeText(slack.manifest)}
+            >
+              Copy manifest
+            </button>
+          </details>
+          <div className="add-row">
+            <input
+              className="search"
+              type="password"
+              aria-label="Slack app-level token"
+              placeholder="xapp-…"
+              value={slackTokens.app}
+              onChange={(e) => setSlackTokens({ ...slackTokens, app: e.target.value })}
+            />
+            <input
+              className="search"
+              type="password"
+              aria-label="Slack bot token"
+              placeholder="xoxb-…"
+              value={slackTokens.bot}
+              onChange={(e) => setSlackTokens({ ...slackTokens, bot: e.target.value })}
+            />
+            <button
+              className="btn btn-primary"
+              disabled={!slackTokens.app.trim() || !slackTokens.bot.trim()}
+              onClick={() => {
+                setSlackProblem(null)
+                void window.titan117.slack
+                  .connect(slackTokens.app, slackTokens.bot)
+                  .then((res) =>
+                    res.ok ? setSlackTokens({ app: '', bot: '' }) : setSlackProblem(res.message)
+                  )
+                  .catch(onProblem)
+              }}
+            >
+              Connect
+            </button>
+          </div>
+          {slackProblem && <p className="warn">{slackProblem}</p>}
+        </>
+      ) : (
+        <div className="row">
+          <div className="row-main">
+            <p className="row-title">{slack.team ?? 'Your workspace'}</p>
+            {slack.linked ? (
+              <p className="muted">Linked to your direct messages.</p>
+            ) : slack.code ? (
+              <p>
+                Send <strong className="pair-code">{slack.code.code}</strong> to the Titan117 app in
+                a direct message (valid {left(slack.code.expiresAt)}).
+              </p>
+            ) : (
+              <p className="muted">Not linked yet.</p>
+            )}
+          </div>
+          {slack.linked ? (
+            <button
+              className="btn"
+              onClick={() => void act(window.titan117.slack.unlink, setSlack)}
+            >
+              Unlink
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary"
+              onClick={() => void act(window.titan117.slack.link, setSlack)}
+            >
+              Link my messages
+            </button>
+          )}
+          <button
+            className="btn"
+            onClick={() => void act(window.titan117.slack.disconnect, setSlack)}
+          >
+            Remove app
           </button>
         </div>
       )}

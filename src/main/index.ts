@@ -35,7 +35,7 @@ import { isSidebarNavigation, sidebarAppOf, sidebarResponse } from './lib/sideba
 import { Keys } from './lib/keys'
 import { ConnectorSecrets } from './lib/connector-secrets'
 import { SiteLogins } from './lib/site-logins'
-import { startRemote } from './lib/remote-ipc'
+import { startRemote, type RemoteHooks } from './lib/remote-ipc'
 import {
   APP_ORIGIN,
   APP_SCHEME,
@@ -73,6 +73,7 @@ interface Connection {
 let engine: UtilityProcess | null = null
 let connection: Promise<Connection> | null = null
 let quitting = false
+let remoteHooks: RemoteHooks | null = null
 let restarts = 0
 /** The exit code of an engine that stopped unexpectedly, until the next one has heard it. */
 let crashed: number | null = null
@@ -270,7 +271,10 @@ function startEngine(): void {
     }) => {
       if (message?.type === 'online') renewLease()
       else if (message?.type === 'busy') keepAwake((message.running ?? 0) > 0)
-      else if (message?.type === 'notify' && message.note) notify(message.note)
+      else if (message?.type === 'notify' && message.note) {
+        notify(message.note)
+        remoteHooks?.notice(message.note)
+      }
     }
   )
 
@@ -776,7 +780,7 @@ function start(): void {
   startAccount()
   startEngine()
   // Remote control and chat channels (decisions §64): off until the user switches them on.
-  startRemote({
+  remoteHooks = startRemote({
     dataDir: app.getPath('userData'),
     keychain: keychain(),
     engine: () => connection ?? Promise.reject(new Error('The engine is not running.')),

@@ -79,8 +79,19 @@ contextBridge.exposeInMainWorld('titan117', {
     remove: (publicKey: string) => ipcRenderer.invoke('remote:remove', publicKey),
     revokeAll: () => ipcRenderer.invoke('remote:revokeAll'),
     setInbox: (folder: string | null) => ipcRenderer.invoke('remote:setInbox', folder),
+    setScheduleResults: (on: boolean) => ipcRenderer.invoke('remote:setScheduleResults', on),
     onChange: (listener: (view: unknown) => void) => {
       ipcRenderer.on('remote:changed', (_event, view) => listener(view))
+    }
+  },
+  slack: {
+    status: () => ipcRenderer.invoke('slack:status'),
+    connect: (app: string, bot: string) => ipcRenderer.invoke('slack:connect', app, bot),
+    disconnect: () => ipcRenderer.invoke('slack:disconnect'),
+    link: () => ipcRenderer.invoke('slack:link'),
+    unlink: () => ipcRenderer.invoke('slack:unlink'),
+    onChange: (listener: (view: unknown) => void) => {
+      ipcRenderer.on('slack:changed', (_event, view) => listener(view))
     }
   },
   telegram: {

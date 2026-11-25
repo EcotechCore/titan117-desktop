@@ -44,6 +44,7 @@ interface Stored {
   seen: Record<string, number>
   revokedAllAt: number
   inboxFolder: string | null
+  scheduleResults: boolean
 }
 
 interface InboxMessage {
@@ -97,7 +98,15 @@ export class Remote {
   private rotating: { privateRaw: Uint8Array; publicKey: string } | null = null
   private confirmed = false
   private problem: string | null = null
-  private outbox: { to: string; kind: 'event' | 'key'; msgId: string; sealed: string }[] = []
+  private outbox: {
+    to: string
+    kind: 'event' | 'key'
+    msgId: string
+    sealed: string
+    notify?: boolean
+  }[] = []
+  /** What the phone was last told about, to wake it only for something new. */
+  private known = { approvals: new Set<string>(), finished: new Set<string>(), first: true }
   private ack: string[] = []
   private wantPairing = false
   private pairing: RemoteView['pairing'] = null
@@ -133,6 +142,7 @@ export class Remote {
       pairing: this.pairing && this.pairing.expiresAt > this.now() ? this.pairing : null,
       waiting: this.waiting,
       inboxFolder: this.stored.inboxFolder,
+      scheduleResults: this.stored.scheduleResults,
       keychain: this.deps.keychain !== null
     }
   }
@@ -229,6 +239,13 @@ export class Remote {
     this.schedule(0)
   }
 
+  /** Send the results of scheduled runs to the phone and the chat (decisions §61.5). On by default. */
+  setScheduleResults(on: boolean): void {
+    this.stored.scheduleResults = on
+    this.save()
+    this.changed()
+  }
+
   setInboxFolder(folder: string | null): void {
     this.stored.inboxFolder = folder
     this.save()
@@ -240,8 +257,9 @@ export class Remote {
   }
 
   /** Something remote happened (an alert): tell every paired device. */
-  broadcast(event: RemoteEvent, except?: string): void {
-    for (const d of this.stored.devices) if (d.name !== except) void this.queue(d.publicKey, event)
+  broadcast(event: RemoteEvent, except?: string, notify = event.type === 'alert'): void {
+    for (const d of this.stored.devices)
+      if (d.name !== except) void this.queue(d.publicKey, event, notify)
   }
 
   // ---------------------------------------------------------------- the loop
@@ -430,8 +448,23 @@ export class Remote {
     const text = JSON.stringify(state)
     if (text !== this.lastState) {
       this.lastState = text
+      // Wake the phone (a push with no content) for a new approval or a task that just finished.
+      const finished = state.tasks.filter((t) => ['done', 'stopped', 'error'].includes(t.status))
+      const news =
+        !this.known.first &&
+        (state.approvals.some((a) => !this.known.approvals.has(a.id)) ||
+          finished.some((t) => !this.known.finished.has(t.id)))
+      this.known = {
+        approvals: new Set(state.approvals.map((a) => a.id)),
+        finished: new Set(finished.map((t) => t.id)),
+        first: false
+      }
       for (const d of this.stored.devices)
-        await this.queue(d.publicKey, { type: 'state', laptop: this.deps.laptopName, ...state })
+        await this.queue(
+          d.publicKey,
+          { type: 'state', laptop: this.deps.laptopName, ...state },
+          news
+        )
     }
     for (const [taskId, w] of this.watched) {
       if (w.until < this.now()) {
@@ -451,7 +484,7 @@ export class Remote {
     }
   }
 
-  private async queue(to: string, event: RemoteEvent): Promise<void> {
+  private async queue(to: string, event: RemoteEvent, notify = false): Promise<void> {
     if (!this.key) return
     const header: SealHeader = {
       v: REMOTE_PROTOCOL_VERSION,
@@ -465,7 +498,7 @@ export class Remote {
       { v: REMOTE_PROTOCOL_VERSION, id: randomId(), sentAt: this.now(), event },
       this.key.private
     )
-    this.outbox.push({ to, kind: 'event', msgId: header.id, sealed })
+    this.outbox.push({ to, kind: 'event', msgId: header.id, sealed, ...(notify ? { notify } : {}) })
   }
 
   // ---------------------------------------------------------------- keys
@@ -558,7 +591,14 @@ export class Remote {
   }
 
   private load(): Stored {
-    const empty: Stored = { on: false, devices: [], seen: {}, revokedAllAt: 0, inboxFolder: null }
+    const empty: Stored = {
+      on: false,
+      devices: [],
+      seen: {},
+      revokedAllAt: 0,
+      inboxFolder: null,
+      scheduleResults: true
+    }
     try {
       const raw = JSON.parse(readFileSync(join(this.dir, 'remote.json'), 'utf8')) as Partial<Stored>
       return {
@@ -566,7 +606,8 @@ export class Remote {
         devices: Array.isArray(raw.devices) ? raw.devices : [],
         seen: raw.seen && typeof raw.seen === 'object' ? raw.seen : {},
         revokedAllAt: typeof raw.revokedAllAt === 'number' ? raw.revokedAllAt : 0,
-        inboxFolder: typeof raw.inboxFolder === 'string' ? raw.inboxFolder : null
+        inboxFolder: typeof raw.inboxFolder === 'string' ? raw.inboxFolder : null,
+        scheduleResults: raw.scheduleResults !== false
       }
     } catch {
       return empty

@@ -1,5 +1,5 @@
-import type { RemoteView, TelegramView } from '../shared/remote-views'
-export type { RemoteView, TelegramView }
+import type { RemoteView, SlackView, TelegramView } from '../shared/remote-views'
+export type { RemoteView, SlackView, TelegramView }
 export interface AccountView {
   signedIn: boolean
   locked: boolean
@@ -125,7 +125,17 @@ declare global {
         remove(publicKey: string): Promise<RemoteView>
         revokeAll(): Promise<RemoteView>
         setInbox(folder: string | null): Promise<RemoteView>
+        setScheduleResults(on: boolean): Promise<RemoteView>
         onChange(listener: (view: RemoteView) => void): void
+      }
+      /** The user's own Slack app in Socket Mode (decisions §64.11). Tokens go in, never out. */
+      slack: {
+        status(): Promise<SlackView>
+        connect(app: string, bot: string): Promise<{ ok: true } | { ok: false; message: string }>
+        disconnect(): Promise<SlackView>
+        link(): Promise<SlackView>
+        unlink(): Promise<SlackView>
+        onChange(listener: (view: SlackView) => void): void
       }
       /** The user's own Telegram bot (decisions §64.11). The token goes in, never out. */
       telegram: {

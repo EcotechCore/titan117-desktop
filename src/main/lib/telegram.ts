@@ -337,6 +337,12 @@ export class Telegram {
 
   // ---------------------------------------------------------------- telling the user
 
+  /** A line for the linked chat (a schedule's result, decisions §61.5), while remote control is on. */
+  announce(text: string): void {
+    if (this.stored.linked && this.token && this.deps.remoteOn())
+      this.say(this.stored.linked.chatId, text)
+  }
+
   /** Every few seconds: approvals waiting and tasks from this chat that finished. */
   async watch(): Promise<void> {
     const linked = this.stored.linked

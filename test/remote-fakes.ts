@@ -7,6 +7,7 @@ export interface CloudMessage {
   to: string
   kind: 'command' | 'event' | 'key'
   msgId: string
+  notify?: boolean
   sealed: string
 }
 
