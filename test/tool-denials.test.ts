@@ -64,6 +64,8 @@ interface Bench {
   directRuns: string[]
   /** The brand kit and the content calendar (phase 14). */
   marketing: MarketingService
+  /** Requests that reached the email provider. */
+  mailRequests: string[]
   /** How often marketing tried to start a browser (reading a site, drawing a video). */
   marketingLaunches(): number
   /** How often a site check tried to start a browser. */
@@ -150,6 +152,7 @@ function bench(
     onChange: () => undefined
   })
   let marketingLaunches = 0
+  const mailRequests: string[] = []
   const marketing = createMarketing({
     db,
     memory,
@@ -157,7 +160,39 @@ function bench(
     launch: async () => {
       marketingLaunches++
       throw new Error('No browser in tests.')
-    }
+    },
+    // An email provider that notes every request and accepts everything.
+    mailKeys: () => ({ postmark: 'test-postmark-key-000000000000' }),
+    mailFetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      mailRequests.push(url)
+      if (url.endsWith('/message-streams?MessageStreamType=Broadcasts'))
+        return Response.json({
+          MessageStreams: [
+            {
+              ID: 'news',
+              MessageStreamType: 'Broadcasts',
+              SubscriptionManagementConfiguration: { UnsubscribeHandlingType: 'Postmark' }
+            }
+          ]
+        })
+      if (url.includes('/suppressions/dump')) return Response.json({ Suppressions: [] })
+      if (url.endsWith('/email/batch'))
+        return Response.json(
+          (JSON.parse(String(init?.body)) as { To: string }[]).map((m) => ({
+            ErrorCode: 0,
+            To: m.To
+          }))
+        )
+      return Response.json({ Name: 'Test' })
+    }) as typeof fetch
+  })
+  marketing.mail.saveSettings({
+    provider: 'postmark',
+    fromName: 'Bakery',
+    fromEmail: 'news@bakery.example',
+    address: 'Strada 1, Cluj',
+    postmarkStream: 'news'
   })
   const services: Services = options.noServices
     ? {}
@@ -233,6 +268,7 @@ function bench(
     directRuns,
     marketing,
     marketingLaunches: () => marketingLaunches,
+    mailRequests,
     siteLaunches: () => siteLaunches,
     asked: () => store.listApprovals({ taskId: task.id }).length,
     pending: () => store.listApprovals({ taskId: task.id, status: 'pending' }),
@@ -992,6 +1028,137 @@ const DENIALS: Record<string, () => Promise<void>> = {
       'approve'
     )
     expect(outside.status).toBe('refused')
+    expect(b.artifacts.list()).toHaveLength(0)
+  },
+
+  async mail_state() {
+    const none = await bench({ noServices: true }).run({ name: 'mail_state', input: {} })
+    expect(none.status).toBe('refused')
+    expect((await bench().run({ name: 'mail_state', input: {} })).status).toBe('done')
+  },
+
+  async mail_list_save() {
+    const b = bench()
+    const denied = await b.run({ name: 'mail_list_save', input: { name: 'News' } }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.marketing.mail.store.lists()).toHaveLength(0)
+  },
+
+  async subscribers_add() {
+    const b = bench()
+    b.marketing.mail.store.saveList({ name: 'News' })
+    const input = {
+      list: 'News',
+      people: [{ email: 'ana@x.example' }],
+      consent: 'Signed up on our site'
+    }
+    // Without saying how people agreed: refused before anyone is asked.
+    const asked = b.asked()
+    for (const consent of ['', 'ok'])
+      expect((await b.run({ name: 'subscribers_add', input: { ...input, consent } })).status).toBe(
+        'refused'
+      )
+    expect(b.asked()).toBe(asked)
+    // Denied: nobody is added.
+    expect((await b.run({ name: 'subscribers_add', input }, 'deny')).status).toBe('refused')
+    // A file outside the allowed folders is never read.
+    writeFileSync(join(b.outside, 'people.csv'), 'email\nradu@x.example')
+    const outside = await b.run(
+      {
+        name: 'subscribers_add',
+        input: { ...input, people: [], file: join(b.outside, 'people.csv') }
+      },
+      'approve'
+    )
+    expect(outside.status).toBe('refused')
+    expect(b.marketing.mail.store.list('News')?.subscribed).toBe(0)
+  },
+
+  async newsletter_save() {
+    const b = bench()
+    b.marketing.mail.store.saveList({ name: 'News' })
+    const input = { list: 'News', subject: 'December', body: 'Orders are open.' }
+    expect((await b.run({ name: 'newsletter_save', input }, 'deny')).status).toBe('refused')
+    expect(b.marketing.mail.store.newsletters()).toHaveLength(0)
+    // Private content never goes into a newsletter: refused before anyone is asked.
+    await makePrivate(b, SECRET_TEXT)
+    const asked = b.asked()
+    const leak = await b.run({ name: 'newsletter_save', input: { ...input, body: SECRET_TEXT } })
+    expect(leak.status).toBe('refused')
+    expect(b.asked()).toBe(asked)
+    expect(b.marketing.mail.store.newsletters()).toHaveLength(0)
+  },
+
+  async newsletter_test() {
+    const b = bench()
+    const list = b.marketing.mail.store.saveList({ name: 'News' })
+    const letter = b.marketing.mail.store.saveNewsletter(
+      { list: list.id, subject: 'Hi', body: 'Hi' },
+      'you'
+    )
+    const denied = await b.run({ name: 'newsletter_test', input: { id: letter.id } }, 'deny')
+    expect(denied.status).toBe('refused')
+    expect(b.mailRequests).toHaveLength(0)
+  },
+
+  async newsletter_send() {
+    const b = bench()
+    const list = b.marketing.mail.store.saveList({ name: 'News' })
+    b.marketing.mail.store.addSubscribers(list.id, [{ email: 'ana@x.example' }], {
+      how: 'Signed up on our site'
+    })
+    const letter = b.marketing.mail.store.saveNewsletter(
+      { list: list.id, subject: 'Hi', body: 'Hi' },
+      'you'
+    )
+    // It can't be taken back: every time, never "always", laptop only.
+    const approval = await b.approvalOf({ name: 'newsletter_send', input: { id: letter.id } })
+    expect(approval.canAlways).toBe(false)
+    const denied = await b.run({ name: 'newsletter_send', input: { id: letter.id } }, 'deny')
+    expect(denied.status).toBe('refused')
+    // Answering it from the phone or the web is refused.
+    await expect(
+      b.run({ name: 'newsletter_send', input: { id: letter.id } }, 'approve', 'remote')
+    ).rejects.toThrow(/only be answered on the laptop/)
+    for (const left of b.pending()) b.answer(left.id, 'deny')
+    // Approved, but never tested: nothing goes out.
+    const untested = await b.run({ name: 'newsletter_send', input: { id: letter.id } }, 'approve')
+    expect(untested.status).not.toBe('done')
+    expect(b.mailRequests.some((u) => u.endsWith('/email/batch'))).toBe(false)
+    expect(b.marketing.mail.store.newsletter(letter.id)?.status).toBe('draft')
+  },
+
+  async sequence_save() {
+    const b = bench()
+    b.marketing.mail.store.saveList({ name: 'News' })
+    const input = {
+      name: 'Welcome',
+      list: 'News',
+      steps: [{ day: 0, subject: 'Hi', body: 'Welcome' }]
+    }
+    // A standing instruction that mails by itself: every time, never "always".
+    const approval = await b.approvalOf({ name: 'sequence_save', input })
+    expect(approval.canAlways).toBe(false)
+    expect((await b.run({ name: 'sequence_save', input }, 'deny')).status).toBe('refused')
+    expect(b.marketing.mail.store.sequences()).toHaveLength(0)
+    // No emails: refused before anyone is asked.
+    const asked = b.asked()
+    expect((await b.run({ name: 'sequence_save', input: { ...input, steps: [] } })).status).toBe(
+      'refused'
+    )
+    expect(b.asked()).toBe(asked)
+  },
+
+  async site_visits() {
+    // Without the marketing service, or without a way to read visits: refused, nothing made.
+    const none = await bench({ noServices: true }).run({
+      name: 'site_visits',
+      input: { site: 'x' }
+    })
+    expect(none.status).toBe('refused')
+    const b = bench()
+    const out = await b.run({ name: 'site_visits', input: { site: 'bakery.ana.workers.dev' } })
+    expect(out.status).not.toBe('done')
     expect(b.artifacts.list()).toHaveLength(0)
   },
 

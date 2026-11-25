@@ -24,6 +24,8 @@ import {
   type SiteReadDeps
 } from './brand'
 import { createPostStore, type Post, type PostStore } from './posts'
+import { createMailer, type Mailer } from './mailer'
+import type { MailProviderId, Sequence } from './mail'
 import {
   AUDIO_RATE,
   mixVoice,
@@ -38,6 +40,8 @@ export const REMIND_TICK_MS = 30_000
 /** How the brand kit's memory is told apart from the user's own. */
 export const BRAND_MEMORY_SOURCE = 'the brand kit'
 const MAX_IMAGE_BYTES = 20_000_000
+const MAX_CLIP_BYTES = 40_000_000
+const MAX_CLIPS_BYTES = 120_000_000
 const IMAGE_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -58,6 +62,10 @@ export interface MarketingService {
     save(input: unknown): MarketingBrand
   }
   posts: PostStore
+  /** Newsletters and sequences through the user's own email provider (15.5, 15.6). */
+  mail: Mailer
+  /** A published site's visits (15.10), read with the user's own Cloudflare token. */
+  visits(site: string, days: number): Promise<import('../apps/cloudflare').SiteVisits>
   readSite(
     urls: string[],
     options: { screenshots?: boolean },
@@ -92,11 +100,41 @@ export function createMarketing(deps: {
   onError?: (error: unknown, context: Record<string, unknown>) => void
   now?: () => number
   launch?: RenderDeps['launch']
+  /** The user's own email provider keys; without them nothing can be sent. */
+  mailKeys?: () => Partial<Record<MailProviderId, string>>
+  /** The network for the email provider's API; none means sending is refused. */
+  mailFetch?: typeof fetch
+  resolveTxt?: (name: string) => Promise<string[][]>
+  onSequence?: (sequence: Sequence, note: string, failed: boolean) => void
+  mailPollMs?: number
+  /** A published site's visits, from the user's own Cloudflare account (15.10). */
+  visits?: (site: string, days: number) => Promise<import('../apps/cloudflare').SiteVisits>
 }): MarketingService {
   const { db } = deps
   const changed = deps.onChange ?? (() => undefined)
   const posts = createPostStore({ db, onChange: changed, now: deps.now })
   let timer: ReturnType<typeof setInterval> | null = null
+  const mail = createMailer({
+    db,
+    brand: () => getBrand(),
+    keys: deps.mailKeys ?? (() => ({})),
+    fetch:
+      deps.mailFetch ??
+      (async () => {
+        throw new MarketingError('Sending email isn’t available here.')
+      }),
+    resolveTxt:
+      deps.resolveTxt ??
+      (async () => {
+        throw Object.assign(new Error('no DNS'), { code: 'ESERVFAIL' })
+      }),
+    locked: deps.locked,
+    onChange: changed,
+    onSequence: deps.onSequence,
+    onError: deps.onError,
+    now: deps.now,
+    pollMs: deps.mailPollMs
+  })
 
   function getBrand(): MarketingBrand | null {
     const saved = getMeta<unknown>(db, 'brandKit', null)
@@ -150,15 +188,34 @@ export function createMarketing(deps: {
     },
 
     posts,
+    mail,
+
+    visits(site, days) {
+      if (!deps.visits) throw new MarketingError('Reading visits isn’t available here.')
+      return deps.visits(site, days)
+    },
 
     readSite: (urls, options, readDeps) =>
       readSite(urls, options, { ...readDeps, launch: readDeps.launch ?? deps.launch }),
 
     async video(spec, load, options = {}) {
       const images = new Map<string, string>()
-      for (const scene of spec.scenes)
+      const clips = new Map<string, string>()
+      let clipBytes = 0
+      for (const scene of spec.scenes) {
         if (scene.kind === 'image' && !images.has(scene.image))
           images.set(scene.image, await dataUrl(scene.image, load))
+        if (scene.kind === 'clip' && !clips.has(scene.video)) {
+          const bytes = await load(scene.video)
+          clipBytes += bytes.length
+          if (bytes.length > MAX_CLIP_BYTES || clipBytes > MAX_CLIPS_BYTES)
+            throw new MarketingError(
+              `"${scene.video}" is too large for a video here (40 MB a clip, 120 MB in all).`
+            )
+          const type = /\.webm$/i.test(scene.video) ? 'video/webm' : 'video/mp4'
+          clips.set(scene.video, `data:${type};base64,${bytes.toString('base64')}`)
+        }
+      }
       // A logo that can't be read is left out; a scene's own picture must be there.
       const logo = spec.look.logo ? await dataUrl(spec.look.logo, load).catch(() => '') : ''
 
@@ -180,7 +237,7 @@ export function createMarketing(deps: {
       const voiced = voices.filter(Boolean).length
       const video = await renderVideo(
         spec,
-        { images, logo, voice: voiced ? mixVoice(timed, voices) : null, timed },
+        { images, clips, logo, voice: voiced ? mixVoice(timed, voices) : null, timed },
         { signal: options.signal, launch: deps.launch }
       )
       return { ...video, voiced }
@@ -194,6 +251,8 @@ export function createMarketing(deps: {
       } catch (error) {
         deps.onError?.(error, { what: 'post reminders' })
       }
+      // Sequences mail new subscribers by themselves, at most once an hour.
+      void mail.runSequences()
     },
 
     start() {

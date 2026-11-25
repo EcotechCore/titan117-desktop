@@ -13,7 +13,7 @@ const PROVIDERS: {
   name: string
   where: string
   note: string
-  kind?: 'search' | 'hosting'
+  kind?: 'search' | 'hosting' | 'mail'
 }[] = [
   {
     id: 'openrouter',
@@ -74,6 +74,20 @@ const PROVIDERS: {
       'console.cloud.google.com (APIs & Services → Credentials; turn on the PageSpeed Insights API)',
     note: 'Free. The SEO and QA agents use it for Lighthouse scores and real visitors’ speed; without it they share Google’s small keyless limit, which is often used up.',
     kind: 'search'
+  },
+  {
+    id: 'brevo',
+    name: 'Brevo',
+    where: 'app.brevo.com (your name → SMTP & API → API keys)',
+    note: 'Sends your newsletters and sequences as campaigns from your own Brevo account, which runs the unsubscribe link. It has a free plan; check its daily limit on Brevo’s pricing page.',
+    kind: 'mail'
+  },
+  {
+    id: 'postmark',
+    name: 'Postmark',
+    where: 'account.postmarkapp.com (your server → API Tokens → Server API token)',
+    note: 'Sends through a broadcast message stream, which Postmark approves before your first newsletter. Its free plan is 100 emails a month, for trying it.',
+    kind: 'mail'
   }
 ]
 
@@ -86,7 +100,7 @@ export function OwnKeys({
   kind = 'models'
 }: {
   /** Model keys (the Models view) or search keys (Web search). */
-  kind?: 'models' | 'search' | 'hosting'
+  kind?: 'models' | 'search' | 'hosting' | 'mail'
   saved: Record<KeyProvider, boolean>
   models: OwnKeyModel[]
   model: string | null
@@ -129,12 +143,16 @@ export function OwnKeys({
           ? 'Your own search and site-check keys'
           : kind === 'hosting'
             ? 'Your hosting'
-            : 'Your own API keys'}
+            : kind === 'mail'
+              ? 'Your email provider'
+              : 'Your own API keys'}
       </h2>
       <p className="muted">
         {kind === 'hosting'
           ? 'Your own hosting account: you own the sites and pay your host directly, if anything. '
-          : 'Optional. Calls with your own key go straight to the provider and are billed by them, not in credits. '}
+          : kind === 'mail'
+            ? 'Your own email provider account: it sends your newsletters, and you pay it directly, if anything. '
+            : 'Optional. Calls with your own key go straight to the provider and are billed by them, not in credits. '}
         Keys stay on this computer, in its keychain, and are never sent to Titan117.
       </p>
       {PROVIDERS.filter((p) => (p.kind ?? 'models') === kind).map((p) => (

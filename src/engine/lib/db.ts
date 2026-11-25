@@ -346,6 +346,64 @@ const MIGRATIONS: string[] = [
   // Phase 14, campaign reports (15.11): what a post brought, typed in by the user (JSON).
   `
   alter table posts add column results text not null default '{}';
+  `,
+  // Phase 14, newsletters and sequences (15.5, 15.6); decisions §63. Local only: lists never reach our cloud.
+  `
+  create table mail_lists (
+    id text primary key,
+    name text not null unique,
+    about text not null default '',
+    created_at integer not null
+  );
+  create table subscribers (
+    id text primary key,
+    list_id text not null references mail_lists(id) on delete cascade,
+    email text not null,
+    name text not null default '',
+    -- subscribed, unsubscribed or bounced; an unsubscribe is kept so the person isn't added back.
+    status text not null default 'subscribed',
+    -- How and when this person agreed to get this list's mail (GDPR).
+    consent text not null,
+    consent_at integer not null,
+    added_at integer not null,
+    changed_at integer not null,
+    unique (list_id, email)
+  );
+  create index subscribers_email on subscribers(email);
+  create table newsletters (
+    id text primary key,
+    list_id text not null references mail_lists(id) on delete cascade,
+    subject text not null,
+    preheader text not null default '',
+    body text not null,
+    status text not null default 'draft',
+    sent_at integer,
+    sent_to integer not null default 0,
+    provider_ref text not null default '',
+    note text not null default '',
+    tested_at integer,
+    source text not null,
+    created_at integer not null,
+    updated_at integer not null
+  );
+  create table mail_sequences (
+    id text primary key,
+    list_id text not null references mail_lists(id) on delete cascade,
+    name text not null unique,
+    enabled integer not null default 1,
+    steps text not null,
+    source text not null,
+    created_at integer not null,
+    last_run_at integer,
+    last_note text not null default ''
+  );
+  create table mail_sequence_sent (
+    sequence_id text not null references mail_sequences(id) on delete cascade,
+    subscriber_id text not null references subscribers(id) on delete cascade,
+    step integer not null,
+    sent_at integer not null,
+    primary key (sequence_id, subscriber_id, step)
+  );
   `
 ]
 

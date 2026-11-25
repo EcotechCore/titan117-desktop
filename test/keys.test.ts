@@ -240,6 +240,28 @@ describe('saving keys on this laptop', () => {
   const provider = (status: number): typeof fetch =>
     (async () => new Response('{}', { status })) as typeof fetch
 
+  it('checks an email provider’s key with its own read-only call', async () => {
+    const seen: { url: string; headers: Record<string, string> }[] = []
+    const fake = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push({ url: String(input), headers: (init?.headers ?? {}) as Record<string, string> })
+      return new Response('{}', { status: 200 })
+    }) as typeof fetch
+    const keys = new Keys(tempFolder(), keychain, fake)
+    const KEY = ['mail', 'key', 'for', 'tests', '00000000000000'].join('-')
+    expect(await keys.save('brevo', KEY)).toEqual({ ok: true })
+    expect(await keys.save('postmark', KEY)).toEqual({ ok: true })
+    expect(seen[0]).toMatchObject({
+      url: 'https://api.brevo.com/v3/account',
+      headers: { 'api-key': KEY }
+    })
+    expect(seen[1]).toMatchObject({
+      url: 'https://api.postmarkapp.com/server',
+      headers: { 'X-Postmark-Server-Token': KEY }
+    })
+    const refused = new Keys(tempFolder(), keychain, provider(401))
+    expect((await refused.save('brevo', KEY)).ok).toBe(false)
+  })
+
   it('checks a key with its provider first, then keeps it only in the keychain', async () => {
     const dir = tempFolder()
     const keys = new Keys(dir, keychain, provider(200))
@@ -253,7 +275,9 @@ describe('saving keys on this laptop', () => {
       tavily: false,
       brave: false,
       cloudflare: false,
-      pagespeed: false
+      pagespeed: false,
+      brevo: false,
+      postmark: false
     })
     expect(keys.all()).toEqual({ openai: OPENAI_KEY })
     expect(readFileSync(join(dir, 'keys', 'openai.bin'), 'utf8')).not.toContain(OPENAI_KEY)
@@ -322,7 +346,9 @@ describe('the engine with your own keys', () => {
       tavily: false,
       brave: false,
       cloudflare: false,
-      pagespeed: false
+      pagespeed: false,
+      brevo: false,
+      postmark: false
     })
 
     const estimate = (

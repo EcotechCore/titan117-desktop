@@ -225,8 +225,9 @@ Checked on 24 Nov 2026. Phase 13's first part reuses no code from these: the sch
 | Piper TTS | Local TTS | Now GPL *to check* | Ideas | — | | |
 | [inovector/mixpost](https://github.com/inovector/mixpost) | Social scheduling (Lite edition) | MIT | Ideas | `marketing/mixpost` | MIT. It posts through each platform's API, which V1 doesn't (decisions §24): its calendar and per-platform previews are ideas only so far | `df57648b8663` |
 | [gitroomhq/postiz-app](https://github.com/gitroomhq/postiz-app) | Social scheduling, many platforms | AGPL | Ideas | `marketing/postiz` | AGPL: ideas only | `08b1e6b46f49` |
-| [umami-software/umami](https://github.com/umami-software/umami) | Privacy-friendly analytics for built sites | MIT | Code | `marketing/umami` | MIT | `ec0ff50388c2` |
-| Listmonk, Mautic, Plausible | Newsletters, sequences, analytics | AGPL, GPL, AGPL | Ideas | `marketing/…` | | |
+| [umami-software/umami](https://github.com/umami-software/umami) | Privacy-friendly analytics for built sites | MIT | Ideas | `marketing/umami` | MIT. What to count and what not to keep (no cookies, nothing personal) taken as ideas; our counting runs in the site's own Worker on Cloudflare (decisions §63.8), no code used | `ec0ff50388c2` |
+| Listmonk, Mautic, Plausible | Newsletters, sequences, analytics | AGPL, GPL, AGPL | Ideas | `marketing/…` | Not cloned: ideas only from their public descriptions (lists with consent, double opt-in, sequences by day). Our own code (decisions §63) | |
+| OpenCut | Timeline video editor (15.15) | MIT *to check* | Code | — | Not used yet: the drag-and-drop timeline editor isn't built (decisions §63.10) | |
 
 Checked on 24 Nov 2026. Phase 14's first part reuses no code from these: the brand kit, the posts and calendar, the video engine and the MP4 writer are our own (decisions §62). No new dependency.
 

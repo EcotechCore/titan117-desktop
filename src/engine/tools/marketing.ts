@@ -48,6 +48,7 @@ import {
   metaWarnings
 } from '../lib/marketing/ads'
 import { campaignReport, campaignSheet } from '../lib/marketing/report'
+import { visitsReport } from '../lib/apps/cloudflare'
 import { defineTool } from './lib/define-tool'
 
 function slug(text: string, fallback: string): string {
@@ -530,7 +531,7 @@ export const promoVideo = defineTool<VideoInput>({
   name: 'promo_video',
   description: [
     `Make a promo video as an MP4 file, drawn on this laptop for free (no AI video model): up to ${MAX_SCENES} scenes and ${MAX_SECONDS} seconds, in the brand kit's colours, font and logo.`,
-    'Scenes, in order: {"kind":"title","heading","text"}, {"kind":"points","heading","points":[up to 5 short lines]}, {"kind":"image","image":"a PNG, JPEG or WebP in the allowed folders (a screenshot from brand_from_site, or a picture)","heading","text","frame":"browser" | "phone" | "none"}, {"kind":"quote","text","by"}, {"kind":"outro","heading":"the call to action","text","url"}.',
+    'Scenes, in order: {"kind":"title","heading","text"}, {"kind":"points","heading","points":[up to 5 short lines]}, {"kind":"image","image":"a PNG, JPEG or WebP in the allowed folders (a screenshot from brand_from_site, or a picture)","heading","text","frame":"browser" | "phone" | "none"}, {"kind":"clip","video":"an MP4 or WebM in the allowed folders (a clip from video_create, or the user’s own footage)","from": seconds into the clip,"heading","text"} (it fills the frame; its own sound isn’t used), {"kind":"quote","text","by"}, {"kind":"outro","heading":"the call to action","text","url"}.',
     'Each scene may have "seconds" (2-30) and "say": one or two short sentences read aloud by the system voice when "voiceover" is true, also shown as captions. A scene lasts as long as its voice needs.',
     `"formats": one or more of ${FORMAT_LIST}; the same scenes are laid out for each shape. Use phone screenshots with frame "phone" in portrait videos.`,
     'A good promo: a title that states the benefit, two or three scenes showing the product, three points, a quote if there is a real one, an outro with one call to action. 20 to 45 seconds. Never invent quotes, numbers or customers.'
@@ -773,6 +774,39 @@ export const adDrafts = defineTool<AdsInput>({
   }
 })
 
+export const siteVisits = defineTool<{ site: string; days?: number }>({
+  name: 'site_visits',
+  description:
+    'Read the visits of a site published from Titan117 (15.10): page views by day, the pages people saw, the sites that sent them, countries, and phone or computer. Counted on the user’s own Cloudflare account without cookies or IP addresses, for up to 90 days back. Makes a short report.',
+  params: {
+    type: 'object',
+    properties: {
+      site: {
+        type: 'string',
+        description: 'The site’s address or name, e.g. bakery.ana.workers.dev'
+      },
+      days: { type: 'number', description: 'How many days back, 1 to 90 (default 30)' }
+    },
+    required: ['site']
+  },
+  risk: 'read',
+  permissions: { marketing: 'read', artifacts: 'write' },
+  describe: (input) => `Read the visits of ${String(input.site ?? '').slice(0, 80)}`,
+  async run(input, ctx) {
+    const visits = await ctx.marketing.visits(String(input.site), input.days ?? 30)
+    const text = visitsReport(visits)
+    const report = ctx.artifacts.create({
+      kind: 'document',
+      title: `Visits ${visits.site}`,
+      content: text
+    })
+    return {
+      output: `${text}\nThe report is the artifact "${report.title}".`,
+      summary: `Read ${visits.total} page view(s) of ${visits.site}`
+    }
+  }
+})
+
 export const marketingTools = [
   brandGet,
   brandFromSite,
@@ -784,5 +818,6 @@ export const marketingTools = [
   promoVideo,
   postResults,
   campaignReportTool,
-  adDrafts
+  adDrafts,
+  siteVisits
 ]

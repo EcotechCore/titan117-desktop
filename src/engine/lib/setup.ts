@@ -102,7 +102,9 @@ const NAMES: Record<KeyProvider, string> = {
   tavily: 'Tavily',
   brave: 'Brave',
   cloudflare: 'Cloudflare',
-  pagespeed: 'Google PageSpeed'
+  pagespeed: 'Google PageSpeed',
+  brevo: 'Brevo',
+  postmark: 'Postmark'
 }
 
 /** What the checklist reads; the engine fills it in. */

@@ -2393,3 +2393,19 @@ ol.rec-steps {
 .post-result .search {
   width: 84px;
 }
+.sub-section {
+  font-size: 14px;
+  margin: 18px 0 6px;
+}
+.mail-checks {
+  margin: 6px 0;
+}
+.mail-preview {
+  width: 100%;
+  max-width: 680px;
+  height: 560px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 8px 0;
+  background: #f4f4f5;
+}

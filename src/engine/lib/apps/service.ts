@@ -46,6 +46,21 @@ import {
   type StarterId
 } from './starters'
 
+/**
+ * Whether a site counts its visits (15.10, decisions §63): yes unless its
+ * `site.config.json` says `"analytics": false`.
+ */
+export function countsVisits(dir: string): boolean {
+  try {
+    const site = JSON.parse(readFileSync(join(dir, 'site.config.json'), 'utf8')) as {
+      analytics?: unknown
+    }
+    return site.analytics !== false
+  } catch {
+    return true
+  }
+}
+
 export class AppError extends Error {
   constructor(message: string) {
     super(message)
@@ -635,6 +650,7 @@ export function createAppService(deps: {
         token,
         dist: join(dir, 'dist'),
         name: app.name,
+        visits: countsVisits(dir),
         onProgress
       })
       const published: Published = { host: 'cloudflare', url: result.url, at: Date.now() }
