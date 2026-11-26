@@ -2,7 +2,7 @@
 // layer, what an app may reach, adding and updating builds, and how the
 // window serves them with no network.
 import { describe, expect, it } from 'vitest'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 import { createDataLayer, DataError } from '../src/engine/lib/apps/data'
@@ -301,5 +301,34 @@ describe('asking for a sidebar app', () => {
     expect(appCreateRequest('C:/apps', 'X', 'Y', 'z', 'blank', 'mobile', true)).not.toContain(
       'sidebar'
     )
+  })
+})
+
+describe('sidebar apps as add-ons (decisions §66.7)', () => {
+  it('keeps the builds and rolls back to the one before, which the window then serves', async () => {
+    const b = bench()
+    const dir = b.folder('notes', { name: 'Notes', icon: 'list', collections: ['notes'] })
+    const first = await b.service.add(dir, { reads: [], writes: [] })
+    // The first build is older on disk than the update.
+    utimesSync(
+      join(b.root, first.id, 'builds', first.build),
+      new Date(2026, 0, 1),
+      new Date(2026, 0, 1)
+    )
+    writeFileSync(join(dir, 'dist', 'index.html'), '<h1>broken</h1>')
+    const updated = await b.service.update(dir)
+    expect(updated.status).toBe('updated')
+    const now = b.service.get(first.id)!
+    expect(now.build).not.toBe(first.build)
+    expect(b.service.builds(first.id).map((x) => [x.build, x.current])).toEqual([
+      [now.build, true],
+      [first.build, false]
+    ])
+    const back = await b.service.rollback(first.id)
+    expect(back.build).toBe(first.build)
+    expect(readFileSync(sidebarFile(b.root, first.id, '/index.html')!, 'utf8')).toBe(
+      '<h1>notes</h1>'
+    )
+    await expect(b.service.rollback(first.id)).rejects.toThrow(/no earlier build/)
   })
 })

@@ -29,6 +29,15 @@ export interface Inspection {
   permissions: string[]
   /** null when the marketplace couldn't be asked (offline, signed out). */
   takenDown: boolean | null
+  /** When an older commit of the same repository is installed: what changed (decisions §66.4). */
+  update: {
+    name: string
+    fromVersion: string
+    fromCommit: string
+    /** null when GitHub couldn't list them. */
+    total: number | null
+    commits: { sha: string; message: string }[]
+  } | null
   verified: boolean
   files: string[]
 }
@@ -49,6 +58,43 @@ export interface AddonService {
   createTool(input: { manifest: unknown; code: string }, by: string): Promise<Addon>
   /** A card's text for an inspected package. */
   card(i: Inspection, summary: string | null): string
+  /** Our listing's status for a repository; null when it can't be asked. */
+  status(repo: string): Promise<{ takenDown: boolean; verifiedCommit: string | null } | null>
+}
+
+const GITHUB = 'https://api.github.com'
+
+/** The commits between two of a repository's commits (GitHub's compare), newest last. */
+async function compare(
+  repo: string,
+  from: string,
+  to: string,
+  fetch: SourceFetch
+): Promise<{ total: number | null; commits: { sha: string; message: string }[] }> {
+  try {
+    const res = await fetch(`${GITHUB}/repos/${repo}/compare/${from}...${to}?per_page=100`, {
+      headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
+    })
+    if (!res.ok) return { total: null, commits: [] }
+    const body = (await res.json()) as {
+      total_commits?: number
+      commits?: { sha?: string; commit?: { message?: string } }[]
+    }
+    const commits = (body.commits ?? []).slice(-50).map((c) => ({
+      sha: String(c.sha ?? '').slice(0, 7),
+      // Commit messages are someone else's words: one line, no control characters.
+      message: String(c.commit?.message ?? '')
+        .split('\n')[0]
+        .replace(/\p{Cc}+/gu, ' ')
+        .slice(0, 120)
+    }))
+    return {
+      total: typeof body.total_commits === 'number' ? body.total_commits : commits.length,
+      commits
+    }
+  } catch {
+    return { total: null, commits: [] }
+  }
 }
 
 export function createAddonService(deps: {
@@ -57,6 +103,8 @@ export function createAddonService(deps: {
   marketStatus?: (
     repo: string
   ) => Promise<{ takenDown: boolean; verifiedCommit: string | null } | null>
+  /** Tell our listing it was installed (decisions §66.12); failures are ignored. */
+  onInstalled?: (repo: string, commit: string) => void
   now?: () => number
 }): AddonService {
   const now = deps.now ?? Date.now
@@ -96,6 +144,17 @@ export function createAddonService(deps: {
       const repo = `${pkg.owner}/${pkg.repo}`
       const status = deps.marketStatus ? await deps.marketStatus(repo).catch(() => null) : null
       const checks = await checkPackage(pkg, fetch)
+      // An older commit of this repository is installed: show what changed since (decisions §66.4).
+      const installed = deps.store.list().find((a) => a.repo?.toLowerCase() === repo.toLowerCase())
+      const was = installed?.versions.find((v) => v.id === installed.current)
+      let update: Inspection['update'] = null
+      if (installed && was?.commit && was.commit !== pkg.commit)
+        update = {
+          name: installed.name,
+          fromVersion: was.version,
+          fromCommit: was.commit,
+          ...(await compare(repo, was.commit, pkg.commit, fetch))
+        }
       const inspection: Inspection = {
         key: `${repo}@${pkg.commit}`,
         repo,
@@ -105,6 +164,7 @@ export function createAddonService(deps: {
         permissions: describeAddon(pkg.manifest),
         takenDown: status ? status.takenDown : null,
         verified: status?.verifiedCommit === pkg.commit,
+        update,
         files: [...pkg.files.keys()].sort().slice(0, 500)
       }
       inspected.set(inspection.key, { at: now(), pkg, inspection })
@@ -158,10 +218,17 @@ export function createAddonService(deps: {
         }
       }
       inspected.delete(key)
+      try {
+        deps.onInstalled?.(inspection.repo, pkg.commit)
+      } catch {
+        // Counting installs is a nicety; it never stops one.
+      }
       return { addon, templateFiles }
     },
 
     checkTool,
+
+    status: (repo) => (deps.marketStatus ? deps.marketStatus(repo) : Promise.resolve(null)),
 
     async createTool(input, by) {
       const { manifest } = await checkTool(input)
@@ -178,7 +245,20 @@ export function createAddonService(deps: {
     },
 
     card(i, summary) {
+      const u = i.update
+      const updateLines = u
+        ? [
+            `Update ${u.name} from ${u.fromVersion} (commit ${u.fromCommit.slice(0, 12)}) to ${i.manifest.version}.`,
+            u.total === null
+              ? 'GitHub couldn’t list the commits in between.'
+              : `${u.total} commit${u.total === 1 ? '' : 's'} since: ${u.commits
+                  .slice(0, 10)
+                  .map((c) => `${c.sha} ${c.message}`)
+                  .join('; ')}${u.total > 10 ? '; …' : ''}`
+          ]
+        : []
       const lines = [
+        ...updateLines,
         `Install the ${i.manifest.type} “${i.manifest.title}” ${i.manifest.version} from github.com/${i.repo} at commit ${i.commit.slice(0, 12)}${i.verified ? ' (verified by Titan117)' : ''}.`,
         i.manifest.description,
         ...i.permissions,

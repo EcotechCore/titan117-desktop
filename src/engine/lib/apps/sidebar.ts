@@ -12,7 +12,7 @@
  * frame with no network. The app reaches its data only through the calls
  * below, which the window relays.
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 
@@ -167,6 +167,10 @@ export interface SidebarService {
   /** A new build of an app already in the sidebar; asks for a review if it wants more data. */
   update(folder: string, onProgress?: (note: string) => void): Promise<UpdateResult>
   remove(id: string, options?: { deleteData?: boolean }): Promise<void>
+  /** The builds kept for going back (decisions §58.4, §66.7), newest first. */
+  builds(id: string): { build: string; at: number; current: boolean }[]
+  /** Put the build before the one in use back in the sidebar (decisions §66.7). */
+  rollback(id: string): Promise<SidebarApp>
   /** A call from the app's frame, relayed by the window (`ai.ask` answers later). */
   call(id: string, method: string, args: unknown): unknown
   /** Data for Titan (the user's agent), across every sidebar app. */
@@ -392,6 +396,46 @@ export function createSidebarService(deps: {
       }
       put(app)
       return { status: 'updated', app }
+    },
+
+    builds(id) {
+      const known = service.get(id)
+      if (!known) return []
+      const dir = join(root, id, 'builds')
+      let names: string[]
+      try {
+        names = readdirSync(dir).filter((b) => /^[0-9a-f]{6,40}$/.test(b))
+      } catch {
+        return []
+      }
+      return names
+        .map((build) => ({
+          build,
+          at: statSync(join(dir, build)).mtimeMs,
+          current: build === known.build
+        }))
+        .sort((a, b) => b.at - a.at)
+    },
+
+    async rollback(id) {
+      const known = service.get(id)
+      if (!known) throw new AppError('That app isn’t in the sidebar.')
+      const builds = service.builds(id)
+      const at = builds.findIndex((b) => b.current)
+      const previous = at >= 0 ? builds[at + 1] : undefined
+      if (!previous) throw new AppError(`${known.title} has no earlier build to go back to.`)
+      await writeFile(
+        join(root, id, 'current.json'),
+        `${JSON.stringify({ build: previous.build })}\n`
+      )
+      const app: SidebarApp = {
+        ...known,
+        build: previous.build,
+        updatedAt: Date.now(),
+        error: null
+      }
+      put(app)
+      return app
     },
 
     async remove(id, options) {

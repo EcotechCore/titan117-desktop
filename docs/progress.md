@@ -32,6 +32,12 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 26 Nov 2026 · Phase 16: sidebar app rollback, takedowns, the update card and ratings
+
+Built (decisions §66.19): sidebar apps on the Add-ons screen with their kept builds and **Roll back** (`builds` and `rollback` in the sidebar service; the window serves the build put back); installed add-ons we took down are switched off on the next check (30 seconds after start, then hourly) and stay off; **Check for update** with the commits in between on the card; the install reported to our web app with the device token, and stars from the Add-ons screen.
+
+- **Checks:** desktop tests (new: build rollback served by the window, the update card's comparison and the "couldn't list" case, the install report, a takedown's lock), typecheck, lint, licences, the build and its contents. **Not seen yet:** a real update, rating or takedown against the development deployment (no listed repository yet). No model is involved, so no live run.
+
 ### 26 Nov 2026 · Phase 16's first part merged
 
 The pull requests are merged in all three repos (web #62 first, then desktop #57 and pop #49 after their docs check passed). Run the desktop app from `main`. Phase 16 stays in progress: fork and publish, installs and ratings, later takedowns, MCP servers and workflows from the marketplace, other hosts, the update card and the portal's screen; decisions §66 waits for the owner.

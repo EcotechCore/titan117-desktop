@@ -167,9 +167,8 @@ describe.skipIf(!key)('phase 16 with a real model', () => {
       report.push(`  ${a.kind} ${a.tool ?? ''}: ${a.summary.replace(/\s+/g, ' ').slice(0, 300)}`)
     for (const m of engine.parts.store.listMessages(used).map((x) => x.message))
       if (m.role === 'tool') report.push(`  tool output: ${JSON.stringify(m).slice(0, 400)}`)
-    const code = engine.parts.db
-      .prepare("select value from meta where key = 'addons'")
-      .get() as { value: string } | undefined
+    const code = engine.parts.db.prepare("select value from meta where key = 'addons'").get() as
+      { value: string } | undefined
     report.push(`  manifest: ${(code?.value ?? '').slice(0, 300)}`)
     // The rate comes from the add-on itself, not from a search.
     const outputs = engine.parts.store
