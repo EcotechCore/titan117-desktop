@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 26 Nov 2026 · Phase 16's second part merged
+
+The pull requests are merged in all three repos (web #64 first, then desktop #59 and pop #51 after their docs check passed), and the development Convex deployment has the new tables. Run the desktop app from `main`. Phase 16 stays in progress: fork and publish, larger tools from the coding engine, MCP servers and workflows from the marketplace, install any open-source project, other hosts and the portal's screen; decisions §66 waits for the owner.
+
 ### 26 Nov 2026 · Phase 16: sidebar app rollback, takedowns, the update card and ratings
 
 Built (decisions §66.19): sidebar apps on the Add-ons screen with their kept builds and **Roll back** (`builds` and `rollback` in the sidebar service; the window serves the build put back); installed add-ons we took down are switched off on the next check (30 seconds after start, then hourly) and stay off; **Check for update** with the commits in between on the card; the install reported to our web app with the device token, and stars from the Add-ons screen.
