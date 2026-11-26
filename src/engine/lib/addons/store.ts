@@ -8,7 +8,7 @@
  * the QuickJS sandbox), its agents and skills. In safe mode it contributes
  * nothing.
  */
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import type { AgentDef, Skill } from '../../../shared/protocol'
@@ -60,7 +60,18 @@ export interface Addon {
   failures: number
   /** Titan117 took it down after a report (decisions §66.11): off, and it can't be turned on. */
   takenDown?: boolean
+  /** What an MCP server or workflow add-on made outside the store, to undo (decisions §66.21). */
+  links?: AddonLinks
+  /** Where the user published it on GitHub (decisions §66.23): `owner/repo`. */
+  publishedAs?: string
   changedAt: number
+}
+
+export interface AddonLinks {
+  /** The connector's id on Connectors. */
+  connector?: string
+  /** The schedule's id on Automations. */
+  schedule?: string
 }
 
 export interface SafeModeState {
@@ -101,6 +112,10 @@ export interface AddonStore {
   setEnabled(name: string, enabled: boolean): Addon
   /** Our listing says it was taken down: switched off for good (decisions §66.11). */
   takeDown(name: string, reason: string): Addon
+  setLinks(name: string, links: AddonLinks | undefined): void
+  setPublished(name: string, repo: string): void
+  /** The paths of the version in use's files. */
+  files(name: string): string[]
   /** A call to one of its tools worked or failed (decisions §66.8). */
   recordCall(name: string, ok: boolean): void
   safeMode(): SafeModeState
@@ -288,7 +303,8 @@ export function createAddonStore(deps: {
         enabled: true,
         offReason: null,
         failures: 0,
-        changedAt: now()
+        changedAt: now(),
+        ...(existing?.links ? { links: existing.links } : {})
       }
       save([...list.filter((a) => a.name !== manifest.name), addon])
       changed(manifest.name)
@@ -338,6 +354,37 @@ export function createAddonStore(deps: {
       save(all().map((x) => (x.name === name ? next : x)))
       changed(name)
       return next
+    },
+
+    setPublished(name, repo) {
+      save(all().map((x) => (x.name === name ? { ...x, publishedAs: repo } : x)))
+    },
+
+    files(name) {
+      const a = store.get(name)
+      if (!a) throw new AddonError('There is no such add-on.')
+      if (!deps.root) {
+        const prefix = `${name}/${a.current}/`
+        return [...memory.keys()]
+          .filter((k) => k.startsWith(prefix))
+          .map((k) => k.slice(prefix.length))
+      }
+      const base = join(deps.root, name, a.current)
+      const out: string[] = []
+      const walk = (dir: string, rel: string): void => {
+        for (const e of readdirSync(dir, { withFileTypes: true })) {
+          if (out.length >= 2000) return
+          const r = rel ? `${rel}/${e.name}` : e.name
+          if (e.isDirectory()) walk(join(dir, e.name), r)
+          else if (e.isFile()) out.push(r)
+        }
+      }
+      walk(base, '')
+      return out.sort()
+    },
+
+    setLinks(name, links) {
+      save(all().map((x) => (x.name === name ? { ...x, links } : x)))
     },
 
     takeDown(name, reason) {

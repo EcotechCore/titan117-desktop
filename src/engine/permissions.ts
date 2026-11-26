@@ -78,6 +78,7 @@ import { DocumentError } from './lib/documents'
 import { AgentError } from './lib/agents'
 import type { AddonAccess, AutomationAccess, MarketingAccess } from './tools/lib/define-tool'
 import type { AddonService } from './lib/addons/service'
+import { publishAddon } from './lib/addons/publish'
 import type { MarketingService } from './lib/marketing/service'
 import { MarketingError } from './lib/marketing/brand'
 import { checkVideo } from './lib/marketing/video'
@@ -692,9 +693,86 @@ export function createPermissionLayer(deps: {
             },
             checkTool: (input) => addonService().checkTool(input),
             createTool: (input) => addonService().createTool(input, madeBy()),
-            rollback: (name) => addonService().store.rollback(name)
+            rollback: (name) => addonService().rollback(name),
+
+            async readFolder(folder) {
+              if (!p.folders) throw new PermissionError('This tool may not read files.')
+              const files = await readTree(folder)
+              const { manifest, card } = await addonService().checkLocal(files)
+              return { files, card, title: manifest.title }
+            },
+            installFolder: (files) => addonService().installLocal(files, madeBy()),
+
+            async download(address, folder) {
+              if (!p.network)
+                throw new PermissionError('This tool did not declare access to the network.')
+              if (p.folders !== 'write') throw new PermissionError('This tool may not write files.')
+              const existing = await files.list(folder).catch(() => null)
+              if (existing && existing.length)
+                throw new PermissionError('That folder isn’t empty. Pick a new one.')
+              const target = await files.resolve(folder)
+              const got = await addonService().download(address, (url, init) =>
+                net.fetch(url, init)
+              )
+              const base = folder.replace(/[\\/]+$/, '')
+              await files.makeFolder(folder)
+              for (const [path, data] of got.files)
+                await files.writeBytes(`${base}/${path}`, Buffer.from(data))
+              const SETUP =
+                /^(readme(\.md|\.txt|\.rst)?|package\.json|requirements\.txt|pyproject\.toml|setup\.py|dockerfile|docker-compose\.ya?ml|makefile|cargo\.toml|go\.mod|\.env\.example)$/i
+              const texts: { path: string; text: string }[] = []
+              let budget = 30_000
+              for (const [path, data] of got.files) {
+                if (path.includes('/') || !SETUP.test(path) || budget <= 0) continue
+                const text = new TextDecoder().decode(data.subarray(0, Math.min(budget, 12_000)))
+                budget -= text.length
+                texts.push({ path, text })
+              }
+              return {
+                key: got.key,
+                folder: target,
+                files: [...got.files.keys()].slice(0, 300),
+                checks: got.checks,
+                texts
+              }
+            },
+
+            async publish(name, repoName, licence) {
+              if (!p.network)
+                throw new PermissionError('This tool did not declare access to the network.')
+              const token = services.githubToken?.() ?? null
+              if (!token) throw new PermissionError('Sign in with GitHub on the Code screen first.')
+              return publishAddon(addonService(), name, repoName, licence, token, (url, init) =>
+                net.fetch(url, init)
+              )
+            }
           }
         : denied<AddonAccess>('add-ons')
+
+    /** An add-on folder's files (titan.json and what it names, up to 2 MB). */
+    async function readTree(folder: string): Promise<Map<string, Uint8Array>> {
+      const out = new Map<string, Uint8Array>()
+      let total = 0
+      const base = folder.replace(/[\\/]+$/, '')
+      const walk = async (rel: string, depth: number): Promise<void> => {
+        if (depth > 4) return
+        for (const e of await files.list(rel ? `${base}/${rel}` : base)) {
+          if (e.name.startsWith('.') || e.name === 'node_modules') continue
+          const r = rel ? `${rel}/${e.name}` : e.name
+          if (e.kind === 'folder') await walk(r, depth + 1)
+          else {
+            if (out.size >= 500) throw new PermissionError('The folder has more than 500 files.')
+            const data = await files.readBytes(`${base}/${r}`, 1024 * 1024)
+            total += data.byteLength
+            if (total > 2 * 1024 * 1024)
+              throw new PermissionError('The folder is larger than 2 MB.')
+            out.set(r, new Uint8Array(data))
+          }
+        }
+      }
+      await walk('', 0)
+      return out
+    }
 
     const market = (): MarketingService => needService(services.marketing, 'Marketing')
     const marketWrite = (): void => {

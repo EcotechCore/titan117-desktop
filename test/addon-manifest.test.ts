@@ -114,3 +114,70 @@ describe('titan.json', () => {
       expect(addonHost(bad)).toBeNull()
   })
 })
+
+describe('titan.json: MCP servers and workflows', () => {
+  const base = { titan: 1, name: 'gh-mcp', version: '1.0.0', description: 'd' }
+  it('reads a pinned npm server or an https address, and refuses the rest', () => {
+    const npm = parseAddonManifest({
+      ...base,
+      type: 'mcp-server',
+      mcp: { npm: '@acme/mcp@1.2.3', args: ['--read-only'], secrets: ['ACME_TOKEN'] }
+    })
+    expect(npm.ok && npm.manifest.mcp).toEqual({
+      url: null,
+      npm: '@acme/mcp@1.2.3',
+      args: ['--read-only'],
+      secrets: ['ACME_TOKEN']
+    })
+    expect(npm.ok && describeAddon(npm.manifest).join(' ')).toContain('not in the add-on sandbox')
+    const url = parseAddonManifest({
+      ...base,
+      type: 'mcp-server',
+      mcp: { url: 'https://mcp.acme.com/mcp' }
+    })
+    expect(url.ok && url.manifest.mcp?.url).toBe('https://mcp.acme.com/mcp')
+    for (const mcp of [
+      { npm: '@acme/mcp' },
+      { npm: '@acme/mcp@^1.2.3' },
+      { npm: '@acme/mcp@1.2.3', args: ['; rm -rf /'] },
+      { url: 'http://mcp.acme.com' },
+      { url: 'https://localhost/mcp' },
+      { url: 'https://mcp.acme.com', npm: 'a@1.0.0' },
+      { npm: 'a@1.0.0', secrets: ['lower'] }
+    ])
+      expect(parseAddonManifest({ ...base, type: 'mcp-server', mcp }).ok).toBe(false)
+  })
+
+  it('reads a schedule and refuses folders, one-offs and short intervals', () => {
+    const daily = parseAddonManifest({
+      ...base,
+      type: 'workflow',
+      workflow: {
+        when: { kind: 'daily', time: '08:00', days: [1, 2, 9] },
+        agent: 'Writer',
+        prompt: "Draft the week's posts."
+      }
+    })
+    expect(daily.ok && daily.manifest.workflow).toEqual({
+      when: { kind: 'daily', time: '08:00', days: [1, 2] },
+      agent: 'Writer',
+      prompt: "Draft the week's posts."
+    })
+    for (const when of [
+      { kind: 'folder', folder: 'C:/' },
+      { kind: 'once', at: 1 },
+      { kind: 'interval', minutes: 5 },
+      { kind: 'daily', time: '25:00' }
+    ])
+      expect(
+        parseAddonManifest({ ...base, type: 'workflow', workflow: { when, prompt: 'x' } }).ok
+      ).toBe(false)
+    expect(
+      parseAddonManifest({
+        ...base,
+        type: 'workflow',
+        workflow: { when: { kind: 'interval', minutes: 60 } }
+      }).ok
+    ).toBe(false)
+  })
+})

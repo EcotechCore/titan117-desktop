@@ -254,7 +254,10 @@ export function scanSecrets(files: Map<string, Uint8Array>): SecretFinding[] {
   return found.slice(0, 50)
 }
 
-export async function checkPackage(pkg: AddonPackage, fetch: SourceFetch): Promise<AddonChecks> {
+export async function checkPackage(
+  pkg: Pick<AddonPackage, 'files'> & { manifest?: { license: string | null } | null },
+  fetch: SourceFetch
+): Promise<AddonChecks> {
   const { packages, unpinned, installScripts } = npmPackages(pkg.files)
   const scan = packages.length
     ? await scanDependencies(packages, fetch)
@@ -262,7 +265,7 @@ export async function checkPackage(pkg: AddonPackage, fetch: SourceFetch): Promi
   let bytes = 0
   for (const data of pkg.files.values()) bytes += data.byteLength
   return {
-    licence: checkLicence(pkg.files, pkg.manifest.license),
+    licence: checkLicence(pkg.files, pkg.manifest?.license ?? null),
     dependencies: { ecosystem: 'npm', checked: packages.length, unpinned, ...scan },
     secrets: scanSecrets(pkg.files),
     installScripts,
