@@ -16,7 +16,11 @@ function setup(approvals: { id: string; laptopOnly: boolean }[] = []): {
   ran: Ran
   posted: Record<string, unknown>[]
   acks: string[]
+  calls: { url: string; init?: RequestInit }[]
+  saved: { name: string; bytes: number }[]
 } {
+  const calls: { url: string; init?: RequestInit }[] = []
+  const saved: { name: string; bytes: number }[] = []
   const ran: Ran = []
   const posted: Record<string, unknown>[] = []
   const acks: string[] = []
@@ -34,7 +38,11 @@ function setup(approvals: { id: string; laptopOnly: boolean }[] = []): {
         summary: 'Write out.txt'
       }))
     }),
-    task: async () => null
+    task: async () => null,
+    saveFile: async (name: string, bytes: Uint8Array) => {
+      saved.push({ name, bytes: bytes.length })
+      return name
+    }
   } as unknown as RemoteCommands
   const slack = new Slack({
     dataDir: tempFolder(),
@@ -43,6 +51,8 @@ function setup(approvals: { id: string; laptopOnly: boolean }[] = []): {
     remoteOn: () => true,
     onChange: () => undefined,
     fetch: (async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), init })
+      if (String(url).startsWith('https://files.slack.com/')) return new Response('invoice bytes')
       const method = String(url).split('/').pop()
       if (method === 'auth.test') return Response.json({ ok: true, team: 'Bakery' })
       if (method === 'apps.connections.open')
@@ -57,7 +67,7 @@ function setup(approvals: { id: string; laptopOnly: boolean }[] = []): {
       onclose: null
     })
   })
-  return { slack, ran, posted, acks }
+  return { slack, ran, posted, acks, calls, saved }
 }
 
 const dm = (text: string, user = 'U1', channelType = 'im'): string =>
@@ -121,6 +131,67 @@ describe('the Slack channel', () => {
     expect(ran.filter((r) => r.type === 'approval.answer')).toEqual([
       { type: 'approval.answer', approvalId: 'ap_1', answer: 'approve', source: 'Slack' }
     ])
+    slack.stop()
+  })
+
+  it('saves a file sent in the direct message, sending the bot token only to Slack’s file host (decisions §65.9)', async () => {
+    const { slack, saved, calls, posted } = setup()
+    await slack.connect(APP, BOT)
+    slack.startLink()
+    await slack.receive(dm(slack.view().code!.code))
+    const withFiles = (files: unknown[], user = 'U1'): string =>
+      JSON.stringify({
+        envelope_id: `e_${Math.random()}`,
+        type: 'events_api',
+        payload: {
+          event: {
+            type: 'message',
+            subtype: 'file_share',
+            channel_type: 'im',
+            channel: 'D1',
+            user,
+            files
+          }
+        }
+      })
+    await slack.receive(
+      withFiles([
+        {
+          name: 'invoice.pdf',
+          size: 13,
+          url_private_download: 'https://files.slack.com/files-pri/T1-F1/download/invoice.pdf'
+        },
+        { name: 'elsewhere.pdf', size: 13, url_private: 'https://evil.example/x.pdf' },
+        {
+          name: 'lookalike.pdf',
+          size: 13,
+          url_private: 'https://files.slack.com.evil.example/x.pdf'
+        },
+        {
+          name: 'drive.pdf',
+          size: 13,
+          is_external: true,
+          url_private: 'https://files.slack.com/x'
+        },
+        { name: 'huge.mov', size: 30 * 1024 * 1024, url_private: 'https://files.slack.com/huge' }
+      ])
+    )
+    await new Promise((r) => setTimeout(r, 2500))
+    expect(saved).toEqual([{ name: 'invoice.pdf', bytes: 13 }])
+    const fileCalls = calls.filter((c) => !c.url.startsWith('https://slack.com/api/'))
+    expect(fileCalls.map((c) => c.url)).toEqual([
+      'https://files.slack.com/files-pri/T1-F1/download/invoice.pdf'
+    ])
+    expect(fileCalls[0]!.init).toMatchObject({
+      redirect: 'manual',
+      headers: { Authorization: `Bearer ${BOT}` }
+    })
+    expect(JSON.stringify(posted)).toContain('isn’t on Slack’s file host')
+    // Another person's file is dropped like their messages.
+    await slack.receive(
+      withFiles([{ name: 'theirs.pdf', size: 1, url_private: 'https://files.slack.com/y' }], 'U2')
+    )
+    expect(saved).toHaveLength(1)
     slack.stop()
   })
 })

@@ -80,8 +80,21 @@ contextBridge.exposeInMainWorld('titan117', {
     revokeAll: () => ipcRenderer.invoke('remote:revokeAll'),
     setInbox: (folder: string | null) => ipcRenderer.invoke('remote:setInbox', folder),
     setScheduleResults: (on: boolean) => ipcRenderer.invoke('remote:setScheduleResults', on),
+    secondFactor: (next?: string[]) => ipcRenderer.invoke('remote:secondFactor', next),
     onChange: (listener: (view: unknown) => void) => {
       ipcRenderer.on('remote:changed', (_event, view) => listener(view))
+    }
+  },
+  sync: {
+    status: () => ipcRenderer.invoke('sync:status'),
+    switchOn: () => ipcRenderer.invoke('sync:switchOn'),
+    switchOff: () => ipcRenderer.invoke('sync:switchOff'),
+    allow: (id: string) => ipcRenderer.invoke('sync:allow', id),
+    refuse: (id: string) => ipcRenderer.invoke('sync:refuse', id),
+    remove: (id: string) => ipcRenderer.invoke('sync:remove', id),
+    confirm: (accept: boolean) => ipcRenderer.invoke('sync:confirm', accept),
+    onChange: (listener: (view: unknown) => void) => {
+      ipcRenderer.on('sync:changed', (_event, view) => listener(view))
     }
   },
   slack: {

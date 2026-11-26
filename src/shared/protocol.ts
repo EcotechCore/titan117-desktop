@@ -30,6 +30,8 @@ export interface Task {
   mode: 'normal' | 'research'
   /** The task this one is a part of, when a manager agent handed it out (4.6). */
   parentId: string | null
+  /** The laptop this conversation was carried from by sync (decisions §65.3), if any. */
+  syncedFrom?: string | null
   createdAt: number
   updatedAt: number
 }

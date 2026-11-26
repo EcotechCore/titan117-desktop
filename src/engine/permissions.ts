@@ -106,10 +106,23 @@ export type CallOutcome =
 
 export interface PermissionLayer {
   execute(call: ToolCall, ctx: CallContext): Promise<CallOutcome>
-  /** The user's answer to an approval. `from` is where it was answered. */
-  answer(approvalId: string, answer: ApprovalAnswer, from: 'window' | 'remote'): void
+  /**
+   * The user's answer to an approval. `from` is where it was answered:
+   * `remote-second-factor` is a paired device's answer that carried Convex's
+   * checked proof of a fresh second factor (decisions §65.7).
+   */
+  answer(
+    approvalId: string,
+    answer: ApprovalAnswer,
+    from: 'window' | 'remote' | 'remote-second-factor'
+  ): void
   /** Whether an approval can only be answered on the laptop (guardrails §9); true when unsure. */
   laptopOnly(approvalId: string): boolean
+  /**
+   * A laptop-only approval whose category the user lets be answered remotely
+   * with a fresh second factor (decisions §65.7); false for everything else.
+   */
+  secondFactorAllowed(approvalId: string): boolean
   /** Give up on a task's waiting approvals (the task was cancelled). */
   cancelTask(taskId: string): void
   /** The user wrote a message: the sites it names join the task's site list. */
@@ -211,9 +224,22 @@ export interface TeamService {
   ): import('../shared/protocol').AgentDef
 }
 
+/**
+ * Laptop-only approvals the user may let be answered remotely after a second
+ * factor (decisions §65.7): actions that go outside or can't be taken back
+ * (sending, publishing, pushing, deleting a file, opening a new site), and
+ * commands that always ask (deleting, installing). Tools marked laptop-only
+ * for anything else (agents, schedules, standing instructions, the sidebar)
+ * and the always-ask list outside commands never are.
+ */
+export type RemoteCategory = 'external' | 'commands'
+export const REMOTE_CATEGORIES: RemoteCategory[] = ['external', 'commands']
+const COMMAND_TOOLS = new Set(['run_command', 'server_command', 'code_command'])
+
 interface Waiting {
   taskId: string
   laptopOnly: boolean
+  category: RemoteCategory | null
   resolve(answer: ApprovalAnswer | 'cancelled'): void
 }
 
@@ -245,6 +271,8 @@ export function createPermissionLayer(deps: {
   log: Logger
   folders(): FolderPolicy
   services?: Services
+  /** The categories the user switched on for a second factor (decisions §65.7). */
+  remoteSecondFactor?: () => RemoteCategory[]
 }): PermissionLayer {
   const { tools, store, log } = deps
   const services = deps.services ?? {}
@@ -256,6 +284,13 @@ export function createPermissionLayer(deps: {
    * only until the engine restarts.
    */
   const approvedPlans = new Map<string, Set<string>>()
+  /** Tools marked laptop-only for something other than acting outside: permissions, agents, schedules. */
+  const neverRemote = (tool: { laptopOnly?: boolean; risk: Risk } | undefined): boolean =>
+    !!tool?.laptopOnly && tool.risk !== 'external'
+  const secondFactorOk = (pending: Waiting): boolean =>
+    pending.laptopOnly &&
+    pending.category !== null &&
+    (deps.remoteSecondFactor?.() ?? []).includes(pending.category)
   const planCovers = (taskId: string, folder: string | undefined): boolean =>
     !!folder && !!approvedPlans.get(taskId)?.has(folder)
 
@@ -311,6 +346,7 @@ export function createPermissionLayer(deps: {
       canAlways: boolean
       alwaysLabel?: string | null
       laptopOnly: boolean
+      category?: RemoteCategory | null
     }
   ): Promise<ApprovalAnswer | 'cancelled'> {
     const approval = store.createApproval({
@@ -327,7 +363,12 @@ export function createPermissionLayer(deps: {
     activity(ctx, 'approval', input.tool, `Asked: ${input.summary}`)
     const answer = await new Promise<ApprovalAnswer | 'cancelled'>((resolve) => {
       if (ctx.signal.aborted) return resolve('cancelled')
-      waiting.set(approval.id, { taskId: ctx.taskId, laptopOnly: input.laptopOnly, resolve })
+      waiting.set(approval.id, {
+        taskId: ctx.taskId,
+        laptopOnly: input.laptopOnly,
+        category: input.laptopOnly ? (input.category ?? null) : null,
+        resolve
+      })
       ctx.signal.addEventListener('abort', () => resolve('cancelled'), { once: true })
     })
     waiting.delete(approval.id)
@@ -347,7 +388,9 @@ export function createPermissionLayer(deps: {
     name: string,
     input: Record<string, unknown>,
     assessment: Assessment,
-    laptopOnlyTool: boolean
+    laptopOnlyTool: boolean,
+    /** The asking tool's own risk: a laptop-only tool that isn't external never gets a second-factor answer. */
+    toolRisk?: Risk
   ): Promise<Decision> {
     if (assessment.refuse) return { allowed: false, why: assessment.refuse }
     // Private content on its way out is blocked before the user is even asked (security.md A3).
@@ -377,7 +420,17 @@ export function createPermissionLayer(deps: {
         // "Always" is never offered for external actions or the always-ask list.
         canAlways,
         alwaysLabel: canAlways && standing ? standing.label : null,
-        laptopOnly: laptopOnlyTool || risk === 'external' || !!assessment.alwaysAsks
+        laptopOnly: laptopOnlyTool || risk === 'external' || !!assessment.alwaysAsks,
+        category:
+          laptopOnlyTool && toolRisk !== 'external'
+            ? null
+            : assessment.alwaysAsks
+              ? COMMAND_TOOLS.has(name)
+                ? 'commands'
+                : null
+              : risk === 'external'
+                ? 'external'
+                : null
       })
       if (answer === 'cancelled')
         return { allowed: false, why: 'the task was cancelled before you answered.' }
@@ -435,7 +488,8 @@ export function createPermissionLayer(deps: {
           summary,
           args: {},
           canAlways: false,
-          laptopOnly: true
+          laptopOnly: true,
+          category: tool.laptopOnly ? null : 'external'
         })
         return answer === 'approve' || answer === 'always' ? 'once' : 'deny'
       }
@@ -1216,7 +1270,15 @@ export function createPermissionLayer(deps: {
           risk: assessment.risk === 'read' ? 'write' : assessment.risk,
           alwaysAsks: true
         }
-      const gated = await gate(ctx, call.id, tool.name, call.input, assessment, !!tool.laptopOnly)
+      const gated = await gate(
+        ctx,
+        call.id,
+        tool.name,
+        call.input,
+        assessment,
+        !!tool.laptopOnly,
+        tool.risk
+      )
       if (!gated.allowed) return refuse(call, ctx, gated.why)
       const approvedBy = gated.approvedBy
 
@@ -1286,14 +1348,29 @@ export function createPermissionLayer(deps: {
         throw new ApprovalError('CONFLICT', 'That approval was already answered.')
       const pending = waiting.get(approvalId)
       const tool = tools.get(approval.tool)
-      // Laptop-only approvals can't be answered remotely (guardrails §9).
-      if (from !== 'window' && (!tool || tool.laptopOnly || !pending || pending.laptopOnly))
+      // Laptop-only approvals can't be answered remotely (guardrails §9), except a category
+      // the user switched on, with a checked second factor (decisions §65.7).
+      const remoteOk =
+        from === 'remote'
+          ? !!tool && !tool.laptopOnly && !!pending && !pending.laptopOnly
+          : from === 'remote-second-factor'
+            ? // Its category was set from the tool that asked (open_site and code_command aren't tools).
+              !neverRemote(tool) && !!pending && secondFactorOk(pending)
+            : true
+      if (!remoteOk)
         throw new ApprovalError('FORBIDDEN', 'This one can only be answered on the laptop.')
       if (answer === 'always' && !approval.canAlways)
         throw new ApprovalError('FORBIDDEN', 'This action always asks.')
       if (!pending) throw new ApprovalError('CONFLICT', 'That task is no longer waiting.')
       store.answerApproval(approvalId, answer === 'deny' ? 'denied' : 'approved', from)
       pending.resolve(answer)
+    },
+
+    secondFactorAllowed(approvalId) {
+      const approval = store.getApproval(approvalId)
+      const pending = waiting.get(approvalId)
+      const tool = approval ? tools.get(approval.tool) : undefined
+      return !!approval && !neverRemote(tool) && !!pending && secondFactorOk(pending)
     },
 
     laptopOnly(approvalId) {

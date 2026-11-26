@@ -18,7 +18,11 @@ import {
   type RemoteTask
 } from '../../shared/remote-protocol'
 
-export type EngineCall = <T>(method: 'GET' | 'POST', path: string, body?: unknown) => Promise<T>
+export type EngineCall = <T>(
+  method: 'GET' | 'POST' | 'PUT',
+  path: string,
+  body?: unknown
+) => Promise<T>
 
 interface EngineTask {
   id: string
@@ -66,7 +70,15 @@ export class RemoteCommands {
     return this.startedFrom.get(taskId) ?? null
   }
 
-  async run(command: RemoteCommand, source: string): Promise<CommandResult> {
+  /**
+   * `secondFactor`: the sender's proof of a fresh second factor was checked
+   * (remote.ts); the engine still accepts it only for a category switched on.
+   */
+  async run(
+    command: RemoteCommand,
+    source: string,
+    checked: { secondFactor?: boolean } = {}
+  ): Promise<CommandResult> {
     try {
       switch (command.type) {
         case 'task.start': {
@@ -94,7 +106,8 @@ export class RemoteCommands {
             'POST',
             `/v1/remote-approvals/${encodeURIComponent(command.approvalId)}`,
             {
-              answer: command.answer
+              answer: command.answer,
+              ...(checked.secondFactor ? { secondFactor: true } : {})
             }
           )
           return { ok: true }

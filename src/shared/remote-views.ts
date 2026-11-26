@@ -41,3 +41,21 @@ export interface SlackView {
   /** The app manifest to paste in Slack's "From a manifest". */
   manifest: string
 }
+
+/** Sync between laptops, as the window shows it (decisions §65). */
+export interface SyncView {
+  on: boolean
+  /** joining: asking Convex; waiting: a laptop already in has to let this one in; in: syncing. */
+  status: 'off' | 'joining' | 'waiting' | 'in'
+  problem: string | null
+  /** The laptops in, with the code this laptop shares with each (null for this one). */
+  laptops: { id: string; name: string; me: boolean; code: string | null }[]
+  /** Laptops asking to join that this one can let in. */
+  waiting: { id: string; name: string; code: string }[]
+  /** A key from a laptop this one hasn't checked a code with: confirm the code first. */
+  confirm: { by: string; code: string } | null
+  /** Conversations too long to send (more than 4 MB sealed). */
+  tooLong: number
+  lastSyncAt: number | null
+  keychain: boolean
+}

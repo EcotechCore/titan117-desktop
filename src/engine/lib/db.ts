@@ -404,6 +404,11 @@ const MIGRATIONS: string[] = [
     sent_at integer not null,
     primary key (sequence_id, subscriber_id, step)
   );
+  `,
+  `
+  -- Sync between laptops (decisions §65.3): a conversation carried here from another laptop names it.
+  alter table tasks add column synced_from text;
+  create index tasks_updated on tasks(updated_at);
   `
 ]
 

@@ -24,6 +24,31 @@ export const REMOTE_MAX_FILE_BYTES = 512 * 1024;
 export const PAIRING_TTL_MS = 5 * 60 * 1000;
 /** Switching on, pairing and remote laptop-only answers need a second factor this fresh (decisions §64.4). */
 export const SECOND_FACTOR_MAX_MINUTES = 10;
+/** A proof of a fresh second factor for one remote answer lives this long (decisions §65.7). */
+export const SECOND_FACTOR_PROOF_TTL_MS = 5 * 60 * 1000;
+/**
+ * Signed before a proof's body, so a proof can never pass for a lease and a
+ * lease never for a proof (both are signed with the lease key).
+ */
+export const SECOND_FACTOR_PROOF_PREFIX = "titan117 second-factor|";
+/** Sync between laptops (decisions §65.6): one sealed package at most. */
+export const SYNC_MAX_PACKAGE_BYTES = 8_000_000;
+
+/**
+ * What Convex signs after checking a fresh second factor (decisions §65.7):
+ * one answer, from one paired device, to one approval, for five minutes.
+ */
+export interface SecondFactorProof {
+  v: 1;
+  kind: "second-factor";
+  /** The account (Convex user id), as in the lease's `sub`. */
+  sub: string;
+  /** The paired device's public key that may send this answer. */
+  key: string;
+  approval: string;
+  iat: number;
+  exp: number;
+}
 
 // ------------------------------------------------------------------ commands
 
@@ -46,7 +71,13 @@ export type RemoteCommand =
   | { type: "task.start"; text: string; agent?: string }
   | { type: "task.list" }
   | { type: "task.get"; taskId: string }
-  | { type: "approval.answer"; approvalId: string; answer: "approve" | "deny" }
+  | {
+      type: "approval.answer";
+      approvalId: string;
+      answer: "approve" | "deny";
+      /** Convex's signed proof of a fresh second factor, for a laptop-only approval (decisions §65.7). */
+      proof?: string;
+    }
   | { type: "task.cancel"; taskId: string }
   | { type: "file.add"; name: string; data: string };
 
@@ -63,6 +94,8 @@ export interface RemoteCommandEnvelope {
 
 const isStr = (x: unknown, max: number): x is string => typeof x === "string" && x.length > 0 && x.length <= max;
 const ID = /^[A-Za-z0-9_-]{1,80}$/;
+/** A signed proof: base64url body, a dot, base64url signature. */
+const PROOF = /^[A-Za-z0-9_-]{10,1500}\.[A-Za-z0-9_-]{60,120}$/;
 
 /** A file name that can't leave its folder: no separators, no dots in front, no reserved characters. */
 export function safeFileName(name: string): string | null {
@@ -92,7 +125,10 @@ export function parseCommand(value: unknown): RemoteCommand | null {
     case "approval.answer":
       if (!(typeof c.approvalId === "string" && ID.test(c.approvalId))) return null;
       if (c.answer !== "approve" && c.answer !== "deny") return null;
-      return { type: "approval.answer", approvalId: c.approvalId, answer: c.answer };
+      if (c.proof !== undefined && !(typeof c.proof === "string" && PROOF.test(c.proof))) return null;
+      return c.proof === undefined
+        ? { type: "approval.answer", approvalId: c.approvalId, answer: c.answer }
+        : { type: "approval.answer", approvalId: c.approvalId, answer: c.answer, proof: c.proof };
     case "file.add": {
       if (!isStr(c.name, 200) || typeof c.data !== "string") return null;
       const name = safeFileName(c.name);
@@ -135,8 +171,13 @@ export interface RemoteApproval {
   taskId: string;
   tool: string;
   summary: string;
-  /** Can only be answered on the laptop (guardrails §9); shown, never answerable remotely. */
+  /** Can only be answered on the laptop (guardrails §9), unless `secondFactor` says otherwise. */
   laptopOnly: boolean;
+  /**
+   * A laptop-only approval whose category the user lets be answered remotely
+   * with a fresh second factor (decisions §65.7): the answer must carry a proof.
+   */
+  secondFactor?: boolean;
 }
 
 export interface RemoteStep {
@@ -254,7 +295,8 @@ export interface SealHeader {
   /** Sender's and recipient's public keys (their ids on the wire are these keys). */
   from: string;
   to: string;
-  kind: "command" | "event" | "key";
+  /** "sync": the account's sync key sealed to a laptop joining sync (decisions §65.4). */
+  kind: "command" | "event" | "key" | "sync";
   /** Unique message id. */
   id: string;
 }

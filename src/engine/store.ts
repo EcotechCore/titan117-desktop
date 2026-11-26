@@ -37,6 +37,7 @@ function toTask(r: Row): Task {
     costUsd: r.cost_usd as number,
     mode: r.mode === 'research' ? 'research' : 'normal',
     parentId: (r.parent_id as string | null) ?? null,
+    syncedFrom: (r.synced_from as string | null) ?? null,
     createdAt: r.created_at as number,
     updatedAt: r.updated_at as number
   }
@@ -96,6 +97,13 @@ export interface Store {
   ): Task
   addMessage(taskId: string, message: ChatMessage): StoredMessage
   listMessages(taskId: string): StoredMessage[]
+  /**
+   * Conversations for sync (decisions §65.3): finished top-level tasks changed
+   * after `since`, oldest first, each with its messages.
+   */
+  syncedTasksSince(since: number, limit?: number): SyncedTask[]
+  /** A conversation from another laptop: kept when it's newer and this laptop isn't running it. */
+  importSyncedTask(record: SyncedTask, from: string): boolean
   createApproval(input: {
     taskId: string
     callId: string
@@ -126,6 +134,25 @@ export interface Store {
   /** Tasks left running when the app stopped: marked stopped; their ids are returned (1.6). */
   closeInterrupted(): string[]
 }
+
+/** One conversation as it travels between the user's laptops (decisions §65.3). */
+export interface SyncedTask {
+  id: string
+  title: string
+  agent: string
+  model: string
+  status: TaskStatus
+  note: string | null
+  steps: number
+  costUsd: number
+  mode: 'normal' | 'research'
+  createdAt: number
+  updatedAt: number
+  messages: { createdAt: number; message: ChatMessage }[]
+}
+
+const SYNC_ID = /^[A-Za-z0-9_-]{1,80}$/
+const FINISHED: TaskStatus[] = ['done', 'stopped', 'error']
 
 export const INTERRUPTED_NOTE = 'The app closed while this task was running.'
 
@@ -257,6 +284,102 @@ export function createStore(db: Db, emit: Emit): Store {
         createdAt: r.created_at as number,
         message: JSON.parse(r.message as string) as ChatMessage
       }))
+    },
+
+    syncedTasksSince(since, limit = 20) {
+      const rows = db
+        .prepare(
+          `select * from tasks where parent_id is null and status in ('done', 'stopped', 'error')
+           and updated_at > ? order by updated_at limit ?`
+        )
+        .all(since, Math.min(200, Math.max(1, limit))) as Row[]
+      return rows.map((r) => {
+        const t = toTask(r)
+        return {
+          id: t.id,
+          title: t.title,
+          agent: t.agent,
+          model: t.model,
+          status: t.status,
+          note: t.note,
+          steps: t.steps,
+          costUsd: t.costUsd,
+          mode: t.mode,
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+          messages: store
+            .listMessages(t.id)
+            .map((m) => ({ createdAt: m.createdAt, message: m.message }))
+        }
+      })
+    },
+
+    importSyncedTask(record, from) {
+      if (
+        !record ||
+        typeof record.id !== 'string' ||
+        !SYNC_ID.test(record.id) ||
+        !FINISHED.includes(record.status) ||
+        typeof record.title !== 'string' ||
+        !Number.isFinite(record.updatedAt) ||
+        !Number.isFinite(record.createdAt) ||
+        !Array.isArray(record.messages)
+      )
+        return false
+      const local = store.getTask(record.id)
+      // A conversation running here is never replaced; an older copy never wins.
+      if (local && (!FINISHED.includes(local.status) || local.updatedAt >= record.updatedAt))
+        return false
+      if (local?.parentId) return false
+      const messages = record.messages.filter(
+        (m) =>
+          m &&
+          typeof m.message === 'object' &&
+          m.message !== null &&
+          typeof m.message.role === 'string'
+      )
+      db.exec('begin')
+      try {
+        db.prepare(
+          `insert into tasks (id, title, agent, model, status, note, steps, cost_usd, mode, created_at, updated_at, synced_from)
+           values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           on conflict (id) do update set title = excluded.title, agent = excluded.agent, model = excluded.model,
+             status = excluded.status, note = excluded.note, steps = excluded.steps, cost_usd = excluded.cost_usd,
+             mode = excluded.mode, updated_at = excluded.updated_at, synced_from = excluded.synced_from`
+        ).run(
+          record.id,
+          redact(record.title.slice(0, 500)),
+          String(record.agent ?? '').slice(0, 80),
+          String(record.model ?? '').slice(0, 200),
+          record.status,
+          record.note ? redact(String(record.note).slice(0, 2000)) : null,
+          Number(record.steps) || 0,
+          Number(record.costUsd) || 0,
+          record.mode === 'research' ? 'research' : 'normal',
+          record.createdAt,
+          record.updatedAt,
+          from.slice(0, 60)
+        )
+        db.prepare('delete from messages where task_id = ?').run(record.id)
+        const insert = db.prepare(
+          'insert into messages (id, task_id, seq, message, created_at) values (?, ?, ?, ?, ?)'
+        )
+        messages.forEach((m, i) =>
+          insert.run(
+            randomUUID(),
+            record.id,
+            i + 1,
+            JSON.stringify(redactDeep(m.message)),
+            Number.isFinite(m.createdAt) ? m.createdAt : record.updatedAt
+          )
+        )
+        db.exec('commit')
+      } catch (error) {
+        db.exec('rollback')
+        throw error
+      }
+      emit({ type: 'task', task: store.getTask(record.id)! })
+      return true
     },
 
     createApproval(input) {

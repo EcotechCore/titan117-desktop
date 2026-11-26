@@ -153,6 +153,26 @@ describe('remote commands on the engine', () => {
       answer: 'always'
     })
     expect(always.status).toBe(400)
+    // Making an agent never gets a second-factor answer, whatever is switched on (decisions §65.7).
+    expect(remote.approvals[0].secondFactor).toBe(false)
+    expect(
+      (await call(engine, 'PUT', '/v1/remote-settings', { secondFactor: ['everything'] })).status
+    ).toBe(400)
+    const on = await call(engine, 'PUT', '/v1/remote-settings', {
+      secondFactor: ['external', 'commands']
+    })
+    expect(on.body).toEqual({ secondFactor: ['external', 'commands'] })
+    const withFactor = await call(
+      engine,
+      'POST',
+      `/v1/remote-approvals/${remote.approvals[0].id}`,
+      {
+        answer: 'approve',
+        secondFactor: true
+      }
+    )
+    expect(withFactor.status).toBe(403)
+    expect((await call(engine, 'GET', '/v1/remote')).body.approvals[0].secondFactor).toBe(false)
     expect(engine.parts.agents.get('Supplier chaser')).toBeNull()
   })
 
@@ -185,7 +205,10 @@ describe('remote commands on the engine', () => {
 function bridge(
   cloud: FakeCloud,
   commands: RemoteCommands,
-  extra: { revoked?: () => void } = {}
+  extra: {
+    revoked?: () => void
+    checkProof?: (proof: string, key: string, approval: string) => boolean
+  } = {}
 ): Remote {
   const dir = tempFolder()
   const keychain = {
@@ -204,6 +227,7 @@ function bridge(
     commands,
     notify: () => undefined,
     onRevokedAll: extra.revoked ?? (() => undefined),
+    checkProof: extra.checkProof ?? (() => false),
     onChange: () => undefined,
     fetch: cloud.fetch,
     manual: true
@@ -222,8 +246,12 @@ function fakeCommands(): { commands: RemoteCommands; ran: string[] } {
   approvals.length = 0
   const ran: string[] = []
   const commands = {
-    run: async (c: { type: string; text?: string }, source: string) => {
-      ran.push(`${source}:${c.type}:${c.text ?? ''}`)
+    run: async (
+      c: { type: string; text?: string },
+      source: string,
+      checked: { secondFactor?: boolean } = {}
+    ) => {
+      ran.push(`${source}:${c.type}:${c.text ?? ''}${checked.secondFactor ? ':second-factor' : ''}`)
       return { ok: true, taskId: 't_1' }
     },
     state: async () => ({ tasks: [], approvals: [...approvals] }),
@@ -391,6 +419,55 @@ describe('the remote bridge', () => {
     await remote.tick()
     expect(remote.view().devices).toEqual([])
     expect(revoked).toBe(1)
+  })
+
+  it('passes a laptop-only answer on only when its second-factor proof checks out (decisions §65.7)', async () => {
+    const cloud = fakeCloud()
+    const { commands, ran } = fakeCommands()
+    const checked: string[] = []
+    const remote = bridge(cloud, commands, {
+      checkProof: (proof, key, approval) => {
+        checked.push(`${approval}:${key.slice(0, 4)}`)
+        return proof.startsWith('good')
+      }
+    })
+    await remote.switchOn()
+    cloud.enabled = true
+    await remote.tick()
+    const laptopKey = cloud.laptopKey!
+    const phone = await generateDeviceKey(false)
+    remote.startPairing()
+    await remote.tick()
+    cloud.pairings = [{ id: 'pair_1', publicKey: phone.publicKey, name: 'Phone' }]
+    cloud.keys = [{ publicKey: phone.publicKey, name: 'Phone', kind: 'phone' }]
+    await remote.tick()
+    remote.answerPairing(remote.view().waiting[0]!.pairingId, true)
+    const proof = (start: string): string => `${start}${'a'.repeat(40)}.${'b'.repeat(86)}`
+    cloud.toLaptop = [
+      await command(phone, laptopKey, {
+        type: 'approval.answer',
+        approvalId: 'ap_1',
+        answer: 'approve',
+        proof: proof('bad')
+      }),
+      await command(phone, laptopKey, {
+        type: 'approval.answer',
+        approvalId: 'ap_2',
+        answer: 'approve',
+        proof: proof('good')
+      }),
+      await command(phone, laptopKey, {
+        type: 'approval.answer',
+        approvalId: 'ap_3',
+        answer: 'approve'
+      })
+    ]
+    await remote.tick()
+    expect(checked).toEqual([
+      `ap_1:${phone.publicKey.slice(0, 4)}`,
+      `ap_2:${phone.publicKey.slice(0, 4)}`
+    ])
+    expect(ran).toEqual(['Phone:approval.answer::second-factor', 'Phone:approval.answer:'])
   })
 
   it('switching off stops everything and tells our cloud', async () => {
