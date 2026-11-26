@@ -58,6 +58,8 @@ export interface Addon {
   offReason: string | null
   /** Failed calls in a row since the last good one. */
   failures: number
+  /** Titan117 took it down after a report (decisions §66.11): off, and it can't be turned on. */
+  takenDown?: boolean
   changedAt: number
 }
 
@@ -97,6 +99,8 @@ export interface AddonStore {
   rollback(name: string): Addon
   remove(name: string): void
   setEnabled(name: string, enabled: boolean): Addon
+  /** Our listing says it was taken down: switched off for good (decisions §66.11). */
+  takeDown(name: string, reason: string): Addon
   /** A call to one of its tools worked or failed (decisions §66.8). */
   recordCall(name: string, ok: boolean): void
   safeMode(): SafeModeState
@@ -294,6 +298,10 @@ export function createAddonStore(deps: {
     rollback(name) {
       const a = store.get(name)
       if (!a) throw new AddonError('There is no such add-on.')
+      if (a.takenDown)
+        throw new AddonError(
+          `Titan117 took ${a.title} down after a report, so it stays off. Remove it.`
+        )
       const at = a.versions.findIndex((v) => v.id === a.current)
       if (at <= 0) throw new AddonError(`${a.title} has no earlier version to go back to.`)
       const next: Addon = {
@@ -322,9 +330,27 @@ export function createAddonStore(deps: {
     setEnabled(name, enabled) {
       const a = store.get(name)
       if (!a) throw new AddonError('There is no such add-on.')
+      if (enabled && a.takenDown)
+        throw new AddonError(
+          `Titan117 took ${a.title} down after a report, so it stays off. Remove it.`
+        )
       const next = { ...a, enabled, offReason: null, failures: 0, changedAt: now() }
       save(all().map((x) => (x.name === name ? next : x)))
       changed(name)
+      return next
+    },
+
+    takeDown(name, reason) {
+      const a = store.get(name)
+      if (!a) throw new AddonError('There is no such add-on.')
+      const next: Addon = {
+        ...a,
+        enabled: false,
+        takenDown: true,
+        offReason: reason,
+        changedAt: now()
+      }
+      save(all().map((x) => (x.name === name ? next : x)))
       return next
     },
 

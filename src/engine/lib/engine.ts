@@ -392,8 +392,36 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   }
   // A healthy minute after starting clears the start mark (decisions §66.8).
   setTimeout(() => addonStore.markHealthy(), HEALTHY_AFTER_MS).unref()
+  /** Installed add-ons we took down later are switched off (decisions §66.11), like the kill switches. */
+  async function checkTakedowns(): Promise<void> {
+    for (const a of addonStore.list()) {
+      if (!a.repo || a.takenDown) continue
+      try {
+        const status = await addonService.status(a.repo)
+        if (status?.takenDown)
+          addonStore.takeDown(
+            a.name,
+            'Titan117 took this add-on down after a report, so it was switched off. Remove it.'
+          )
+      } catch {
+        // Offline: checked again next hour.
+      }
+    }
+  }
+  /** Our web app's market routes, with this laptop's device token (decisions §66.11, §66.12). */
+  async function marketPost(path: string, body: unknown): Promise<Response | null> {
+    if (!account.proxyUrl || !account.token) return null
+    return fetch(`${account.proxyUrl.replace(/\/$/, '')}/market/${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${account.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+  }
   const addonService = createAddonService({
     store: addonStore,
+    onInstalled(repo, commit) {
+      void marketPost('installs', { repo, commit }).catch(() => undefined)
+    },
     async marketStatus(repo) {
       if (!account.proxyUrl) return null
       const response = await fetch(
@@ -482,6 +510,8 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     }
   }
   setInterval(() => void checkKillSwitches(), 60 * 60_000).unref()
+  setTimeout(() => void checkTakedowns(), 30_000).unref()
+  setInterval(() => void checkTakedowns(), 60 * 60_000).unref()
   const ownTools = createOwnTools({
     approvals: toolApprovals,
     scratch: join(options.dataDir ?? tmpdir(), 'scratch', 'own-tools'),
@@ -1537,8 +1567,29 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     addons: {
       list: () => ({
         addons: addonStore.list(),
-        safeMode: safeMode.on ? safeMode : { ...addonStore.safeMode(), on: false }
+        safeMode: safeMode.on ? safeMode : { ...addonStore.safeMode(), on: false },
+        // Sidebar apps are add-ons too (decisions §66.7): their builds, to go back one.
+        sidebarApps: sidebar.list().map((s) => ({
+          id: s.id,
+          title: s.title,
+          build: s.build,
+          builds: sidebar.builds(s.id)
+        }))
       }),
+      rollbackBuild: (id) => sidebar.rollback(id),
+      async rate(name, stars) {
+        const a = addonStore.get(name)
+        if (!a?.repo) throw new AddonError('Only add-ons from the marketplace can be rated.')
+        const res = await marketPost('ratings', { repo: a.repo, stars })
+        if (!res) throw new AddonError('Sign in to Titan117 to rate add-ons.')
+        if (res.status === 404)
+          throw new AddonError(
+            'It isn’t listed in the marketplace (it needs the titan117-addon topic).'
+          )
+        if (!res.ok)
+          throw new AddonError('The marketplace didn’t take the rating. Try again later.')
+        return { ok: true }
+      },
       inspect: (address) =>
         addonService.inspect(
           address,

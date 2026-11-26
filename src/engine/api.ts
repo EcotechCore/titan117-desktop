@@ -199,6 +199,8 @@ export function createApi(deps: {
     setEnabled(name: string, enabled: boolean): unknown
     remove(name: string): void
     leaveSafeMode(): void
+    rollbackBuild(id: string): Promise<unknown>
+    rate(name: string, stars: number): Promise<unknown>
   }
   /** Sidebar apps (6.2, 6.11; decisions §58): the user's clicks, and the calls apps make through the window. */
   sidebar?: {
@@ -671,6 +673,8 @@ export function createApi(deps: {
         const a = need(deps.addons)
         const action = field(body, 'action')
         if (action === 'rollback') return { addon: a.rollback(id!) }
+        if (action === 'rollback-build') return { app: await a.rollbackBuild(id!) }
+        if (action === 'rate') return await a.rate(id!, Number(field(body, 'stars')))
         if (action === 'enable' || action === 'disable')
           return { addon: a.setEnabled(id!, action === 'enable') }
         throw new ApiError(400, 'BAD_REQUEST', 'Unknown add-on action.')

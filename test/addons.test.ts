@@ -593,3 +593,89 @@ describe('the core is off-limits (decisions §21, §66.9)', () => {
     expect((await runInSandbox({ code, tool: 'write', hosts: [] })).output).toBe('no require')
   })
 })
+
+describe('updates, takedowns and install reports (decisions §66.4, §66.11, §66.12)', () => {
+  it('shows the commits since the installed one, and reports the install', async () => {
+    const db = openDb(':memory:')
+    const store = createAddonStore({ root: null, db })
+    const reported: string[] = []
+    const service = createAddonService({
+      store,
+      onInstalled: (repo, commit) => reported.push(`${repo}@${commit}`)
+    })
+    const first = fakeNet({ 'acme/clerk': { sha: SHA, files: agentRepo() } })
+    service.install((await service.inspect('acme/clerk', first.fetch)).key, 'you')
+    const second = fakeNet({ 'acme/clerk': { sha: SHA2, files: agentRepo() } })
+    const compareCalls: string[] = []
+    const withCompare = async (
+      input: string | URL | Request,
+      init?: RequestInit
+    ): Promise<Response> => {
+      const url = String(input instanceof Request ? input.url : input)
+      if (url.includes('/compare/')) {
+        compareCalls.push(new URL(url).pathname)
+        return Response.json({
+          total_commits: 2,
+          commits: [
+            { sha: 'aaaaaaa1', commit: { message: 'Fix totals\n\nlonger text' } },
+            { sha: 'bbbbbbb2', commit: { message: 'Add overdue list' } }
+          ]
+        })
+      }
+      return second.fetch(input, init)
+    }
+    const i = await service.inspect('acme/clerk', withCompare)
+    expect(compareCalls).toEqual([`/repos/acme/clerk/compare/${SHA}...${SHA2}`])
+    expect(i.update).toMatchObject({ name: 'invoice-clerk', fromCommit: SHA, total: 2 })
+    expect(i.update!.commits).toEqual([
+      { sha: 'aaaaaaa', message: 'Fix totals' },
+      { sha: 'bbbbbbb', message: 'Add overdue list' }
+    ])
+    expect(service.card(i, null)).toMatch(
+      /^Update invoice-clerk from 1\.0\.0 \(commit 111111111111\) to 1\.0\.0\.\n2 commits since: aaaaaaa Fix totals/
+    )
+    service.install(i.key, 'you')
+    expect(reported).toEqual([`acme/clerk@${SHA}`, `acme/clerk@${SHA2}`])
+    expect(store.get('invoice-clerk')!.current).toBe(SHA2.slice(0, 12))
+  })
+
+  it('says so when GitHub can’t list the commits in between', async () => {
+    const { service } = setup()
+    service.install(
+      (
+        await service.inspect(
+          'acme/clerk',
+          fakeNet({ 'acme/clerk': { sha: SHA, files: agentRepo() } }).fetch
+        )
+      ).key,
+      'you'
+    )
+    const i = await service.inspect(
+      'acme/clerk',
+      fakeNet({ 'acme/clerk': { sha: SHA2, files: agentRepo() } }).fetch
+    )
+    expect(i.update).toMatchObject({ total: null, commits: [] })
+    expect(service.card(i, null)).toContain('GitHub couldn’t list the commits in between.')
+  })
+
+  it('a taken-down add-on is off for good: no turning on, no rollback, no tools or agents', async () => {
+    const { store, service } = setup()
+    for (const sha of [SHA, SHA2])
+      service.install(
+        (
+          await service.inspect(
+            'acme/clerk',
+            fakeNet({ 'acme/clerk': { sha, files: agentRepo() } }).fetch
+          )
+        ).key,
+        'you'
+      )
+    expect(store.agents()).toHaveLength(1)
+    store.takeDown('invoice-clerk', 'Titan117 took this add-on down after a report.')
+    expect(store.agents()).toEqual([])
+    expect(() => store.setEnabled('invoice-clerk', true)).toThrow(/took Invoice clerk down/)
+    expect(() => store.rollback('invoice-clerk')).toThrow(/took Invoice clerk down/)
+    store.remove('invoice-clerk')
+    expect(store.list()).toEqual([])
+  })
+})

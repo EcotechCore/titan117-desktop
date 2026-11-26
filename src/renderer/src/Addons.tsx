@@ -24,6 +24,7 @@ interface Addon {
   current: string
   enabled: boolean
   offReason: string | null
+  takenDown?: boolean
 }
 
 interface SafeMode {
@@ -63,6 +64,20 @@ interface Inspection {
   }
   takenDown: boolean | null
   verified: boolean
+  update: {
+    name: string
+    fromVersion: string
+    fromCommit: string
+    total: number | null
+    commits: { sha: string; message: string }[]
+  } | null
+}
+
+interface SidebarBuilds {
+  id: string
+  title: string
+  build: string
+  builds: { build: string; at: number; current: boolean }[]
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -114,6 +129,7 @@ export function AddonsView({
   onProblem(error: unknown): void
 }): React.JSX.Element {
   const [items, setItems] = useState<Addon[]>([])
+  const [sidebarApps, setSidebarApps] = useState<SidebarBuilds[]>([])
   const [safe, setSafe] = useState<SafeMode | null>(null)
   const [address, setAddress] = useState('')
   const [folder, setFolder] = useState('')
@@ -127,16 +143,17 @@ export function AddonsView({
 
   const load = useCallback(() => {
     client
-      ?.get<{ addons: Addon[]; safeMode: SafeMode }>('/v1/addons')
+      ?.get<{ addons: Addon[]; safeMode: SafeMode; sidebarApps?: SidebarBuilds[] }>('/v1/addons')
       .then((r) => {
         setItems(r.addons)
+        setSidebarApps(r.sidebarApps ?? [])
         setSafe(r.safeMode)
       })
       .catch(onProblem)
   }, [client, onProblem])
   useEffect(load, [load, changed])
 
-  async function inspect(): Promise<void> {
+  async function inspect(what = address): Promise<void> {
     if (!client) return
     setBusy(true)
     setNote(null)
@@ -145,7 +162,7 @@ export function AddonsView({
     try {
       const r = await client.send<{ inspection: Inspection }>('POST', '/v1/addons', {
         action: 'inspect',
-        address
+        address: what
       })
       setInspection(r.inspection)
     } catch (error) {
@@ -179,8 +196,20 @@ export function AddonsView({
     }
   }
 
-  const act = (path: string, body: unknown, method: 'POST' | 'DELETE' = 'POST'): void => {
-    client?.send(method, path, body).then(load).catch(onProblem)
+  const act = (
+    path: string,
+    body: unknown,
+    method: 'POST' | 'DELETE' = 'POST',
+    done?: string
+  ): void => {
+    setProblem(null)
+    client
+      ?.send(method, path, body)
+      .then(() => {
+        if (done) setNote(done)
+        load()
+      })
+      .catch(show)
   }
 
   const c = inspection?.checks
@@ -275,6 +304,28 @@ export function AddonsView({
             github.com/{inspection.repo} @ {inspection.commit.slice(0, 12)}
           </p>
           <p>{inspection.manifest.description}</p>
+          {inspection.update && (
+            <div className="note">
+              <p>
+                <strong>
+                  Update from {inspection.update.fromVersion} (
+                  {inspection.update.fromCommit.slice(0, 12)}) to {inspection.manifest.version}.
+                </strong>{' '}
+                {inspection.update.total === null
+                  ? 'GitHub couldn’t list the commits in between.'
+                  : `${inspection.update.total} commit${inspection.update.total === 1 ? '' : 's'} since:`}
+              </p>
+              {inspection.update.commits.length > 0 && (
+                <ul className="tool-list">
+                  {inspection.update.commits.slice(-10).map((c) => (
+                    <li key={c.sha}>
+                      <span className="mono">{c.sha}</span> {c.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <h3 className="addon-h">What it may do</h3>
           <ul className="tool-list">
             {inspection.permissions.map((p) => (
@@ -348,7 +399,7 @@ export function AddonsView({
               disabled={busy || blocked || (!!inspection.manifest.app && !folder.trim())}
               onClick={() => void install()}
             >
-              Install
+              {inspection.update ? 'Update' : 'Install'}
             </button>
             <button className="btn" onClick={() => setInspection(null)}>
               Cancel
@@ -382,7 +433,36 @@ export function AddonsView({
                 <p className="muted">{a.description}</p>
                 {a.offReason && <p className="note note-error">{a.offReason}</p>}
               </div>
-              {at > 0 && (
+              {a.repo && !a.takenDown && (
+                <button className="btn" disabled={busy} onClick={() => void inspect(a.repo!)}>
+                  Check for update
+                </button>
+              )}
+              {a.repo && !a.takenDown && (
+                <select
+                  className="btn"
+                  aria-label={`Rate ${a.title}`}
+                  defaultValue=""
+                  onChange={(e) => {
+                    const stars = Number(e.target.value)
+                    if (stars)
+                      act(
+                        `/v1/addons/${a.name}`,
+                        { action: 'rate', stars },
+                        'POST',
+                        `Thanks: ${stars} stars for ${a.title}.`
+                      )
+                  }}
+                >
+                  <option value="">Rate</option>
+                  {[5, 4, 3, 2, 1].map((n) => (
+                    <option key={n} value={n}>
+                      {'★'.repeat(n)}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {at > 0 && !a.takenDown && (
                 <button
                   className="btn"
                   onClick={() => act(`/v1/addons/${a.name}`, { action: 'rollback' })}
@@ -392,6 +472,7 @@ export function AddonsView({
               )}
               <button
                 className="btn"
+                disabled={!!a.takenDown}
                 onClick={() =>
                   act(`/v1/addons/${a.name}`, { action: a.enabled ? 'disable' : 'enable' })
                 }
@@ -411,6 +492,53 @@ export function AddonsView({
           </div>
         )
       })}
+
+      {sidebarApps.length > 0 && (
+        <>
+          <h2 className="addon-h">Sidebar apps</h2>
+          <p className="muted">
+            Apps Titan built for the sidebar. Each update is checked and kept; go back to the build
+            before if one breaks.
+          </p>
+          {sidebarApps.map((app) => {
+            const at = app.builds.findIndex((b) => b.current)
+            return (
+              <div key={app.id} className="row row-stack">
+                <div className="row-line">
+                  <span className="row-icon">
+                    <Icon name="app" />
+                  </span>
+                  <div className="row-main">
+                    <p className="row-title">
+                      {app.title}
+                      <span className="tag">Sidebar app</span>
+                      {safe?.on && <span className="tag tag-off">Off (safe mode)</span>}
+                    </p>
+                    <p className="muted mono">
+                      build {app.build} · {app.builds.length} kept
+                    </p>
+                  </div>
+                  {at >= 0 && at < app.builds.length - 1 && (
+                    <button
+                      className="btn"
+                      onClick={() =>
+                        act(
+                          `/v1/addons/${app.id}`,
+                          { action: 'rollback-build' },
+                          'POST',
+                          `${app.title} is back at build ${app.builds[at + 1].build}.`
+                        )
+                      }
+                    >
+                      Roll back
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </>
+      )}
     </div>
   )
 }

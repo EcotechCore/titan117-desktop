@@ -146,7 +146,7 @@ A separate Next.js app, in its own repo (`titan117-pop`), at its own address (fo
 | Devices | `devices` (paired engines, last seen, version) |
 | Remote control | `commands`, `commandEvents` (results and progress streamed back) |
 | Sharing | `sharedArtifacts`, `artifactComments`, file storage |
-| Marketplace | `marketItems`, `marketReports`; `marketInstalls` and `marketRatings` planned (decisions §66) |
+| Marketplace | `marketItems`, `marketReports`, `marketInstalls`, `marketRatings` (decisions §66) |
 
 Every function checks who is calling and what they may do; the server is the security boundary, whatever the client.
 
