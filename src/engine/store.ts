@@ -38,6 +38,7 @@ function toTask(r: Row): Task {
     mode: r.mode === 'research' ? 'research' : 'normal',
     parentId: (r.parent_id as string | null) ?? null,
     syncedFrom: (r.synced_from as string | null) ?? null,
+    folder: (r.folder as string | null) ?? null,
     createdAt: r.created_at as number,
     updatedAt: r.updated_at as number
   }
@@ -93,7 +94,7 @@ export interface Store {
   listAgentMessages(rootTaskId: string): AgentMessage[]
   updateTask(
     id: string,
-    patch: Partial<Pick<Task, 'status' | 'note' | 'model' | 'steps' | 'costUsd'>>
+    patch: Partial<Pick<Task, 'status' | 'note' | 'model' | 'steps' | 'costUsd' | 'folder'>>
   ): Task
   addMessage(taskId: string, message: ChatMessage): StoredMessage
   listMessages(taskId: string): StoredMessage[]
@@ -243,7 +244,7 @@ export function createStore(db: Db, emit: Emit): Store {
       if (!current) throw new Error('No such task.')
       const next = { ...current, ...patch }
       db.prepare(
-        `update tasks set status = ?, note = ?, model = ?, steps = ?, cost_usd = ?, updated_at = ?
+        `update tasks set status = ?, note = ?, model = ?, steps = ?, cost_usd = ?, folder = ?, updated_at = ?
          where id = ?`
       ).run(
         next.status,
@@ -251,6 +252,7 @@ export function createStore(db: Db, emit: Emit): Store {
         next.model,
         next.steps,
         next.costUsd,
+        next.folder ?? null,
         Date.now(),
         id
       )

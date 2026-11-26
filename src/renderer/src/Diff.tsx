@@ -1,4 +1,4 @@
-// A unified diff, line by line: added lines in green, removed in tomato,
+// A unified diff, line by line: added lines in green, removed in red,
 // file headers bold (feature 13.3, design.md: no black blocks).
 export function Diff({ text, max = 4000 }: { text: string; max?: number }): React.JSX.Element {
   const lines = text.split(/\r?\n/)

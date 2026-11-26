@@ -32,6 +32,8 @@ export interface Task {
   parentId: string | null
   /** The laptop this conversation was carried from by sync (decisions §65.3), if any. */
   syncedFrom?: string | null
+  /** The allowed folder the task first worked in (decisions §67), for the sidebar; null until then. */
+  folder?: string | null
   createdAt: number
   updatedAt: number
 }

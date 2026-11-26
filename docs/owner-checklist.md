@@ -2,11 +2,19 @@
 
 Everything waiting on the owner, in the order to do it. Gathered from every repo's progress log; last rewritten 15 Nov 2026 after phase 4's leftovers and the first part of phase 5. Shared doc: edited in `titan117-web`, copied to the other repos. When an item is done, tick it here and add a line to `progress.md`; when the build adds a new one, it goes here in the same commit.
 
-**Where the code is:** everything up to the rest of phase 16 (MCP servers and workflows, GitLab, add-ons from a folder, open-source projects and publishing) is merged into `main` in all three repos (26 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
+**Where the code is:** everything up to phase 16's second part (installs and ratings, the update card, takedowns and sidebar apps' rollback) is merged into `main` in all three repos (26 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
 
 ## Step 1 · Push and review
 
 - [x] ~~Push the branches and open the pull requests~~ Done and merged, 16 Nov 2026.
+
+## Desktop look · layout v2 with Azure (27 Nov 2026)
+
+- [ ] **Decisions §67** (to be confirmed): the new desktop layout as our own version of Antigravity's (no logo, icons or exact details of theirs), the Azure gradient replacing tomato for actions in the app (Send included), Titan staying tomato, the website and logo keeping tomato, tasks nested under the folder they first worked in, and Customize gathering the settings-like screens.
+- [ ] **White text on the Azure gradient reads 2.4–3.5:1**, below the 4.5:1 the app keeps for text. Keep it (your choice), or switch to a deeper Azure that passes (`#1f6fe8 → #1a6ae0 → #0b78b5`, 4.7–5.0:1; one line in the CSS).
+- [ ] **The faint grey:** the agreed `#80868b` reads 3.7:1 on white, so the app uses `#6c7277` (4.9:1). Say if that's fine.
+- [ ] **Try it on a real task:** an approval card and a running step in the new look weren't seen (they need a real model run). Run a task that writes a file and check the card, the folded steps, the file tab and the drawer.
+- [ ] **Review and merge** the three pull requests (web docs, desktop, pop docs copy).
 
 ## Next · After phase 8 (put aside by the owner on 21 Nov 2026)
 

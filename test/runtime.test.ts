@@ -2,7 +2,7 @@
 // faked: chat works, a tool call waits for approval, a denial stops it, and
 // budgets stop a task that runs away (guardrails §4, features 4.5 and 4.8).
 import { afterEach, describe, expect, it } from 'vitest'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 import type { Engine } from '../src/engine/lib/engine'
@@ -87,6 +87,8 @@ describe('a tool call', () => {
     const done = await finished(taskId)
     expect(readFileSync(join(folder, 'out.txt'), 'utf8')).toBe('made by Titan')
     expect(done.task.status).toBe('done')
+    // The sidebar nests it under the folder it worked in (decisions §67).
+    expect(realpathSync.native(done.task.folder!)).toBe(realpathSync.native(folder))
     expect(done.activity.find((a) => a.tool === 'write_file' && a.kind === 'tool')).toMatchObject({
       approvedBy: 'you'
     })
