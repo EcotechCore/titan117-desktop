@@ -2,7 +2,7 @@
 
 Everything waiting on the owner, in the order to do it. Gathered from every repo's progress log; last rewritten 15 Nov 2026 after phase 4's leftovers and the first part of phase 5. Shared doc: edited in `titan117-web`, copied to the other repos. When an item is done, tick it here and add a line to `progress.md`; when the build adds a new one, it goes here in the same commit.
 
-**Where the code is:** everything up to phase 14's newsletters, analytics and video studio is merged into `main` in all three repos (25 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
+**Where the code is:** everything up to the first part of phase 16 (the marketplace and add-ons) is merged into `main` in all three repos (26 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
 
 ## Step 1 · Push and review
 
@@ -191,7 +191,7 @@ All of it runs on this laptop: the web app from the "web" preview (port 3100) ag
 - [ ] **Phase 16, the marketplace and add-ons (decisions §66)** (added 26 Nov 2026):
   - [ ] **Confirm or change §66**, above all: tool add-ons in **QuickJS** (WebAssembly) rather than a Node program, since Node 24's permission model can't block the network (item 1); the index from the GitHub topic **`titan117-addon`** read by Convex without a token, so at most 20 new or changed repositories an hour (item 3); OSV's public API for the dependency scan, which sends package names and versions (item 5); installing asks on the laptop every time, never remotely (item 5); the text check on commands and scripts that name Titan117's own folders, which a determined script can get around on Windows (item 15).
   - [ ] **Make an example add-on repository** (needs your OK to create it under EcotechCore or your account): a public repository with the topic `titan117-addon`, a `titan.json` and an `agent.md`, so the marketplace lists something real and phase 16's check can install a community agent and an app template from GitHub rather than from the harness. Claude can prepare the files; creating the repository is yours.
-  - [ ] **Try it in the app** (from the `phase-16-marketplace` branch, `pnpm dev`): Add-ons → paste a repository → Check it → read the card → Install. Then ask Titan "I need a tool that …" and approve the card. Try `--safe-mode` once.
+  - [ ] **Try it in the app** (from `main`, `pnpm dev`): Add-ons → paste a repository → Check it → read the card → Install. Then ask Titan "I need a tool that …" and approve the card. Try `--safe-mode` once.
   - [ ] **Later, if the marketplace grows: a GitHub token for the index** (a fine-grained token with public read only, kept in Convex's environment; the index doesn't read one yet). Without it the index reads at most 20 new or changed repositories an hour, within GitHub's limits for anonymous calls.
   - [ ] **The portal's marketplace screen** (verify at a commit, take down, reports) waits for the portal's staff screens; the Convex functions are ready. Say when the portal's screens should be built.
 

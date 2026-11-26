@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 26 Nov 2026 · Phase 16's first part merged
+
+The pull requests are merged in all three repos (web #62 first, then desktop #57 and pop #49 after their docs check passed). Run the desktop app from `main`. Phase 16 stays in progress: fork and publish, installs and ratings, later takedowns, MCP servers and workflows from the marketplace, other hosts, the update card and the portal's screen; decisions §66 waits for the owner.
+
 ### 26 Nov 2026 · Phase 16 started: add-ons from GitHub, tools on request, safe mode
 
 Built (decisions §66, to be confirmed): `src/engine/lib/addons/` (the GitHub source pinned to a commit and unpacked in memory with limits; the licence, OSV and secret checks; the store with five versions, rollback and switching off a tool that keeps failing after a change; safe mode with the start mark, `--safe-mode` and sidebar apps not served; the QuickJS sandbox), five tools for Titan only (`addons_inspect`, `addons_install`, `addons_create_tool`, `addons_list`, `addons_rollback`) with denial tests, the tool group "Add-on tools", add-on agents and skills in their stores, commands and scripts that name the app's folders refused before asking, the Add-ons screen and the safe-mode banner. One new dependency: quickjs-emscripten (three MIT packages, about 650 KB).
