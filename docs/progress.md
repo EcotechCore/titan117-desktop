@@ -18,7 +18,7 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 | 7 | Coding engine and code builder | Done (except what waits outside the code) | 20 Nov 2026 | 21 Nov 2026 |
 | 8 | App builder: web | In progress | 21 Nov 2026 | |
 | 9 | App builder: mobile and desktop | In progress | 21 Nov 2026 | |
-| 10 | Sidebar apps | Done (except sync's transport, which waits for phase 15) | 22 Nov 2026 | 22 Nov 2026 |
+| 10 | Sidebar apps | Done (sync's transport built in phase 15, 26 Nov 2026) | 22 Nov 2026 | 22 Nov 2026 |
 | 11 | Agent builder | Done | 22 Nov 2026 | 22 Nov 2026 |
 | 12 | QA and SEO agents | In progress | 22 Nov 2026 | |
 | 13 | Automation | In progress | 24 Nov 2026 | |
@@ -31,6 +31,12 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 ## Log
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
+
+### 26 Nov 2026 · Phase 15: sync between laptops, conversations, the second factor and Slack files
+
+Built (decisions §65, to be confirmed): **Sync between my laptops** on the Remote control screen (`src/main/lib/laptop-sync.ts`, `sync-package.ts`): its own switch and keys in the keychain, a new laptop let in only after the code is checked on both, a new key when one leaves, sidebar apps' records and finished conversations sealed both ways; the engine's `/v1/sync/...` routes, `store.syncedTasksSince` and `importSyncedTask` (a conversation running here is never replaced; "from <laptop>" in the task list). **Laptop-only approvals after a second factor:** two switches (Sending, publishing and deleting; Commands that always ask), the permission layer's categories, `verifySecondFactorProof` in `lease.ts` checking account, device, approval and expiry. **Slack:** files in the direct message saved in the inbox folder, the bot token sent only to `files.slack.com` with no redirects; the manifest asks for `files:read`.
+
+- **Checks:** 630 tests pass (new: the proof, the categories, two and three laptops through a fake relay, conversations, Slack files), typecheck and lint clean. **Not seen yet:** two real laptops and a real second factor (Clerk Pro); on the owner checklist.
 
 ### 25 Nov 2026 · Phase 15: Slack, the share sheet, schedule results and pushes
 

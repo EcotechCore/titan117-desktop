@@ -788,6 +788,8 @@ function start(): void {
     webUrl: () => accountConfig().webUrl,
     deviceToken: () => account?.deviceToken() ?? null,
     deviceId: () => account?.deviceIdentifier() ?? null,
+    accountId: () => account?.accountIdentifier() ?? null,
+    serverKeys: account?.serverKeys(),
     openExternal: (url) => shell.openExternal(url),
     notify: quietNotice,
     fromOurPage

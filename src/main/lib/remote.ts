@@ -79,6 +79,11 @@ export interface RemoteDeps {
   openExternal(url: string): Promise<void>
   commands: RemoteCommands
   notify(title: string, body: string): void
+  /**
+   * Checks Convex's signed proof of a fresh second factor for one answer
+   * (decisions §65.7): ours, this account, this device, this approval, not expired.
+   */
+  checkProof(proof: string, deviceKey: string, approvalId: string): boolean
   /** "Revoke all" was used somewhere: unlink every chat channel (decisions §64.8). */
   onRevokedAll(): void
   onChange(view: RemoteView): void
@@ -421,7 +426,21 @@ export class Remote {
     this.save()
 
     const c = envelope.command
-    const result = await this.deps.commands.run(c, device.name)
+    // A laptop-only answer with a second factor: the proof must name this device and this approval.
+    if (
+      c.type === 'approval.answer' &&
+      c.proof &&
+      !this.deps.checkProof(c.proof, device.publicKey, c.approvalId)
+    )
+      return this.queue(device.publicKey, {
+        type: 'done',
+        commandId: envelope.id,
+        ok: false,
+        error: 'That second-factor check didn’t verify. Try again.'
+      })
+    const result = await this.deps.commands.run(c, device.name, {
+      secondFactor: c.type === 'approval.answer' && !!c.proof
+    })
     if (c.type === 'task.get' || (c.type === 'task.start' && result.ok && result.taskId)) {
       const id = c.type === 'task.get' ? c.taskId : result.ok ? result.taskId! : ''
       this.watched.set(id, { until: this.now() + WAKE_WINDOW_MS, last: '' })

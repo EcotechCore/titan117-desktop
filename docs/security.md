@@ -35,6 +35,7 @@ Requests, step summaries and results travel between the user's devices and their
 - **What our servers still see:** the minimum needed to route and limit, never content: which device, the command type, times, sizes and status.
 - **Removing a device:** its key is dropped from the account; the laptop rotates its own key and re-shares it with the remaining devices, so the removed device can't read anything new. "Revoke all devices" does this for all of them.
 - **A browser that loses its storage** (cleared data, private window) simply pairs again.
+- **Sync between the user's laptops** (decisions §65) uses the same keys and sealing: the account's sync key is sealed to each laptop by a laptop already in, after the user checks a code on both; Convex keeps only sealed packages, and a laptop leaving changes the key.
 - **Not end-to-end:** chat channels. Telegram and WhatsApp carry messages through their own servers, so the app says so when a channel is linked ("Messages here are visible to Telegram").
 
 ### A3. Agents and browsing: no quiet data leaks
@@ -113,7 +114,7 @@ A stolen signing certificate or a compromised build could push malware to **ever
 Our own admin app, in its own repo (`titan117-pop`), separate from the user web app, at its own address (for example `admin.titan117.com`), for the product owner and employees: error reports (§22), accounts and plans, credits (corrections only as new ledger rows with a reason), kill switches for add-ons and coding-tool adapters (§20), releases.
 
 - **Only named people**, admin role set from the Convex CLI, never from a screen.
-- **Two-factor required** (a separate staff Clerk application with MFA required, and the portal refuses sessions without a second factor; decisions §36).
+- **Two-factor required** (a separate staff Clerk application with MFA required, and the portal refuses sessions without a second factor; decisions §36). Convex can't see the second factor in a session, so staff confirm one through an action that verifies Clerk's session token, and Convex admits them for 8 hours after it (decisions §65.8).
 - **Every view and change is logged** (`adminAudit`: who, what, when), and the log can't be edited.
 - Read-only by default; anything that changes a user's account asks for a reason.
 

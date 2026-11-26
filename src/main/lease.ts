@@ -7,6 +7,12 @@
  */
 import { createPublicKey, verify } from 'node:crypto'
 
+import {
+  SECOND_FACTOR_PROOF_PREFIX,
+  SECOND_FACTOR_PROOF_TTL_MS,
+  type SecondFactorProof
+} from '../shared/remote-protocol'
+
 /**
  * Public half of the lease signing key on the Convex development deployment.
  * Replaced by the production key (and kept alongside it during a change of
@@ -107,5 +113,52 @@ export function accountStatus(input: {
     plan: lease.plan,
     expiresAt: lease.exp,
     warn: lease.exp - effectiveNow <= WARN_DAYS * DAY
+  }
+}
+
+/**
+ * Convex's proof of a fresh second factor for one remote answer to one
+ * laptop-only approval (decisions §65.7). Signed with the lease key over the
+ * prefix `SECOND_FACTOR_PROOF_PREFIX`, so a lease can never pass for a proof.
+ * Returns the proof's contents when it is ours, for this account, from this
+ * device, for this approval and not expired; else null. Never throws.
+ */
+export function verifySecondFactorProof(
+  proof: string,
+  expect: { account: string; deviceKey: string; approvalId: string; now: number },
+  keys: string[] = LEASE_PUBLIC_KEYS
+): SecondFactorProof | null {
+  const [body, sig, extra] = proof.split('.')
+  if (!body || !sig || extra !== undefined) return null
+  const signed = keys.some((spki) => {
+    try {
+      const key = createPublicKey({ key: Buffer.from(spki, 'base64'), format: 'der', type: 'spki' })
+      return verify(
+        'sha256',
+        Buffer.from(SECOND_FACTOR_PROOF_PREFIX + body),
+        { key, dsaEncoding: 'ieee-p1363' },
+        fromBase64url(sig)
+      )
+    } catch {
+      return false
+    }
+  })
+  if (!signed) return null
+  try {
+    const p = JSON.parse(fromBase64url(body).toString('utf8')) as SecondFactorProof
+    const ok =
+      p.v === 1 &&
+      p.kind === 'second-factor' &&
+      p.sub === expect.account &&
+      p.key === expect.deviceKey &&
+      p.approval === expect.approvalId &&
+      typeof p.exp === 'number' &&
+      typeof p.iat === 'number' &&
+      p.exp > expect.now &&
+      p.iat <= expect.now + 60_000 &&
+      p.exp - p.iat <= SECOND_FACTOR_PROOF_TTL_MS
+    return ok ? p : null
+  } catch {
+    return null
   }
 }

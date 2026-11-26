@@ -71,6 +71,16 @@ export class Account {
     return this.token
   }
 
+  /** The account this laptop is signed in to (the lease's `sub`), for second-factor proofs (decisions §65.7). */
+  accountIdentifier(): string | null {
+    return this.lease?.sub ?? null
+  }
+
+  /** The keys our server signs with, to check its proofs. */
+  serverKeys(): string[] | undefined {
+    return this.deps.leaseKeys
+  }
+
   /** This laptop's device id in our cloud, for remote control's switch-on page. Not a secret. */
   deviceIdentifier(): string | null {
     return this.deviceId

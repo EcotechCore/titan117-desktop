@@ -29,7 +29,7 @@ import { MemoryError } from './memory'
 import { ApprovalError, type PermissionLayer } from './permissions'
 import type { Router } from './router'
 import { RuntimeError, systemPrompt, type Runtime } from './runtime'
-import type { Store } from './store'
+import type { Store, SyncedTask } from './store'
 import type { ConnectorHub } from './lib/mcp'
 import type { SkillStore } from './lib/skills'
 import type { SpeechEngine } from './lib/speech'
@@ -198,6 +198,20 @@ export function createApi(deps: {
     update(folder: string): Promise<{ started: boolean }>
     remove(id: string, deleteData: boolean): Promise<void>
     call(id: string, method: string, args: unknown): unknown
+  }
+  /** Laptop-only categories answered remotely after a second factor (decisions §65.7). */
+  remoteSecondFactor?: {
+    get(): string[]
+    set(next: string[]): void
+  }
+  /**
+   * Sync between laptops (decisions §58.12, §65), asked by the shell's sync
+   * bridge, which seals and opens packages: sidebar apps' records as they are.
+   */
+  syncData?: {
+    apps(): string[]
+    entriesSince(app: string, since: number, limit: number): { upTo: number; entries: unknown[] }
+    apply(app: string, entries: unknown[]): { applied: number; skipped: number; refused: number }
   }
   /** The Marketing screen (phase 14; decisions §62): the brand kit and the content calendar. */
   marketing?: {
@@ -1246,9 +1260,22 @@ export function createApi(deps: {
             taskId: a.taskId,
             tool: a.tool,
             summary: a.summary,
-            laptopOnly: permissions.laptopOnly(a.id)
+            laptopOnly: permissions.laptopOnly(a.id),
+            secondFactor: permissions.secondFactorAllowed(a.id)
           }))
         }
+
+      // The laptop's own switches for those categories; only the window changes them.
+      case 'GET remote-settings':
+        return { secondFactor: need(deps.remoteSecondFactor).get() }
+
+      case 'PUT remote-settings': {
+        const next = field(body, 'secondFactor')
+        if (!Array.isArray(next) || next.some((c) => c !== 'external' && c !== 'commands'))
+          throw new ApiError(400, 'BAD_REQUEST', 'Categories are external and commands.')
+        need(deps.remoteSecondFactor).set([...new Set(next as string[])])
+        return { secondFactor: need(deps.remoteSecondFactor).get() }
+      }
 
       // An answer from a paired device or a chat: never "always", and never to a
       // laptop-only approval (the permission layer refuses those, guardrails §9).
@@ -1256,8 +1283,52 @@ export function createApi(deps: {
         const answer = field(body, 'answer')
         if (answer !== 'approve' && answer !== 'deny')
           throw new ApiError(400, 'BAD_REQUEST', 'Answer approve or deny.')
-        permissions.answer(id, answer, 'remote')
+        // The shell checked Convex's signed proof of a fresh second factor (decisions §65.7);
+        // the permission layer still accepts it only for a category switched on here.
+        permissions.answer(
+          id,
+          answer,
+          field(body, 'secondFactor') === true ? 'remote-second-factor' : 'remote'
+        )
         return { ok: true }
+      }
+
+      // Sync between laptops (decisions §65): plain records for the shell, which seals them.
+      case 'GET sync/apps':
+        return { apps: need(deps.syncData).apps() }
+
+      case 'GET sync/apps/:id':
+        return need(deps.syncData).entriesSince(
+          id,
+          Math.max(0, Number(query.since) || 0),
+          Math.min(1000, Math.max(1, Number(query.limit) || 500))
+        )
+
+      case 'POST sync/apps/:id': {
+        const entries = field(body, 'entries')
+        if (!Array.isArray(entries)) throw new ApiError(400, 'BAD_REQUEST', 'Send entries.')
+        if (!need(deps.syncData).apps().includes(id))
+          throw new ApiError(404, 'NOT_FOUND', 'That app isn’t in this laptop’s sidebar.')
+        return need(deps.syncData).apply(id, entries)
+      }
+
+      case 'GET sync/tasks':
+        return {
+          tasks: store.syncedTasksSince(
+            Math.max(0, Number(query.since) || 0),
+            Math.min(50, Math.max(1, Number(query.limit) || 10))
+          )
+        }
+
+      case 'POST sync/tasks': {
+        const tasks = field(body, 'tasks')
+        const from = field(body, 'from')
+        if (!Array.isArray(tasks) || typeof from !== 'string')
+          throw new ApiError(400, 'BAD_REQUEST', 'Send tasks and where they come from.')
+        let applied = 0
+        for (const t of tasks.slice(0, 200))
+          if (store.importSyncedTask(t as SyncedTask, from)) applied++
+        return { applied }
       }
 
       case 'GET models':

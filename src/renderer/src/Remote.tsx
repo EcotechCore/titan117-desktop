@@ -5,7 +5,9 @@
 import { useEffect, useState } from 'react'
 import { renderSVG } from 'uqr'
 
-import type { RemoteView, SlackView, TelegramView } from '../../preload/index.d'
+import type { RemoteView, SlackView, SyncView, TelegramView } from '../../preload/index.d'
+
+type Category = 'external' | 'commands'
 
 function PairCode({ link }: { link: string }): React.JSX.Element | null {
   if (!/^https?:\/\/[^\s"<>]+$/.test(link)) return null
@@ -36,6 +38,8 @@ export function RemoteView({
   const [connecting, setConnecting] = useState(false)
   const [tokenProblem, setTokenProblem] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [sync, setSync] = useState<SyncView | null>(null)
+  const [secondFactor, setSecondFactor] = useState<Category[]>([])
 
   useEffect(() => {
     void window.titan117.remote.status().then(setRemote).catch(onProblem)
@@ -44,6 +48,9 @@ export function RemoteView({
     window.titan117.telegram.onChange(setTelegram)
     void window.titan117.slack.status().then(setSlack).catch(onProblem)
     window.titan117.slack.onChange(setSlack)
+    void window.titan117.sync.status().then(setSync).catch(onProblem)
+    window.titan117.sync.onChange(setSync)
+    void window.titan117.remote.secondFactor().then(setSecondFactor).catch(onProblem)
     // Pairing links and link codes run out: redraw once a second.
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
@@ -57,7 +64,13 @@ export function RemoteView({
     }
   }
 
-  if (!remote || !telegram || !slack) return <div className="list-view" />
+  if (!remote || !telegram || !slack || !sync) return <div className="list-view" />
+  const s = window.titan117.sync
+  const toggleCategory = (c: Category, on: boolean): void =>
+    void act(
+      () => r.secondFactor(on ? [...secondFactor, c] : secondFactor.filter((x) => x !== c)),
+      setSecondFactor
+    )
   const r = window.titan117.remote
   const t = window.titan117.telegram
   const left = (until: number): string => {
@@ -184,6 +197,29 @@ export function RemoteView({
               onChange={(e) => void act(() => r.setScheduleResults(e.target.checked), setRemote)}
             />{' '}
             Send the result of each scheduled run to my phone and chat
+          </label>
+
+          <h2 className="section">Approvals that need the laptop</h2>
+          <p className="muted">
+            You can let your phone or browser answer these too, after your second factor each time.
+            Chats never can. Changing permissions, schedules, agents and standing instructions
+            always stay on the laptop.
+          </p>
+          <label className="row choice">
+            <input
+              type="checkbox"
+              checked={secondFactor.includes('external')}
+              onChange={(e) => toggleCategory('external', e.target.checked)}
+            />{' '}
+            Sending, publishing and deleting (an email, a push, deleting a file, opening a new site)
+          </label>
+          <label className="row choice">
+            <input
+              type="checkbox"
+              checked={secondFactor.includes('commands')}
+              onChange={(e) => toggleCategory('commands', e.target.checked)}
+            />{' '}
+            Commands that always ask (deleting files, installing)
           </label>
 
           <h2 className="section">Files sent from your phone or chat</h2>
@@ -357,7 +393,11 @@ export function RemoteView({
           <div className="row-main">
             <p className="row-title">{slack.team ?? 'Your workspace'}</p>
             {slack.linked ? (
-              <p className="muted">Linked to your direct messages.</p>
+              <p className="muted">
+                Linked to your direct messages. Files you send there are saved in the inbox folder
+                (an app made before 26 Nov 2026 needs the files:read scope: add it under OAuth &amp;
+                Permissions and reinstall).
+              </p>
             ) : slack.code ? (
               <p>
                 Send <strong className="pair-code">{slack.code.code}</strong> to the Titan117 app in
@@ -390,6 +430,109 @@ export function RemoteView({
           </button>
         </div>
       )}
+
+      <h2 className="section">Sync between my laptops</h2>
+      <p className="muted">
+        Your sidebar apps’ data and your finished conversations, end-to-end encrypted: Titan117
+        can’t read them. Write in a conversation from another laptop and it carries on here. Files,
+        settings, agents and memories stay on each laptop.
+      </p>
+      <div className="row">
+        <div className="row-main">
+          <p className="row-title">
+            {!sync.on
+              ? 'Off'
+              : sync.status === 'in'
+                ? 'On'
+                : sync.status === 'waiting'
+                  ? 'Waiting: allow this laptop on one of your laptops that already syncs'
+                  : 'Connecting…'}
+          </p>
+          {sync.lastSyncAt && sync.status === 'in' && (
+            <p className="muted">Last synced {new Date(sync.lastSyncAt).toLocaleTimeString()}</p>
+          )}
+          {sync.tooLong > 0 && (
+            <p className="muted">
+              {sync.tooLong} conversation{sync.tooLong > 1 ? 's are' : ' is'} too long to sync (over
+              4 MB) and stay{sync.tooLong > 1 ? '' : 's'} here.
+            </p>
+          )}
+          {sync.problem && <p className="warn">{sync.problem}</p>}
+        </div>
+        {sync.on ? (
+          <button className="btn" onClick={() => void act(s.switchOff, setSync)}>
+            Switch off
+          </button>
+        ) : (
+          <button
+            className="btn btn-primary"
+            disabled={!sync.keychain}
+            onClick={() => void act(s.switchOn, setSync)}
+          >
+            Switch on
+          </button>
+        )}
+      </div>
+      {sync.confirm && (
+        <div className="row">
+          <div className="row-main">
+            <p className="row-title">
+              {sync.confirm.by} sent this laptop the sync key. Does it show this code?
+            </p>
+            <p className="pair-code">{sync.confirm.code}</p>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={() => void act(() => s.confirm(true), setSync)}
+          >
+            It matches
+          </button>
+          <button className="btn" onClick={() => void act(() => s.confirm(false), setSync)}>
+            It doesn’t
+          </button>
+        </div>
+      )}
+      {sync.waiting.map((w) => (
+        <div className="row" key={w.id}>
+          <div className="row-main">
+            <p className="row-title">Let {w.name} sync? Check it shows this code:</p>
+            <p className="pair-code">{w.code}</p>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={() => void act(() => s.allow(w.id), setSync)}
+          >
+            Allow
+          </button>
+          <button className="btn" onClick={() => void act(() => s.refuse(w.id), setSync)}>
+            Don’t allow
+          </button>
+        </div>
+      ))}
+      {sync.status === 'in' &&
+        sync.laptops
+          .filter((l) => !l.me)
+          .map((l) => (
+            <div className="row" key={l.id}>
+              <div className="row-main">
+                <p className="row-title">{l.name}</p>
+                {l.code && <p className="muted">Code with this laptop: {l.code}</p>}
+              </div>
+              <button
+                className="btn"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Stop syncing with ${l.name}? Its copy stays, and the key changes.`
+                    )
+                  )
+                    void act(() => s.remove(l.id), setSync)
+                }}
+              >
+                Stop syncing
+              </button>
+            </div>
+          ))}
 
       <h2 className="section">If a device is lost</h2>
       <div className="row">

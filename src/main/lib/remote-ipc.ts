@@ -6,6 +6,8 @@
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { hostname } from 'node:os'
 
+import { verifySecondFactorProof } from '../lease'
+import { LaptopSync } from './laptop-sync'
 import { Remote } from './remote'
 import { RemoteCommands, type EngineCall } from './remote-commands'
 import { Slack } from './slack'
@@ -19,6 +21,10 @@ export interface RemoteWiring {
   webUrl(): string | null
   deviceToken(): string | null
   deviceId(): string | null
+  /** The signed-in account (the lease's `sub`), for second-factor proofs (decisions §65.7). */
+  accountId(): string | null
+  /** The keys our server signs with (tests pass their own). */
+  serverKeys?: string[]
   openExternal(url: string): Promise<void>
   /** A quiet notification on the laptop, even with the window in front. */
   notify(title: string, body: string): void
@@ -29,12 +35,17 @@ export interface RemoteHooks {
   remote: Remote
   telegram: Telegram
   slack: Slack
+  sync: LaptopSync
   /** An engine notification (1.9): a schedule's result also goes to the phone and the chat (decisions §61.5). */
   notice(note: { title: string; body: string; taskId: string }): void
 }
 
 export function startRemote(w: RemoteWiring): RemoteHooks {
-  const engine: EngineCall = async <T>(method: 'GET' | 'POST', path: string, body?: unknown) => {
+  const engine: EngineCall = async <T>(
+    method: 'GET' | 'POST' | 'PUT',
+    path: string,
+    body?: unknown
+  ) => {
     const { url, token } = await w.engine()
     const res = await fetch(`${url}${path}`, {
       method,
@@ -75,6 +86,17 @@ export function startRemote(w: RemoteWiring): RemoteHooks {
     openExternal: w.openExternal,
     commands,
     notify: w.notify,
+    checkProof: (proof, deviceKey, approvalId) => {
+      const account = w.accountId()
+      return (
+        !!account &&
+        verifySecondFactorProof(
+          proof,
+          { account, deviceKey, approvalId, now: Date.now() },
+          w.serverKeys
+        ) !== null
+      )
+    },
     onRevokedAll: () => {
       telegram?.unlink()
       slack?.unlink()
@@ -95,7 +117,19 @@ export function startRemote(w: RemoteWiring): RemoteHooks {
     remoteOn: () => remote?.view().confirmed === true,
     onChange: (view) => send('slack:changed', view)
   })
+  // Sync between laptops (decisions §65): its own switch, apart from remote control.
+  const sync = new LaptopSync({
+    dataDir: w.dataDir,
+    laptopName: hostname().slice(0, 60) || 'Laptop',
+    keychain: w.keychain,
+    apiUrl: w.apiUrl,
+    deviceToken: w.deviceToken,
+    engine,
+    notify: w.notify,
+    onChange: (view) => send('sync:changed', view)
+  })
   void remote.start()
+  void sync.start()
   slack.start()
   telegram.start()
 
@@ -125,6 +159,33 @@ export function startRemote(w: RemoteWiring): RemoteHooks {
     r.setInboxFolder(typeof folder === 'string' && folder ? folder : null)
     return r.view()
   })
+  ipcMain.handle('remote:secondFactor', async (e, next: unknown) => {
+    guard(e)
+    if (Array.isArray(next)) await engine('PUT', '/v1/remote-settings', { secondFactor: next })
+    return (await engine<{ secondFactor: string[] }>('GET', '/v1/remote-settings')).secondFactor
+  })
+  ipcMain.handle('sync:status', (e) => (guard(e), sync.view()))
+  ipcMain.handle('sync:switchOn', async (e) => (guard(e), await sync.switchOn(), sync.view()))
+  ipcMain.handle('sync:switchOff', (e) => (guard(e), sync.switchOff(), sync.view()))
+  ipcMain.handle('sync:allow', async (e, id: unknown) => {
+    guard(e)
+    if (typeof id === 'string') await sync.allow(id)
+    return sync.view()
+  })
+  ipcMain.handle('sync:refuse', (e, id: unknown) => {
+    guard(e)
+    if (typeof id === 'string') sync.refuse(id)
+    return sync.view()
+  })
+  ipcMain.handle('sync:remove', (e, id: unknown) => {
+    guard(e)
+    if (typeof id === 'string') sync.remove(id)
+    return sync.view()
+  })
+  ipcMain.handle(
+    'sync:confirm',
+    (e, accept: unknown) => (guard(e), sync.confirmKey(accept === true), sync.view())
+  )
   ipcMain.handle('slack:status', (e) => (guard(e), sl.view()))
   ipcMain.handle(
     'slack:connect',
@@ -188,5 +249,5 @@ ${note.body}`.slice(0, 1000)
     r.setScheduleResults(on === true)
     return r.view()
   })
-  return { remote, telegram, slack, notice }
+  return { remote, telegram, slack, sync, notice }
 }

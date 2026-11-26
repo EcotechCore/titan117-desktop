@@ -633,7 +633,10 @@ function App(): React.JSX.Element {
                 onClick={() => dispatch({ type: 'view', view: { kind: 'task', id: t.id } })}
               >
                 <span className={`dot dot-${t.status}`} aria-label={t.status} />
-                <span className="nav-text">{t.title}</span>
+                <span className="nav-text">
+                  {t.title}
+                  {t.syncedFrom && <span className="muted"> · from {t.syncedFrom}</span>}
+                </span>
               </button>
             ))}
         </div>
@@ -1175,6 +1178,12 @@ function App(): React.JSX.Element {
             <dd className="mono">{detail.task.steps}</dd>
             <dt>Cost</dt>
             <dd className="mono">{usd(detail.task.costUsd)}</dd>
+            {detail.task.syncedFrom && (
+              <>
+                <dt>From</dt>
+                <dd>{detail.task.syncedFrom}</dd>
+              </>
+            )}
           </dl>
           {detail.task.status === 'error' && /ref ([0-9a-f]{8})/.exec(detail.task.note ?? '') && (
             <button

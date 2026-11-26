@@ -1,5 +1,5 @@
-import type { RemoteView, SlackView, TelegramView } from '../shared/remote-views'
-export type { RemoteView, SlackView, TelegramView }
+import type { RemoteView, SlackView, SyncView, TelegramView } from '../shared/remote-views'
+export type { RemoteView, SlackView, SyncView, TelegramView }
 export interface AccountView {
   signedIn: boolean
   locked: boolean
@@ -126,7 +126,19 @@ declare global {
         revokeAll(): Promise<RemoteView>
         setInbox(folder: string | null): Promise<RemoteView>
         setScheduleResults(on: boolean): Promise<RemoteView>
+        /** The laptop-only categories answered remotely after a second factor (decisions §65.7). */
+        secondFactor(next?: ('external' | 'commands')[]): Promise<('external' | 'commands')[]>
         onChange(listener: (view: RemoteView) => void): void
+      }
+      sync: {
+        status(): Promise<SyncView>
+        switchOn(): Promise<SyncView>
+        switchOff(): Promise<SyncView>
+        allow(id: string): Promise<SyncView>
+        refuse(id: string): Promise<SyncView>
+        remove(id: string): Promise<SyncView>
+        confirm(accept: boolean): Promise<SyncView>
+        onChange(listener: (view: SyncView) => void): void
       }
       /** The user's own Slack app in Socket Mode (decisions §64.11). Tokens go in, never out. */
       slack: {

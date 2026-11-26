@@ -11,7 +11,12 @@ import { readFile, stat } from 'node:fs/promises'
 import type { EngineEvent } from '../../shared/protocol'
 import { createApi } from '../api'
 import type { Budget } from '../budgets'
-import { createPermissionLayer, type PermissionLayer } from '../permissions'
+import {
+  createPermissionLayer,
+  REMOTE_CATEGORIES,
+  type PermissionLayer,
+  type RemoteCategory
+} from '../permissions'
 import { registerSecret } from '../redact'
 import { createRouter } from '../router'
 import { createRuntime, type Runtime } from '../runtime'
@@ -88,7 +93,7 @@ import { createNodeComponent } from './apps/node'
 import { createRunner } from './apps/runner'
 import { createBrowserTests } from './apps/browsers'
 import { AppError, createAppService, type GitHubLink, type Published } from './apps/service'
-import { createDataLayer, DataError } from './apps/data'
+import { createDataLayer, DataError, type SyncEntry } from './apps/data'
 import { createSidebarService, type Grants, type SidebarApp } from './apps/sidebar'
 import { PublishError } from './apps/cloudflare'
 import { cleanBrand, STARTERS, type BrandKit } from './apps/starters'
@@ -560,6 +565,11 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     store,
     log,
     folders: policy,
+    // Laptop-only categories the user lets be answered remotely with a second factor (decisions §65.7).
+    remoteSecondFactor: () =>
+      getMeta<RemoteCategory[]>(db, 'remoteSecondFactor', []).filter((c) =>
+        REMOTE_CATEGORIES.includes(c)
+      ),
     services: {
       memory,
       skills,
@@ -1444,6 +1454,31 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     code: codeView,
     apps: appView,
     sidebar: sidebarView,
+    // Sync between laptops (decisions §65): records as they are, for the shell to seal.
+    remoteSecondFactor: {
+      get: () => getMeta<string[]>(db, 'remoteSecondFactor', []),
+      set: (next) => setMeta(db, 'remoteSecondFactor', next)
+    },
+    syncData: {
+      apps: () => sidebar.list().map((a) => a.id),
+      entriesSince: (app, since, limit) => sidebarData.entriesSince(app, since, limit),
+      apply(app, entries) {
+        let applied = 0
+        let skipped = 0
+        let refused = 0
+        for (const entry of entries) {
+          try {
+            if (sidebarData.applyRemote(app, entry as SyncEntry)) applied++
+            else skipped++
+          } catch (error) {
+            if (!(error instanceof DataError)) throw error
+            refused++
+          }
+        }
+        if (applied) emit({ type: 'changed', what: 'sidebar' })
+        return { applied, skipped, refused }
+      }
+    },
     automation: automationView,
     marketing: marketingView,
     notifications: {

@@ -19,7 +19,7 @@ import { join } from 'node:path'
 
 import type { RemoteApproval } from '../../shared/remote-protocol'
 import type { SlackView } from '../../shared/remote-views'
-import type { RemoteCommands } from './remote-commands'
+import { CHANNEL_MAX_FILE_BYTES, type RemoteCommands } from './remote-commands'
 
 export type { SlackView }
 
@@ -36,7 +36,8 @@ export const SLACK_MANIFEST = {
     bot_user: { display_name: 'Titan117', always_online: false },
     app_home: { messages_tab_enabled: true, messages_tab_read_only_enabled: false }
   },
-  oauth_config: { scopes: { bot: ['chat:write', 'im:history', 'im:read'] } },
+  // files:read: download a file sent in the direct message (decisions §65.9).
+  oauth_config: { scopes: { bot: ['chat:write', 'files:read', 'im:history', 'im:read'] } },
   settings: {
     event_subscriptions: { bot_events: ['message.im'] },
     interactivity: { is_enabled: true },
@@ -61,6 +62,7 @@ interface Envelope {
       text?: string
       bot_id?: string
       subtype?: string
+      files?: SlackFile[]
     }
     type?: string
     user?: { id: string }
@@ -69,6 +71,19 @@ interface Envelope {
     actions?: { value?: string }[]
   }
 }
+
+/** A file in a message (docs.slack.dev, the file object, read 26 Nov 2026). */
+interface SlackFile {
+  name?: string
+  size?: number
+  mode?: string
+  is_external?: boolean
+  url_private_download?: string
+  url_private?: string
+}
+
+/** The only host the bot token is ever sent to for a file (an exact match, as Slack's docs say). */
+const FILE_HOST = 'files.slack.com'
 
 interface SocketLike {
   send(data: string): void
@@ -255,7 +270,8 @@ export class Slack {
       ev.type !== 'message' ||
       ev.channel_type !== 'im' ||
       ev.bot_id ||
-      ev.subtype ||
+      // A file shared in the message is the only kind of message with a subtype we take.
+      (ev.subtype && ev.subtype !== 'file_share') ||
       !ev.user ||
       !ev.channel
     )
@@ -277,6 +293,7 @@ export class Slack {
     }
     if (!this.deps.remoteOn())
       return this.say(ev.channel, 'Remote control is switched off on the laptop.')
+    if (ev.files?.length) return this.files(ev.channel, ev.files)
     if (!text) return
     if (text === 'tasks') {
       const { tasks } = await this.deps.commands.state()
@@ -300,6 +317,41 @@ export class Slack {
         ? 'Started on your laptop. I’ll write here when it needs you or when it’s done.'
         : r.error
     )
+  }
+
+  /** Files sent in the direct message go into the inbox folder (decisions §65.9), like Telegram's. */
+  private async files(channel: string, files: SlackFile[]): Promise<void> {
+    for (const f of files.slice(0, 5)) {
+      const name = typeof f.name === 'string' && f.name ? f.name : 'file'
+      try {
+        if (f.is_external || f.mode === 'external')
+          throw new Error(`${name} is stored outside Slack, so it wasn’t fetched.`)
+        if ((f.size ?? 0) > CHANNEL_MAX_FILE_BYTES)
+          throw new Error(`${name}: files up to 20 MB only.`)
+        const address = f.url_private_download ?? f.url_private ?? ''
+        let url: URL
+        try {
+          url = new URL(address)
+        } catch {
+          throw new Error(`${name} has no address to fetch.`)
+        }
+        if (url.protocol !== 'https:' || url.hostname !== FILE_HOST || !this.tokens)
+          throw new Error(`${name} isn’t on Slack’s file host, so it wasn’t fetched.`)
+        // No redirects: the token must never follow one to another host.
+        const res = await this.fetch(url.toString(), {
+          headers: { Authorization: `Bearer ${this.tokens.bot}` },
+          redirect: 'manual'
+        })
+        if (!res.ok) throw new Error(`Couldn’t fetch ${name} from Slack.`)
+        const bytes = new Uint8Array(await res.arrayBuffer())
+        if (bytes.length > CHANNEL_MAX_FILE_BYTES)
+          throw new Error(`${name}: files up to 20 MB only.`)
+        const saved = await this.deps.commands.saveFile(name, bytes)
+        this.say(channel, `Saved on your laptop as ${saved}.`)
+      } catch (error) {
+        this.say(channel, error instanceof Error ? error.message : 'Couldn’t save that file.')
+      }
+    }
   }
 
   private async button(p: NonNullable<Envelope['payload']>): Promise<void> {
