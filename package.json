@@ -45,7 +45,7 @@
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/ron": "^1.0.0",
     "axe-core": "4.14.1",
-    "docx": "^9.15.4",
+    "docx": "^9.16.0",
     "electron-updater": "6.8.11",
     "exceljs": "^4.4.0",
     "fflate": "0.8.3",
