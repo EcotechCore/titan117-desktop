@@ -14,7 +14,7 @@ export const ADDON_FORMAT = 1;
 /** The GitHub topic that puts a repository in the marketplace's index (decisions §66.3). */
 export const ADDON_TOPIC = "titan117-addon";
 
-export const ADDON_TYPES = ["agent", "skill", "tool", "app-template", "sidebar-app"] as const;
+export const ADDON_TYPES = ["agent", "skill", "tool", "app-template", "sidebar-app", "mcp-server", "workflow"] as const;
 export type AddonType = (typeof ADDON_TYPES)[number];
 
 export const ADDON_RISKS = ["read", "write", "external"] as const;
@@ -52,7 +52,20 @@ export interface AddonManifest {
   tool: { main: string; hosts: string[]; tools: AddonToolSpec[] } | null;
   /** type "app-template" or "sidebar-app": the folder with the app's files. */
   app: { dir: string } | null;
+  /**
+   * type "mcp-server" (decisions §66.21): a connector, either an address or an
+   * npm package pinned to an exact version, and the secrets the user must give.
+   */
+  mcp: { url: string; npm: null; args: string[]; secrets: string[] } | { url: null; npm: string; args: string[]; secrets: string[] } | null;
+  /** type "workflow" (decisions §66.21): a schedule that starts a task for an agent. */
+  workflow: { when: AddonWhen; agent: string; prompt: string } | null;
 }
+
+/** When a workflow runs: the schedule kinds an add-on may bring (no folders, no one-offs). */
+export type AddonWhen =
+  | { kind: "interval"; minutes: number }
+  | { kind: "daily"; time: string; days?: number[] }
+  | { kind: "monthly"; day: number; time: string };
 
 export type ManifestResult = { ok: true; manifest: AddonManifest } | { ok: false; error: string };
 
@@ -65,6 +78,9 @@ const HOST = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/
 const MAX_TOOLS = 20;
 const MAX_HOSTS = 10;
 const MAX_SKILLS = 20;
+const SECRET_NAME = /^[A-Z][A-Z0-9_]{1,40}$/;
+const ARG = /^[A-Za-z0-9_\-./:=@]{1,100}$/;
+const NPM_PINNED = /^(@[a-z0-9][a-z0-9._-]{0,60}\/)?[a-z0-9][a-z0-9._-]{0,100}@\d{1,6}\.\d{1,6}\.\d{1,8}(-[0-9A-Za-z.-]{1,30})?$/;
 
 /** A path inside the add-on: forward slashes, no `..`, nothing absolute or hidden. */
 export function safeAddonPath(path: unknown): string | null {
@@ -166,6 +182,8 @@ export function parseAddonManifest(raw: unknown): ManifestResult {
     skills: [],
     tool: null,
     app: null,
+    mcp: null,
+    workflow: null,
   };
 
   // Fields a type can't have are refused, so nothing is asked for silently.
@@ -175,8 +193,10 @@ export function parseAddonManifest(raw: unknown): ManifestResult {
     tool: ["tool"],
     "app-template": ["app"],
     "sidebar-app": ["app"],
+    "mcp-server": ["mcp"],
+    workflow: ["workflow"],
   };
-  for (const field of ["agent", "skills", "tool", "app"])
+  for (const field of ["agent", "skills", "tool", "app", "mcp", "workflow"])
     if (m[field] !== undefined && !allowed[type].includes(field))
       return fail(`An add-on of type "${type}" can't have "${field}".`);
 
@@ -229,6 +249,58 @@ export function parseAddonManifest(raw: unknown): ManifestResult {
     manifest.app = { dir };
   }
 
+  if (type === "mcp-server") {
+    const m2 = (m.mcp ?? null) as Record<string, unknown> | null;
+    if (!m2 || typeof m2 !== "object") return fail('An MCP server add-on has an "mcp" object.');
+    const secretsRaw = m2.secrets ?? [];
+    if (!Array.isArray(secretsRaw) || secretsRaw.length > 10) return fail('"mcp.secrets" lists up to 10 names.');
+    const secrets: string[] = [];
+    for (const x of secretsRaw) {
+      if (typeof x !== "string" || !SECRET_NAME.test(x)) return fail('Each secret is a name like GITHUB_TOKEN.');
+      secrets.push(x);
+    }
+    const argsRaw = m2.args ?? [];
+    if (!Array.isArray(argsRaw) || argsRaw.length > 10) return fail('"mcp.args" lists up to 10 arguments.');
+    const args: string[] = [];
+    for (const a of argsRaw) {
+      if (typeof a !== "string" || !ARG.test(a)) return fail("An argument may have letters, digits and - _ . / : = @ only.");
+      args.push(a);
+    }
+    if (typeof m2.url === "string" && m2.npm === undefined) {
+      let url: URL;
+      try {
+        url = new URL(m2.url);
+      } catch {
+        return fail('"mcp.url" isn\'t an address.');
+      }
+      if (url.protocol !== "https:" || !addonHost(url.hostname) || url.username || url.password)
+        return fail('"mcp.url" must be a public https:// address.');
+      manifest.mcp = { url: url.toString(), npm: null, args: [], secrets };
+    } else if (typeof m2.npm === "string" && m2.url === undefined) {
+      if (!NPM_PINNED.test(m2.npm)) return fail('"mcp.npm" is a package at an exact version, like @acme/mcp-server@1.2.3.');
+      manifest.mcp = { url: null, npm: m2.npm, args, secrets };
+    } else return fail('"mcp" has either "url" or "npm".');
+  }
+
+  if (type === "workflow") {
+    const w = (m.workflow ?? null) as Record<string, unknown> | null;
+    if (!w || typeof w !== "object") return fail('A workflow add-on has a "workflow" object.');
+    const agent = text(w.agent, 40) || "Titan";
+    const prompt = typeof w.prompt === "string" ? w.prompt.trim() : "";
+    if (!prompt || prompt.length > 4000) return fail('"workflow.prompt" is the task, up to 4,000 characters.');
+    const when = (w.when ?? null) as Record<string, unknown> | null;
+    if (!when || typeof when !== "object") return fail('"workflow.when" says when it runs.');
+    const time = typeof when.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(when.time) ? when.time : null;
+    if (when.kind === "interval" && Number.isInteger(when.minutes) && (when.minutes as number) >= 15 && (when.minutes as number) <= 10080)
+      manifest.workflow = { when: { kind: "interval", minutes: when.minutes as number }, agent, prompt };
+    else if (when.kind === "daily" && time) {
+      const days = Array.isArray(when.days) ? when.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6) : undefined;
+      manifest.workflow = { when: days && days.length ? { kind: "daily", time, days } : { kind: "daily", time }, agent, prompt };
+    } else if (when.kind === "monthly" && time && Number.isInteger(when.day) && (when.day as number) >= 1 && (when.day as number) <= 31)
+      manifest.workflow = { when: { kind: "monthly", day: when.day as number, time }, agent, prompt };
+    else return fail('"workflow.when" is every N minutes (15 at least), daily at a time, or monthly on a day at a time.');
+  }
+
   return { ok: true, manifest };
 }
 
@@ -252,6 +324,19 @@ export function describeAddon(manifest: AddonManifest): string[] {
   }
   if (manifest.type === "app-template")
     lines.push("Copies an app's files into a folder you choose. Nothing runs until the app builder checks it.");
+  if (manifest.mcp)
+    lines.push(
+      manifest.mcp.url
+        ? `Adds a connector to ${new URL(manifest.mcp.url).hostname}. Its tools join Titan's: reading runs at once; sending, posting and deleting always ask.`
+        : `Adds a connector that runs the npm package ${manifest.mcp.npm} as a program on this laptop, with your user's rights and not in the add-on sandbox. Install it only if you trust its author. Its tools then ask as connectors do.`,
+      ...(manifest.mcp.secrets.length ? [`It needs: ${manifest.mcp.secrets.join(", ")} (you enter them on Connectors; they stay in the keychain).`] : []),
+    );
+  if (manifest.workflow) {
+    const w = manifest.workflow.when;
+    const when =
+      w.kind === "interval" ? `every ${w.minutes} minutes` : w.kind === "daily" ? `every day at ${w.time}${w.days ? " on chosen days" : ""}` : `monthly on day ${w.day} at ${w.time}`;
+    lines.push(`Adds a schedule: ${when}, ${manifest.workflow.agent} does this, with the usual approvals: “${manifest.workflow.prompt.slice(0, 300)}”`);
+  }
   if (manifest.type === "sidebar-app")
     lines.push("Copies a sidebar app's files into a folder you choose. Adding it to the sidebar asks again, with what data it reads.");
   return lines;

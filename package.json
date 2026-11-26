@@ -30,7 +30,8 @@
     "eval:marketing": "vitest run -c vitest.live.config.mts test/live/marketing.live.ts",
     "eval:marketing-agents": "vitest run -c vitest.live.config.mts test/live/marketing-agents.live.ts",
     "eval:remote": "vitest run -c vitest.live.config.mts test/live/remote.live.ts",
-    "eval:addons": "vitest run -c vitest.live.config.mts test/live/addons.live.ts"
+    "eval:addons": "vitest run -c vitest.live.config.mts test/live/addons.live.ts",
+    "eval:addons-rest": "vitest run -c vitest.live.config.mts test/live/addons-rest.live.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.8.0",

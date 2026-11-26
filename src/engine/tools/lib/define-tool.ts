@@ -241,6 +241,28 @@ export interface AddonAccess {
     code: string
   }): Promise<import('../../lib/addons/store').Addon>
   rollback(name: string): import('../../lib/addons/store').Addon
+  /** Read an add-on from a folder in the allowed folders and check it; nothing installed. */
+  readFolder(
+    folder: string
+  ): Promise<{ files: Map<string, Uint8Array>; card: string; title: string }>
+  installFolder(files: Map<string, Uint8Array>): Promise<import('../../lib/addons/store').Addon>
+  /** Any repository at a commit into a new folder in the allowed folders (10.5); nothing runs. */
+  download(
+    address: string,
+    folder: string
+  ): Promise<{
+    key: string
+    folder: string
+    files: string[]
+    checks: import('../../lib/addons/checks').AddonChecks
+    texts: { path: string; text: string }[]
+  }>
+  /** Publish an add-on made on this laptop to a new public repository of the user's (decisions §66.23). */
+  publish(
+    name: string,
+    repoName: string,
+    licence: 'MIT' | 'Apache-2.0' | 'none'
+  ): Promise<{ url: string }>
 }
 
 export interface PartResult {

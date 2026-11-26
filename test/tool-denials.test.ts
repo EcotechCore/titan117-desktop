@@ -1273,6 +1273,44 @@ const DENIALS: Record<string, () => Promise<void>> = {
     ).toBe('refused')
   },
 
+  async addons_install_folder() {
+    // No add-on service here, and a folder outside the allowed ones is never read.
+    const b = bench()
+    expect(
+      (await b.run({ name: 'addons_install_folder', input: { folder: b.allowed } })).status
+    ).toBe('refused')
+    expect(
+      (await b.run({ name: 'addons_install_folder', input: { folder: b.outside } })).status
+    ).toBe('refused')
+    expect(b.asked()).toBe(0)
+  },
+
+  async project_download() {
+    // Downloading writes files: it asks first; denied, nothing is fetched or written.
+    const b = bench()
+    const input = { address: 'acme/clerk', folder: join(b.allowed, 'clerk') }
+    const approval = await b.approvalOf({ name: 'project_download', input })
+    expect(approval.summary).toContain('nothing in it runs')
+    expect((await b.run({ name: 'project_download', input }, 'deny')).status).toBe('refused')
+    expect(existsSync(join(b.allowed, 'clerk'))).toBe(false)
+    expect(b.web.requests).toEqual([])
+    // Approved, but there is no add-on service here.
+    expect((await b.run({ name: 'project_download', input }, 'approve')).status).toBe('refused')
+  },
+
+  async addons_publish() {
+    // Publishing is outward: every time, on the laptop, never "always".
+    const b = bench()
+    const input = { name: 'rates', repo_name: 'rates-titan117' }
+    const approval = await b.approvalOf({ name: 'addons_publish', input })
+    expect(approval.canAlways).toBe(false)
+    expect(approval.answeredBy).toBe('refused')
+    expect(approval.summary).toContain('new public GitHub repository')
+    expect((await b.run({ name: 'addons_publish', input }, 'deny')).status).toBe('refused')
+    expect((await b.run({ name: 'addons_publish', input }, 'approve')).status).toBe('refused')
+    expect(b.web.requests).toEqual([])
+  },
+
   async server_list() {
     // Only the servers the user added; nothing without the permission's service.
     const b = bench()

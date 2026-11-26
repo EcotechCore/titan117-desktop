@@ -111,12 +111,22 @@ function setup(options: { root?: string | null } = {}) {
 
 describe('where an add-on comes from', () => {
   it('reads owner/repo, a ref and GitHub addresses, and nothing else', () => {
-    expect(parseSource('acme/clerk')).toEqual({ owner: 'acme', repo: 'clerk', ref: null })
-    expect(parseSource('acme/clerk@v1.2')).toEqual({ owner: 'acme', repo: 'clerk', ref: 'v1.2' })
+    expect(parseSource('acme/clerk')).toEqual({
+      host: 'github',
+      owner: 'acme',
+      repo: 'clerk',
+      ref: null
+    })
+    expect(parseSource('acme/clerk@v1.2')).toEqual({
+      host: 'github',
+      owner: 'acme',
+      repo: 'clerk',
+      ref: 'v1.2'
+    })
     expect(parseSource(`https://github.com/acme/clerk/commit/${SHA}`).ref).toBe(SHA)
     expect(parseSource('https://github.com/acme/clerk.git').repo).toBe('clerk')
     for (const bad of [
-      'https://gitlab.com/a/b',
+      'https://bitbucket.org/a/b',
       'acme',
       'acme/clerk/x',
       '../etc/passwd',
@@ -655,7 +665,7 @@ describe('updates, takedowns and install reports (decisions §66.4, §66.11, §6
       fakeNet({ 'acme/clerk': { sha: SHA2, files: agentRepo() } }).fetch
     )
     expect(i.update).toMatchObject({ total: null, commits: [] })
-    expect(service.card(i, null)).toContain('GitHub couldn’t list the commits in between.')
+    expect(service.card(i, null)).toContain('The commits in between couldn’t be listed.')
   })
 
   it('a taken-down add-on is off for good: no turning on, no rollback, no tools or agents', async () => {

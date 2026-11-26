@@ -18,7 +18,9 @@ const ALLOWED_HOSTS = new Set([
   // Add-ons from the Add-ons screen (decisions §66.4, §66.5): GitHub's API, its ZIP downloads and OSV.
   'api.github.com',
   'codeload.github.com',
-  'api.osv.dev'
+  'api.osv.dev',
+  // Add-ons and projects from GitLab.com (decisions §66.22).
+  'gitlab.com'
 ])
 
 export class NetworkError extends Error {

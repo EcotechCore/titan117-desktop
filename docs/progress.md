@@ -32,6 +32,14 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 26 Nov 2026 · Phase 16: the rest (MCP servers, workflows, GitLab, folders, projects, publishing)
+
+Built (decisions §66.21–24): MCP server and workflow add-ons become a connector and a schedule (removed in safe mode, remade on the next normal start); GitLab.com as a source; `addons_install_folder` (larger tools written into a folder, same checks and card), `project_download` (any open-source project into a new folder, nothing runs) and `addons_publish` (a public repository in the user's GitHub with a licence and README), each with a denial test; the Add-ons screen shows the new kinds, GitLab, where an add-on was published, and "Suggest a change" (GitHub's fork page).
+
+- **Checks:** desktop tests (new: GitLab, folder installs through the permission layer, project download writing only into the allowed folder, MCP and workflow effects with safe mode, publishing one file at a time), typecheck, lint, licences, build and contents.
+- **Seen working** (Claude Haiku 5.5, `pnpm eval:addons-rest`): Titan downloaded `sindresorhus/slugify` at its commit, ran nothing and listed the steps ($0.006); Titan wrote a VAT tool into a folder, installed it after the card, and it answered 121 for 100 net ($0.010). **Found and fixed:** the folder card said the user's own add-on had no licence.
+- **Not seen yet:** a real publish (needs the owner's GitHub sign-in), a real GitLab download, a real MCP server or workflow add-on.
+
 ### 26 Nov 2026 · Phase 16's second part merged
 
 The pull requests are merged in all three repos (web #64 first, then desktop #59 and pop #51 after their docs check passed), and the development Convex deployment has the new tables. Run the desktop app from `main`. Phase 16 stays in progress: fork and publish, larger tools from the coding engine, MCP servers and workflows from the marketplace, install any open-source project, other hosts and the portal's screen; decisions §66 waits for the owner.

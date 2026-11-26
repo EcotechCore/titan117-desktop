@@ -399,7 +399,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       try {
         const status = await addonService.status(a.repo)
         if (status?.takenDown)
-          addonStore.takeDown(
+          addonService.takeDown(
             a.name,
             'Titan117 took this add-on down after a report, so it was switched off. Remove it.'
           )
@@ -421,6 +421,47 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     store: addonStore,
     onInstalled(repo, commit) {
       void marketPost('installs', { repo, commit }).catch(() => undefined)
+    },
+    // MCP server and workflow add-ons become a connector and a schedule (decisions §66.21).
+    effects: {
+      activate(manifest, addon, by) {
+        if (manifest.mcp) {
+          const name = manifest.title.replace(/[^\p{L}\p{N} ._-]/gu, '').slice(0, 40) || addon
+          const connector = connectors.add(
+            manifest.mcp.url
+              ? { name, kind: 'http', url: manifest.mcp.url }
+              : {
+                  name,
+                  kind: 'stdio',
+                  command: 'npx',
+                  args: ['-y', manifest.mcp.npm ?? '', ...manifest.mcp.args]
+                }
+          )
+          return { connector: connector.id }
+        }
+        if (manifest.workflow) {
+          const schedule = automation.schedules.create({
+            name: manifest.title,
+            when: manifest.workflow.when,
+            action: {
+              kind: 'task',
+              agent: manifest.workflow.agent,
+              prompt: manifest.workflow.prompt
+            },
+            source: `add-on ${manifest.title}, installed by ${by}`
+          })
+          return { schedule: schedule.id }
+        }
+        return {}
+      },
+      deactivate(links) {
+        try {
+          if (links.connector) void connectors.remove(links.connector).catch(() => undefined)
+          if (links.schedule) automation.schedules.remove(links.schedule)
+        } catch (error) {
+          log.capture('add-on links', error)
+        }
+      }
     },
     async marketStatus(repo) {
       if (!account.proxyUrl) return null
@@ -1614,9 +1655,9 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         }
         return { addon, copiedTo: folder ? await files!.resolve(folder) : null }
       },
-      rollback: (name) => addonStore.rollback(name),
-      setEnabled: (name, enabled) => addonStore.setEnabled(name, enabled),
-      remove: (name) => addonStore.remove(name),
+      rollback: (name) => addonService.rollback(name),
+      setEnabled: (name, enabled) => addonService.setEnabled(name, enabled),
+      remove: (name) => addonService.remove(name),
       leaveSafeMode: () => addonStore.leaveSafeMode()
     },
     notifications: {
@@ -1724,6 +1765,12 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   })
   serverPort = server.port
   publish = server.publish
+  // MCP server and workflow add-ons: off in safe mode, made again when missing (decisions §66.21).
+  try {
+    addonService.sync(safeMode.on)
+  } catch (error) {
+    log.capture('add-on sync', error)
+  }
   void connectors.connectAll()
   documents.start()
   automation.start()

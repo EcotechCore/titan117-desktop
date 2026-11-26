@@ -25,6 +25,7 @@ interface Addon {
   enabled: boolean
   offReason: string | null
   takenDown?: boolean
+  publishedAs?: string
 }
 
 interface SafeMode {
@@ -85,7 +86,9 @@ const TYPE_LABEL: Record<string, string> = {
   skill: 'Skill',
   tool: 'Tool',
   'app-template': 'App template',
-  'sidebar-app': 'Sidebar app'
+  'sidebar-app': 'Sidebar app',
+  'mcp-server': 'MCP server',
+  workflow: 'Workflow'
 }
 
 /** The banner on every screen while add-ons are off (decisions §66.8). */
@@ -261,10 +264,10 @@ export function AddonsView({
 
       <div className="row row-stack form">
         <label>
-          Install from GitHub
+          Install from GitHub or GitLab
           <input
             className="mono"
-            placeholder="owner/repo, owner/repo@commit or https://github.com/owner/repo"
+            placeholder="owner/repo, owner/repo@commit, https://github.com/owner/repo or gitlab.com/group/project"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             onKeyDown={(e) => {
@@ -431,6 +434,28 @@ export function AddonsView({
                   {current?.version ?? '?'} [{a.current}] · {at + 1} of {a.versions.length}
                 </p>
                 <p className="muted">{a.description}</p>
+                {a.publishedAs && (
+                  <p className="muted">
+                    Published at{' '}
+                    <a
+                      href={`https://github.com/${a.publishedAs}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      github.com/{a.publishedAs}
+                    </a>
+                    . Add the topic titan117-addon there for the marketplace to list it.
+                  </p>
+                )}
+                {a.repo && !a.repo.startsWith('gitlab.com/') && (
+                  <p className="muted">
+                    <a href={`https://github.com/${a.repo}/fork`} target="_blank" rel="noreferrer">
+                      Suggest a change to its author
+                    </a>{' '}
+                    (GitHub’s own fork page; Titan can then make the change and open a pull
+                    request).
+                  </p>
+                )}
                 {a.offReason && <p className="note note-error">{a.offReason}</p>}
               </div>
               {a.repo && !a.takenDown && (

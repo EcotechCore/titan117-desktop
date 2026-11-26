@@ -1,0 +1,8 @@
+Card (project_download, approve): Download sindresorhus/slugify into C:\Users\dniss\AppData\Local\Temp\titan117-work-6NTsfQ\slugify (nothing in it runs)
+Setup answer: I downloaded sindresorhus/slugify into `C:\Users\dniss\AppData\Local\Temp\titan117-work-6NTsfQ\slugify`. Nothing has been run yet. **What I found:** - Licence: MIT, so you may use and change it. - Version 4.0.1, pinned to commit `99b35c2`. - Needs Node.js 22 or newer. - Two runtime dependencies (`@sindresorhus/transliterate`, `escape-string-regexp`) and one dev dependency (`xo`). None have known vulnerabilities, and no keys were found. - Files: `index.js`, `index.d.ts`, `overridable-replacements
+Cost $0.0063
+Card (write_file, approve): Write 774 B to C:\Users\dniss\AppData\Local\Temp\titan117-work-6NTsfQ\vat-tool\titan.json
+Card (write_file, approve): Write 913 B to C:\Users\dniss\AppData\Local\Temp\titan117-work-6NTsfQ\vat-tool\tool.js
+Card (addons_install_folder, approve): Install the tool “Romanian VAT (21%)” 1.0.0 from a folder on this laptop. Adds Romanian VAT at 21% to a net amount and rounds to 2 decimals. Works offline. Its tools can't reach the internet. It can't read or write files, run commands or start programs. add_ro_vat: runs without asking Licence: There is no licence: legally you may not use, copy or change it. Ask the author to add one. Dependencies:
+Installed from a folder: ro-vat; cost $0.0096
+Tool said: <<UNTRUSTED-DATA 429866d41590>> (from addon_ro_vat_add_ro_vat) { "ok": true, "rate_percent": 21, "net": 100, "vat": 21, "gross": 121 } <<END-UNTRUSTED-DATA 429866d41590>>

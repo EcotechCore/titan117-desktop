@@ -24,6 +24,7 @@ import { automationTools } from './automation'
 import { marketingTools } from './marketing'
 import { mailTools } from './mail'
 import { addonTools } from './addons'
+import { moreAddonTools } from './addons-more'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyTool = ToolDefinition<any>
@@ -50,7 +51,8 @@ export const builtInTools: AnyTool[] = [
   ...automationTools,
   ...marketingTools,
   ...mailTools,
-  ...addonTools
+  ...addonTools,
+  ...moreAddonTools
 ]
 
 export interface ToolRegistry {
