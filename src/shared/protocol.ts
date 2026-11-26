@@ -195,6 +195,7 @@ export type EngineEvent =
         | 'agents'
         | 'automations'
         | 'marketing'
+        | 'addons'
     }
   /** The engine went offline or came back online (1.22). */
   | { type: 'online'; online: boolean }
@@ -295,6 +296,7 @@ export type ToolGroup =
   | 'automation'
   | 'marketing'
   | 'connectors'
+  | 'addons'
 
 export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
   { id: 'files', label: 'Files in the allowed folders' },
@@ -312,7 +314,8 @@ export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
   { id: 'sites', label: 'Site checks (QA and SEO)' },
   { id: 'automation', label: 'Schedules, web watches and recordings' },
   { id: 'marketing', label: 'Brand kit, posts and promo videos' },
-  { id: 'connectors', label: 'Your connectors' }
+  { id: 'connectors', label: 'Your connectors' },
+  { id: 'addons', label: 'Add-on tools (installed or made by Titan)' }
 ]
 
 /** An agent (4.1): a Markdown file with a short header, or one of ours built in (4.2). */

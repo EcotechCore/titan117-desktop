@@ -76,7 +76,8 @@ import {
 import { querySheet, SheetError } from './lib/sheets'
 import { DocumentError } from './lib/documents'
 import { AgentError } from './lib/agents'
-import type { AutomationAccess, MarketingAccess } from './tools/lib/define-tool'
+import type { AddonAccess, AutomationAccess, MarketingAccess } from './tools/lib/define-tool'
+import type { AddonService } from './lib/addons/service'
 import type { MarketingService } from './lib/marketing/service'
 import { MarketingError } from './lib/marketing/brand'
 import { checkVideo } from './lib/marketing/video'
@@ -210,6 +211,8 @@ export interface Services {
   automation?: AutomationService
   /** The brand kit, the content calendar and the promo video (phase 14; decisions §62). */
   marketing?: MarketingService
+  /** Installed add-ons and the marketplace (phase 16; decisions §66). */
+  addons?: AddonService
 }
 
 /** The engine's side of the team tools; the layer hands each call its own task. */
@@ -642,6 +645,56 @@ export function createPermissionLayer(deps: {
           }
         }
       : denied<AutomationAccess>('schedules, watches and recordings')
+
+    const addonService = (): AddonService => needService(services.addons, 'Add-ons')
+    const addons: AddonAccess =
+      p.addons === 'manage'
+        ? {
+            list: () => addonService().store.list(),
+            inspect(address) {
+              if (!p.network)
+                throw new PermissionError('This tool did not declare access to the network.')
+              // GitHub and OSV are reached through this task's own network policy.
+              return addonService().inspect(address, (url, init) => net.fetch(url, init))
+            },
+            read: (key, path) => addonService().readInspected(key, path),
+            card(key, summary) {
+              const i = addonService().inspection(key)
+              if (!i) throw new PermissionError('Inspect the add-on first.')
+              return addonService().card(i, summary)
+            },
+            async install(key, folder) {
+              const service = addonService()
+              const i = service.inspection(key)
+              if (!i) throw new PermissionError('Inspect the add-on first.')
+              // An app template's files go into a new folder inside the allowed folders.
+              let target: string | null = null
+              if (i.manifest.app) {
+                if (p.folders !== 'write')
+                  throw new PermissionError('This tool may not write files.')
+                if (!folder)
+                  throw new PermissionError('Say which new folder the app’s files go into.')
+                target = await files.resolve(folder)
+                const existing = await files.list(folder).catch(() => null)
+                if (existing && existing.length)
+                  throw new PermissionError('That folder isn’t empty. Pick a new one.')
+              }
+              const { addon, templateFiles } = service.install(key, madeBy())
+              if (target && templateFiles) {
+                await files.makeFolder(folder!)
+                for (const [path, data] of templateFiles)
+                  await files.writeBytes(
+                    `${folder!.replace(/[\\/]+$/, '')}/${path}`,
+                    Buffer.from(data)
+                  )
+              }
+              return { addon, copiedTo: target }
+            },
+            checkTool: (input) => addonService().checkTool(input),
+            createTool: (input) => addonService().createTool(input, madeBy()),
+            rollback: (name) => addonService().store.rollback(name)
+          }
+        : denied<AddonAccess>('add-ons')
 
     const market = (): MarketingService => needService(services.marketing, 'Marketing')
     const marketWrite = (): void => {
@@ -1225,6 +1278,7 @@ export function createPermissionLayer(deps: {
       sites,
       automation,
       marketing,
+      addons,
       search,
       documents,
       pages,
@@ -1257,7 +1311,12 @@ export function createPermissionLayer(deps: {
         assessment = tool.assess
           ? tool.assess(call.input, {
               folders: deps.folders().allowed,
-              untrustedSeen: state.untrusted
+              untrustedSeen: state.untrusted,
+              core: deps.folders().core,
+              addonCard: (key, summary) => {
+                const inspection = services.addons?.inspection(key)
+                return inspection ? services.addons!.card(inspection, summary) : null
+              }
             })
           : { risk: tool.risk, summary: tool.describe(call.input) }
       } catch {

@@ -29,12 +29,14 @@
     "eval:automation": "vitest run -c vitest.live.config.mts test/live/automation.live.ts",
     "eval:marketing": "vitest run -c vitest.live.config.mts test/live/marketing.live.ts",
     "eval:marketing-agents": "vitest run -c vitest.live.config.mts test/live/marketing-agents.live.ts",
-    "eval:remote": "vitest run -c vitest.live.config.mts test/live/remote.live.ts"
+    "eval:remote": "vitest run -c vitest.live.config.mts test/live/remote.live.ts",
+    "eval:addons": "vitest run -c vitest.live.config.mts test/live/addons.live.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.8.0",
     "@electron-toolkit/utils": "^4.0.0",
     "@huggingface/transformers": "4.3.2",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@mozilla/readability": "^0.6.0",
     "@napi-rs/canvas": "^1.1.1",
@@ -54,6 +56,7 @@
     "playwright-core": "1.65.1",
     "postal-mime": "^4.2.1",
     "pptxgenjs": "^4.0.1",
+    "quickjs-emscripten-core": "0.32.0",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {

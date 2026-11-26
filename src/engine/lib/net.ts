@@ -14,7 +14,11 @@ const ALLOWED_HOSTS = new Set([
   // Search with the user's own key (feature 16.3, decisions §44).
   'api.search.brave.com',
   'api.tavily.com',
-  'api.exa.ai'
+  'api.exa.ai',
+  // Add-ons from the Add-ons screen (decisions §66.4, §66.5): GitHub's API, its ZIP downloads and OSV.
+  'api.github.com',
+  'codeload.github.com',
+  'api.osv.dev'
 ])
 
 export class NetworkError extends Error {

@@ -373,3 +373,26 @@ export function classifyCommand(command: string): ShellVerdict {
   }
   return { risk, reason, standing, network }
 }
+
+/**
+ * The core is off-limits (decisions §21, §66.9): a command or script that names
+ * the app's own folders, or the usual ways to reach them (the app data folder
+ * through %APPDATA% and the like), is refused. On macOS the Seatbelt profile
+ * also hides them; on Windows, where the shell has no sandbox (decisions §43),
+ * this check and the approval are what stand in the way.
+ */
+export function mentionsCoreFolder(text: string, core: string[]): boolean {
+  const norm = (v: string): string => v.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase()
+  const t = norm(text)
+  for (const dir of core) {
+    const d = norm(dir).replace(/\/$/, '')
+    if (d.length > 3 && t.includes(d)) return true
+  }
+  // The data folder reached through the usual variables: %APPDATA%\Titan117, $env:APPDATA/Titan117,
+  // process.env.APPDATA + '/Titan117', ~/Library/Application Support/Titan117, ~/.config/Titan117.
+  if (
+    /(appdata|application support|\.config)\W{0,12}((roaming|local)\/)?titan117(['"`\s/]|$)/.test(t)
+  )
+    return true
+  return /titan117\.db/.test(t)
+}

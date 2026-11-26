@@ -64,7 +64,7 @@ Enforced by: CI (1, 2), the pull request checklist (§15) and review (3 to 7).
 - **Shell commands run sandboxed**, in their own process, with a timeout, in an allowed folder; risky commands (delete, install, network, system changes) need approval. *Enforced by:* tests.
 - **Budgets and limits on every task**: credits, steps, time and loop detection. *Enforced by:* tests.
 - **Every action is logged** in the activity timeline (1.8): what, which agent, which model, what it cost, who approved it.
-- **The core is off-limits** (decisions §21): no agent, tool, add-on or sidebar app may write to the app's install folder, its permission, credit or licence settings, or the update channel. The app grows only through add-ons with manifests. *Enforced by:* the app folder and core settings are never inside an allowed folder; a denial test tries to write each of them from an agent, a shell command and an add-on; the app checks its own signature at start and goes to safe mode if it fails.
+- **The core is off-limits** (decisions §21): no agent, tool, add-on or sidebar app may write to the app's install folder, its permission, credit or licence settings, or the update channel. The app grows only through add-ons with manifests. *Enforced by:* the app folder and core settings are never inside an allowed folder; a denial test tries to write each of them from an agent, a shell command and an add-on; commands and scripts that name the app's folders are refused before asking (decisions §66.15); the app checks its own signature at start and goes to safe mode if it fails (phase 18).
 
 ## 5. Untrusted content and prompt injection
 
@@ -92,7 +92,9 @@ Web pages, documents, emails, repositories, marketplace items and tool output ar
 - Artifacts load scripts only from approved sources; shared artifacts never contain secrets or private data beyond what the user chose.
 - Marketplace items: permissions screen before install, pinned to a commit, dependency scan, the agent's summary of what the code does (§10 of the feature map).
 
-*Enforced by:* tests of the sandbox (a test app that tries to escape must fail).
+- Tool add-ons run in QuickJS compiled to WebAssembly with a memory, CPU and output cap, and reach only their declared hosts over HTTPS, every redirect checked (decisions §66.6).
+
+*Enforced by:* tests of the sandbox (a test app that tries to escape must fail; `test/addons-sandbox.test.ts` for tool add-ons).
 
 ## 8. Secrets
 

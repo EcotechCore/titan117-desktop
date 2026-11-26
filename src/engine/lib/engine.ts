@@ -7,6 +7,10 @@ import { randomBytes } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, extname, join } from 'node:path'
 import { readFile, stat } from 'node:fs/promises'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { AddonError, createAddonStore, HEALTHY_AFTER_MS } from './addons/store'
+import { createAddonService } from './addons/service'
+import { createFileAccess } from './folders'
 
 import type { EngineEvent } from '../../shared/protocol'
 import { createApi } from '../api'
@@ -154,6 +158,8 @@ export interface EngineOptions {
   onNotify?: (note: { title: string; body: string; taskId: string }) => void
   /** Search by meaning (7.4); tests pass a fake or null, the app the local model. */
   embedder?: Embedder | null
+  /** Started with --safe-mode (decisions §66.8): add-ons off for this run. */
+  safeMode?: boolean
 }
 
 /** Images the chat may show (2.7); never SVG, which can carry scripts. */
@@ -360,14 +366,57 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     (what: 'memory' | 'skills' | 'records' | 'connectors' | 'reports' | 'agents') => (): void =>
       emit({ type: 'changed', what })
   const memory = createMemoryStore(db, changed('memory'))
+  // Add-ons (phase 16, decisions §66): in the data folder, a core folder no agent can write to.
+  const addonStore = createAddonStore({
+    root: options.dataDir ? join(options.dataDir, 'addons') : null,
+    db,
+    forceSafeMode: options.safeMode,
+    onChange: () => emit({ type: 'changed', what: 'addons' })
+  })
+  const safeMode = addonStore.safeMode()
+  if (options.dataDir) {
+    // The shell serves sidebar apps; this marker tells it they're off in safe mode.
+    const marker = join(options.dataDir, 'sidebar-apps', 'safe-mode')
+    try {
+      if (safeMode.on) {
+        mkdirSync(join(options.dataDir, 'sidebar-apps'), { recursive: true })
+        writeFileSync(
+          marker,
+          `${safeMode.reason ?? 'safe mode'}
+`
+        )
+      } else rmSync(marker, { force: true })
+    } catch (error) {
+      log.capture('safe mode', error)
+    }
+  }
+  // A healthy minute after starting clears the start mark (decisions §66.8).
+  setTimeout(() => addonStore.markHealthy(), HEALTHY_AFTER_MS).unref()
+  const addonService = createAddonService({
+    store: addonStore,
+    async marketStatus(repo) {
+      if (!account.proxyUrl) return null
+      const response = await fetch(
+        `${account.proxyUrl.replace(/\/$/, '')}/market/status?repo=${encodeURIComponent(repo)}`
+      )
+      if (!response.ok) return null
+      const body = (await response.json()) as { takenDown?: unknown; verifiedCommit?: unknown }
+      return {
+        takenDown: body.takenDown === true,
+        verifiedCommit: typeof body.verifiedCommit === 'string' ? body.verifiedCommit : null
+      }
+    }
+  })
   const skills = createSkillStore(
     options.dataDir ? join(options.dataDir, 'skills') : null,
-    changed('skills')
+    changed('skills'),
+    () => addonStore.skills()
   )
   // Agents (4.1-4.3, decisions §59): files in the data folder, out of every agent's file tools' reach.
   const agents = createAgentStore({
     dir: options.dataDir ? join(options.dataDir, 'agents') : null,
     onChange: changed('agents'),
+    extra: () => addonStore.agents(),
     models: {
       get: () =>
         getMeta<Record<string, { model: string | null; fastModel: string | null }>>(
@@ -559,7 +608,10 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     onError: (error, context) => void log.capture('marketing', error, context)
   })
 
-  const tools = createRegistry(options.tools ?? builtInTools, () => connectors.tools())
+  const tools = createRegistry(options.tools ?? builtInTools, () => [
+    ...connectors.tools(),
+    ...addonStore.tools()
+  ])
   const permissions = createPermissionLayer({
     tools,
     store,
@@ -574,6 +626,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       memory,
       skills,
       records,
+      addons: addonService,
       media: (mediaRef = createMediaService({
         fetch: connectivity.track(
           engineFetch(options.fetch, () =>
@@ -1481,6 +1534,40 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
     },
     automation: automationView,
     marketing: marketingView,
+    addons: {
+      list: () => ({
+        addons: addonStore.list(),
+        safeMode: safeMode.on ? safeMode : { ...addonStore.safeMode(), on: false }
+      }),
+      inspect: (address) =>
+        addonService.inspect(
+          address,
+          connectivity.track(engineFetch(options.toolFetch ?? options.fetch))
+        ),
+      async install(key, folder) {
+        // The user's click on the card is the OK (decisions §66.5); files only into the allowed folders.
+        const inspection = addonService.inspection(key)
+        if (inspection?.manifest.app && !folder)
+          throw new AddonError('Pick a new folder inside the allowed folders for the app’s files.')
+        const files = folder ? createFileAccess(policy(), 'write') : null
+        if (files && folder) {
+          const existing = await files.list(folder).catch(() => null)
+          if (existing && existing.length)
+            throw new AddonError('That folder isn’t empty. Pick a new one.')
+        }
+        const { addon, templateFiles } = addonService.install(key, 'you')
+        if (files && folder && templateFiles) {
+          await files.makeFolder(folder)
+          for (const [path, data] of templateFiles)
+            await files.writeBytes(`${folder.replace(/[\\/]+$/, '')}/${path}`, Buffer.from(data))
+        }
+        return { addon, copiedTo: folder ? await files!.resolve(folder) : null }
+      },
+      rollback: (name) => addonStore.rollback(name),
+      setEnabled: (name, enabled) => addonStore.setEnabled(name, enabled),
+      remove: (name) => addonStore.remove(name),
+      leaveSafeMode: () => addonStore.leaveSafeMode()
+    },
     notifications: {
       get: () => getMeta<boolean>(db, 'notifications', true),
       set: (on) => setMeta(db, 'notifications', on)

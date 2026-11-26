@@ -76,6 +76,12 @@ export interface ToolPermissions {
   automation?: 'read' | 'write'
   /** The brand kit, the content calendar and the promo video (phase 14, decisions §62): reading, or also saving and making. */
   marketing?: 'read' | 'write'
+  /**
+   * Add-ons (phase 16, decisions §66): `run` for a tool an add-on brings (it runs
+   * in the add-on sandbox), `manage` for inspecting, installing and rolling back
+   * add-ons, which only Titan does.
+   */
+  addons?: 'run' | 'manage'
 }
 
 /** The brand kit, posts and the promo video (15.1-15.4, 5.1; decisions §62). Nothing here posts anywhere. */
@@ -211,6 +217,32 @@ export interface MediaAccess {
 }
 
 /** What came back from one part handed to another agent (4.6). */
+/** Add-ons (decisions §66): only Titan's add-on tools get this. */
+export interface AddonAccess {
+  list(): import('../../lib/addons/store').Addon[]
+  /** Download a GitHub repository at a commit and check it; nothing is installed. */
+  inspect(address: string): Promise<import('../../lib/addons/service').Inspection>
+  /** A text file of what was inspected, as outside content. */
+  read(key: string, path: string): string
+  /** The approval card's text for what was inspected. */
+  card(key: string, summary: string | null): string
+  /** Install what was inspected; an app template's files go into `folder` (a new folder in the allowed folders). */
+  install(
+    key: string,
+    folder: string | null
+  ): Promise<{ addon: import('../../lib/addons/store').Addon; copiedTo: string | null }>
+  /** A tool add-on Titan wrote, loaded in the sandbox (nothing installed). */
+  checkTool(input: { manifest: unknown; code: string }): Promise<{
+    manifest: import('../../../shared/addon-manifest').AddonManifest
+    defined: string[]
+  }>
+  createTool(input: {
+    manifest: unknown
+    code: string
+  }): Promise<import('../../lib/addons/store').Addon>
+  rollback(name: string): import('../../lib/addons/store').Addon
+}
+
 export interface PartResult {
   agent: string
   taskId: string
@@ -407,6 +439,7 @@ export interface ToolContext {
   sites: SiteAccess
   automation: AutomationAccess
   marketing: MarketingAccess
+  addons: AddonAccess
   /**
    * Ask the user mid-run (a final step on a page, a site that forbids
    * automation). Resolves true when they approve. Laptop-only.
@@ -472,7 +505,17 @@ export interface ToolDefinition<Input = Record<string, unknown>> {
   /** The full JSON schema for the model, when richer than `params` (connector tools). */
   rawSchema?: Record<string, unknown>
   /** Optional: a risk for this call that depends on its input. */
-  assess?(input: Input, ctx: { folders: string[]; untrustedSeen: boolean }): Assessment
+  assess?(
+    input: Input,
+    ctx: {
+      folders: string[]
+      untrustedSeen: boolean
+      /** The app's own folders (install and data): never reachable (decisions §21). */
+      core?: string[]
+      /** The card for an add-on that was inspected (decisions §66.5); null when it wasn't. */
+      addonCard?: (key: string, summary: string | null) => string | null
+    }
+  ): Assessment
   run(input: Input, ctx: ToolContext): Promise<ToolResult>
 }
 
