@@ -32,6 +32,7 @@ async function main(): Promise<void> {
     coreDirs: [dataDir, env('TITAN117_APP_DIR')],
     allowedOrigins: JSON.parse(env('TITAN117_ORIGINS')) as string[],
     openRouterKey: process.env['OPENROUTER_API_KEY'] ?? null,
+    safeMode: process.env['TITAN117_SAFE_MODE'] === '1',
     // Back online (1.24): the shell renews the licence lease.
     onOnline: () => process.parentPort.postMessage({ type: 'online' }),
     // Keep the laptop awake while tasks run (1.5); tell the user what happened (1.9).

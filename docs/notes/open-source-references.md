@@ -247,10 +247,13 @@ Checked on 25 Nov 2026 (decisions §64). Phase 15 ships none of these as a depen
 
 | Project | What to take | Licence (believed) | Use | Folder | Licence checked | Commit |
 |---|---|---|---|---|---|---|
-| [octokit/octokit.js](https://github.com/octokit/octokit.js) | GitHub API and GitHub App | MIT | Lib | `market/octokit` | | |
-| [google/osv-scanner](https://github.com/google/osv-scanner) | Dependency vulnerability scan | Apache 2.0 | Lib | `market/osv-scanner` | | |
-| [licensee/licensee](https://github.com/licensee/licensee) | Licence detection | MIT | Ideas | `market/licensee` | MIT | `e56521d7e811` |
-| [gitleaks/gitleaks](https://github.com/gitleaks/gitleaks) | Secret scanning (also our CI) | MIT | Lib | `market/gitleaks` | | |
+| [octokit/octokit.js](https://github.com/octokit/octokit.js) | GitHub API and GitHub App: ideas only; not shipped (a dozen packages, requests outside the engine's network code); the laptop calls GitHub's REST API itself (decisions §66.1) | MIT | Ideas | `market/octokit` | MIT (Octokit contributors, 2023) | `bc34deaf3574` |
+| [google/osv-scanner](https://github.com/google/osv-scanner) | Dependency vulnerability scan: a Go program, not shipped; we ask OSV's public API (`querybatch`) from the laptop | Apache 2.0 | Ideas | `market/osv-scanner` | Apache 2.0 | `66586f4a200a` |
+| [licensee/licensee](https://github.com/licensee/licensee) | Licence detection: GitHub's licence API uses it; our own short matcher on the licence file's words | MIT | Ideas | `market/licensee` | MIT | `e56521d7e811` |
+| [gitleaks/gitleaks](https://github.com/gitleaks/gitleaks) | Secret scanning: a Go program (also our CI); ideas for our ten rules for add-ons | MIT | Ideas | `market/gitleaks` | MIT (Zachary Rice, 2019) | `5f6ec56cfa6f` |
+| [justjake/quickjs-emscripten](https://github.com/justjake/quickjs-emscripten) | The add-on sandbox: QuickJS compiled to WebAssembly (`quickjs-emscripten-core`, `@jitl/quickjs-wasmfile-release-sync`, `@jitl/quickjs-ffi-types`, 0.32.0, about 650 KB); QuickJS itself is MIT (Fabrice Bellard, Charlie Gordon) | MIT | Lib | `market/quickjs-emscripten` | MIT (Jake Teton-Landis, 2019–2024; QuickJS: Bellard and Gordon) | `7b7af98e4e69` |
+
+Checked on 26 Nov 2026 (decisions §66). Phase 16 ships one new dependency, quickjs-emscripten (three MIT packages, no further dependencies); Octokit, osv-scanner, gitleaks and licensee are ideas only. Nothing copied.
 
 ---
 

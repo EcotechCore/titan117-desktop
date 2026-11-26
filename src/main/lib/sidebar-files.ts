@@ -7,7 +7,7 @@
  * it in a frame sandboxed without `allow-same-origin`, so it has no
  * cookies, storage or access to the window.
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { extname, join, normalize, sep } from 'node:path'
 
 export const SIDEBAR_HOST = /^([a-z0-9][a-z0-9-]{0,59})\.apps$/
@@ -118,6 +118,9 @@ export function sidebarResponse(root: string, id: string, pathname: string): Res
     'access-control-allow-origin': '*',
     'cache-control': 'no-store'
   }
+  // Safe mode (decisions §66.8): the engine leaves this marker, and no sidebar app is served.
+  if (existsSync(join(root, 'safe-mode')))
+    return new Response('Sidebar apps are off in safe mode.', { status: 404, headers })
   const file = sidebarFile(root, id, pathname)
   if (!file) return new Response('Not found', { status: 404, headers })
   try {

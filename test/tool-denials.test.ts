@@ -1197,6 +1197,82 @@ const DENIALS: Record<string, () => Promise<void>> = {
     expect(none.status).toBe('refused')
   },
 
+  async addons_inspect() {
+    // The add-on service isn't there (and a bad address never reaches the network).
+    const b = bench()
+    expect((await b.run({ name: 'addons_inspect', input: { address: 'acme/clerk' } })).status).toBe(
+      'refused'
+    )
+    const bad = await b.run({ name: 'addons_inspect', input: { address: '../../etc' } })
+    expect(bad.status).not.toBe('done')
+    expect(b.web.requests).toEqual([])
+  },
+
+  async addons_install() {
+    const b = bench()
+    // Nothing was inspected: refused before anyone is asked.
+    const key = `acme/clerk@${'a'.repeat(40)}`
+    const out = await b.run({ name: 'addons_install', input: { key, summary: 'x' } })
+    expect(out.status).toBe('refused')
+    expect(out.output).toMatch(/Inspect the add-on first/)
+    expect(b.asked()).toBe(0)
+    expect(
+      (await b.run({ name: 'addons_install', input: { key: 'acme/clerk', summary: 'x' } })).status
+    ).toBe('refused')
+  },
+
+  async addons_create_tool() {
+    const b = bench()
+    const manifest = {
+      titan: 1,
+      type: 'tool',
+      name: 'rates',
+      version: '1.0.0',
+      description: 'Rates.',
+      tool: {
+        main: 'tool.js',
+        hosts: [],
+        tools: [{ name: 'rate', description: 'A rate.', risk: 'read' }]
+      }
+    }
+    const code = 'titan.define({ rate: async () => 1 })'
+    // A bad titan.json is refused before anyone is asked.
+    const bad = await b.run({
+      name: 'addons_create_tool',
+      input: { manifest: { ...manifest, type: 'virus' }, code }
+    })
+    expect(bad.status).toBe('refused')
+    // A new tool is a standing change: every time, laptop only, never "always".
+    const approval = await b.approvalOf({ name: 'addons_create_tool', input: { manifest, code } })
+    expect(approval.canAlways).toBe(false)
+    expect(approval.answeredBy).toBe('refused')
+    expect(approval.summary).toContain('can’t reach the internet')
+    expect(
+      (await b.run({ name: 'addons_create_tool', input: { manifest, code } }, 'deny')).status
+    ).toBe('refused')
+    // Approved, but there is no add-on service here: nothing made.
+    expect(
+      (await b.run({ name: 'addons_create_tool', input: { manifest, code } }, 'approve')).status
+    ).toBe('refused')
+  },
+
+  async addons_list() {
+    const b = bench()
+    expect((await b.run({ name: 'addons_list', input: {} })).status).toBe('refused')
+  },
+
+  async addons_rollback() {
+    const b = bench()
+    const approval = await b.approvalOf({ name: 'addons_rollback', input: { name: 'rates' } })
+    expect(approval.canAlways).toBe(false)
+    expect(
+      (await b.run({ name: 'addons_rollback', input: { name: 'rates' } }, 'deny')).status
+    ).toBe('refused')
+    expect(
+      (await b.run({ name: 'addons_rollback', input: { name: 'rates' } }, 'approve')).status
+    ).toBe('refused')
+  },
+
   async server_list() {
     // Only the servers the user added; nothing without the permission's service.
     const b = bench()
@@ -2351,7 +2427,9 @@ describe('tool denial tests', () => {
           () => ctx.automation.schedules(),
           () => ctx.automation.login('example.com'),
           () => ctx.marketing.brand(),
-          () => ctx.marketing.savePosts([])
+          () => ctx.marketing.savePosts([]),
+          () => ctx.addons.list(),
+          () => ctx.addons.inspect('acme/clerk')
         ]
         const refused: string[] = []
         for (const attempt of tries) {
@@ -2367,7 +2445,7 @@ describe('tool denial tests', () => {
     })
     const b = bench({ extraTools: [greedy] })
     const outcome = await b.run({ name: 'greedy', input: {} })
-    expect(outcome.output.split(',')).toEqual(Array(21).fill('PermissionError'))
+    expect(outcome.output.split(',')).toEqual(Array(23).fill('PermissionError'))
   })
 
   it('every tool declares a risk and its permissions', () => {

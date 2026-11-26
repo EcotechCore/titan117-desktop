@@ -239,6 +239,8 @@ function startEngine(): void {
       TITAN117_DATA_DIR: app.getPath('userData'),
       TITAN117_APP_DIR: is.dev ? join(app.getAppPath(), 'out') : dirnameOfInstall(),
       TITAN117_VERSION: app.getVersion(),
+      // Started with --safe-mode (decisions §66.8): add-ons stay off for this run.
+      TITAN117_SAFE_MODE: process.argv.includes('--safe-mode') ? '1' : '',
       TITAN117_ORIGINS: JSON.stringify([devServerUrl ? new URL(devServerUrl).origin : APP_ORIGIN])
     }
   })

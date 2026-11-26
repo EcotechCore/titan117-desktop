@@ -21,6 +21,9 @@ import type { LocalModels } from './lib/llama'
 import type { Logger } from './lib/log'
 import { ModelError } from './models/types'
 import { ConnectorError } from './lib/mcp'
+import { AddonError } from './lib/addons/store'
+import { SourceError } from './lib/addons/source'
+import { SandboxError } from './lib/addons/sandbox'
 import { SkillError } from './lib/skills'
 import { AgentError, checkAgent, parseAgent, type AgentStore } from './lib/agents'
 import { CompareError, type CompareResult } from './compare'
@@ -186,6 +189,16 @@ export function createApi(deps: {
     zip(folder: string): Promise<{ name: string; base64: string }>
     publish(folder: string): Promise<{ started: boolean }>
     setModels(next: import('./tools/lib/define-tool').AppModels): void
+  }
+  /** Add-ons and safe mode (phase 16, decisions §66): the Add-ons screen's clicks. */
+  addons?: {
+    list(): unknown
+    inspect(address: string): Promise<unknown>
+    install(key: string, folder: string | null): Promise<unknown>
+    rollback(name: string): unknown
+    setEnabled(name: string, enabled: boolean): unknown
+    remove(name: string): void
+    leaveSafeMode(): void
   }
   /** Sidebar apps (6.2, 6.11; decisions §58): the user's clicks, and the calls apps make through the window. */
   sidebar?: {
@@ -631,6 +644,39 @@ export function createApi(deps: {
         }
       case 'DELETE connectors/:id':
         await need(deps.connectors).remove(id!)
+        return { ok: true }
+      case 'GET addons':
+        return need(deps.addons).list()
+      case 'POST addons': {
+        const a = need(deps.addons)
+        const action = field(body, 'action')
+        if (action === 'inspect')
+          return { inspection: await a.inspect(String(field(body, 'address') ?? '')) }
+        if (action === 'install') {
+          const folder = field(body, 'folder')
+          return {
+            installed: await a.install(
+              String(field(body, 'key') ?? ''),
+              typeof folder === 'string' && folder ? folder : null
+            )
+          }
+        }
+        if (action === 'leave-safe-mode') {
+          a.leaveSafeMode()
+          return { ok: true }
+        }
+        throw new ApiError(400, 'BAD_REQUEST', 'Unknown add-on action.')
+      }
+      case 'POST addons/:id': {
+        const a = need(deps.addons)
+        const action = field(body, 'action')
+        if (action === 'rollback') return { addon: a.rollback(id!) }
+        if (action === 'enable' || action === 'disable')
+          return { addon: a.setEnabled(id!, action === 'enable') }
+        throw new ApiError(400, 'BAD_REQUEST', 'Unknown add-on action.')
+      }
+      case 'DELETE addons/:id':
+        need(deps.addons).remove(id!)
         return { ok: true }
       case 'POST speech/transcribe': {
         // 16 kHz mono 16-bit samples, base64, recorded by the window's microphone button.
@@ -1404,7 +1450,10 @@ export function createApi(deps: {
         error instanceof AgentError ||
         error instanceof CompareError ||
         error instanceof AutomationError ||
-        error instanceof MarketingError
+        error instanceof MarketingError ||
+        error instanceof AddonError ||
+        error instanceof SourceError ||
+        error instanceof SandboxError
       )
         return { status: 400, body: { error: 'BAD_REQUEST', message: error.message } }
       if (error instanceof ArtifactError)

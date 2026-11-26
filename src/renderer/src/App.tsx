@@ -23,6 +23,7 @@ import { useAccount } from './useAccount'
 import { ApprovalsView, ModelsView } from './Views'
 import { MemoryView } from './Memory'
 import { ConnectorsView } from './Connectors'
+import { AddonsView, SafeModeBanner } from './Addons'
 import { play, record, stopPlaying, type Recording } from './voice'
 import { ReadAloudBar, type Reading } from './ReadAloudBar'
 import { VoiceBar } from './VoiceBar'
@@ -468,6 +469,12 @@ function App(): React.JSX.Element {
           <Icon name="plug" /> Connectors
         </button>
         <button
+          className={view.kind === 'addons' ? 'nav on' : 'nav'}
+          onClick={() => dispatch({ type: 'view', view: { kind: 'addons' } })}
+        >
+          <Icon name="box" /> Add-ons
+        </button>
+        <button
           className={view.kind === 'code' ? 'nav on' : 'nav'}
           onClick={() => dispatch({ type: 'view', view: { kind: 'code' } })}
         >
@@ -677,6 +684,13 @@ function App(): React.JSX.Element {
 
       <main className="work">
         {account && <LeaseWarning view={account} />}
+        {view.kind !== 'addons' && (
+          <SafeModeBanner
+            client={api}
+            changed={state.changed.addons ?? 0}
+            onOpen={() => dispatch({ type: 'view', view: { kind: 'addons' } })}
+          />
+        )}
         {update !== null && (
           <div className="note offline-switch" role="status">
             <span>Titan117 {update} is ready.</span>
@@ -821,6 +835,9 @@ function App(): React.JSX.Element {
           )}
           {view.kind === 'connectors' && (
             <ConnectorsView client={api} changed={state.changed.connectors ?? 0} onProblem={fail} />
+          )}
+          {view.kind === 'addons' && (
+            <AddonsView client={api} changed={state.changed.addons ?? 0} onProblem={fail} />
           )}
           {view.kind === 'agents' && (
             <AgentsView

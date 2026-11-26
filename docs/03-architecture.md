@@ -146,7 +146,7 @@ A separate Next.js app, in its own repo (`titan117-pop`), at its own address (fo
 | Devices | `devices` (paired engines, last seen, version) |
 | Remote control | `commands`, `commandEvents` (results and progress streamed back) |
 | Sharing | `sharedArtifacts`, `artifactComments`, file storage |
-| Marketplace | `marketItems`, `marketInstalls`, `marketReports` |
+| Marketplace | `marketItems`, `marketReports`; `marketInstalls` and `marketRatings` planned (decisions §66) |
 
 Every function checks who is calling and what they may do; the server is the security boundary, whatever the client.
 
@@ -220,6 +220,7 @@ The router also handles: model per agent and per step (2.3), escalation from che
 2. After the user's OK, the agent builder, the coding engine or the app builder creates it as a package with a `titan.json` manifest.
 3. It installs through the same permissions screen and sandbox as a marketplace item, with a version to roll back to.
 4. The core (engine, permission layer, credits, licence, updates) is outside every agent's allowed folders, so nothing can modify it.
+5. A tool add-on's code runs in QuickJS compiled to WebAssembly, inside the engine: no files, processes or network of its own, only `titan.fetch` to the hosts its `titan.json` names, through the task's network policy (decisions §66.6). Safe mode starts with every add-on off (§66.8).
 
 ### Sharing an artifact
 

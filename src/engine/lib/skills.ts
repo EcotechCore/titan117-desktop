@@ -78,7 +78,9 @@ export interface SkillStore {
 /** Skills as files in `dir`, or in memory when `dir` is null (tests). */
 export function createSkillStore(
   dir: string | null,
-  onChange: () => void = () => undefined
+  onChange: () => void = () => undefined,
+  /** Skills that installed add-ons bring (decisions §66.6); the user's own win on a clash. */
+  extra: () => Skill[] = () => []
 ): SkillStore {
   const memory = new Map<string, string>()
   const file = (name: string): string => join(dir!, `${name}.md`)
@@ -105,17 +107,21 @@ export function createSkillStore(
             }
           })()
         : [...memory.keys()]
-      return names
+      const own = names
         .filter((n) => NAME.test(n))
-        .map((n) => store.get(n))
+        .map((n) => {
+          const raw = readRaw(n)
+          return raw === null ? null : parse(n, raw)
+        })
         .filter((s): s is Skill => s !== null)
-        .sort((a, b) => a.name.localeCompare(b.name))
+      const added = extra().filter((x) => !own.some((o) => o.name === x.name))
+      return [...own, ...added].sort((a, b) => a.name.localeCompare(b.name))
     },
 
     get(name) {
       if (!NAME.test(name)) return null
       const raw = readRaw(name)
-      return raw === null ? null : parse(name, raw)
+      return raw === null ? (extra().find((x) => x.name === name) ?? null) : parse(name, raw)
     },
 
     save(input) {

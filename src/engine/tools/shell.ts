@@ -6,7 +6,7 @@
  * approvals (feature 4.10).
  */
 import { defineTool, type Assessment } from './lib/define-tool'
-import { classifyCommand } from './shell-rules'
+import { classifyCommand, mentionsCoreFolder } from './shell-rules'
 
 /** Code that may talk to the internet. */
 const NETWORKY = /https?:|fetch\(|urllib|requests\.|https?\.request|socket|net\.connect/i
@@ -59,6 +59,12 @@ export const runCommand = defineTool<{
   privateOutput: true,
   describe: (input) => `Run: ${input.command}`,
   assess(input, ctx): Assessment {
+    if (mentionsCoreFolder(input.command, ctx.core ?? []))
+      return {
+        risk: 'write',
+        summary: `Run: ${input.command}`,
+        refuse: 'Titan117’s own folders (the app and its data) are off-limits to every command.'
+      }
     const verdict = classifyCommand(input.command)
     const folder = ctx.folders[0] ?? ''
     const summary = `Run: ${input.command}${input.folder ? `  (in ${input.folder})` : ''}`
@@ -137,7 +143,10 @@ export const runCode = defineTool<{
   privateOutput: true,
   describe: (input) =>
     `Run a ${input.language} script (${String(input.code ?? '').split('\n').length} lines)`,
-  assess: (input) => ({
+  assess: (input, ctx) => ({
+    refuse: mentionsCoreFolder(String(input.code ?? ''), ctx.core ?? [])
+      ? 'Titan117’s own folders (the app and its data) are off-limits to every script.'
+      : undefined,
     risk: 'write',
     summary: `Run a ${input.language} script (${String(input.code ?? '').split('\n').length} lines)`,
     outgoing: NETWORKY.test(input.code) ? input.code : undefined

@@ -2426,3 +2426,19 @@ ol.rec-steps {
   font-size: 12px;
   white-space: pre;
 }
+
+/* Add-ons (decisions §66) */
+.addon-card .addon-h {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 8px 0 2px;
+}
+.addon-card .tool-list li.warn {
+  color: var(--danger, #b3261e);
+}
+.safe-mode {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}

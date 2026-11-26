@@ -19,6 +19,7 @@ export type View =
   | { kind: 'models' }
   | { kind: 'memory' }
   | { kind: 'connectors' }
+  | { kind: 'addons' }
   | { kind: 'artifacts' }
   | { kind: 'search' }
   | { kind: 'setup' }

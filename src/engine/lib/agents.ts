@@ -397,6 +397,8 @@ export function createAgentStore(deps: {
   /** Null keeps the files in memory (tests). */
   dir: string | null
   onChange?: () => void
+  /** Agents that installed add-ons bring (decisions §66.6): listed, never saved or removed here. */
+  extra?: () => AgentDef[]
   /** Settings for built-in agents' models. */
   models?: {
     get(): Record<string, { model: string | null; fastModel: string | null }>
@@ -451,7 +453,12 @@ export function createAgentStore(deps: {
   }
 
   const store: AgentStore = {
-    list: () => [...BUILT_IN_AGENTS.map(withModels), ...own()],
+    list: () => {
+      const mine = own()
+      const taken = new Set([...BUILT_IN_AGENTS, ...mine].map((a) => a.id))
+      const added = (deps.extra?.() ?? []).filter((a) => !taken.has(a.id))
+      return [...BUILT_IN_AGENTS.map(withModels), ...mine, ...added]
+    },
 
     get(nameOrId) {
       const key = String(nameOrId ?? '').trim()
@@ -463,6 +470,10 @@ export function createAgentStore(deps: {
       const existing = store.get(def.id)
       if (existing?.builtIn)
         throw new AgentError(`${existing.name} is built in. Clone it to make your own version.`)
+      if (existing && existing.source.startsWith('add-on '))
+        throw new AgentError(
+          `${existing.name} comes from an ${existing.source}. Clone it to change it, or manage it on Add-ons.`
+        )
       if (existing && !options.replace)
         throw new AgentError(`There is already an agent called ${existing.name}.`)
       if (existing && existing.name !== def.name)
@@ -477,6 +488,8 @@ export function createAgentStore(deps: {
       const def = store.get(nameOrId)
       if (!def) throw new AgentError('There is no such agent.')
       if (def.builtIn) throw new AgentError(`${def.name} is built in and can’t be removed.`)
+      if (def.source.startsWith('add-on '))
+        throw new AgentError(`${def.name} comes from an add-on. Remove it on the Add-ons screen.`)
       if (dir) rmSync(join(dir, `${def.id}.md`), { force: true })
       else memoryFiles.delete(def.id)
       onChange()
@@ -509,7 +522,8 @@ export function toolGroup(tool: {
   rawSchema?: unknown
 }): ToolGroup | 'team' {
   const p = tool.permissions
-  if (tool.name.startsWith('agent_')) return 'team'
+  if (tool.name.startsWith('agent_') || p.addons === 'manage') return 'team'
+  if (p.addons === 'run') return 'addons'
   if (tool.rawSchema) return 'connectors'
   if (p.marketing) return 'marketing'
   if (p.media) return 'media'
@@ -542,6 +556,8 @@ export function agentMayUse(
   if (group === 'team') {
     if (options.isPart || !def.manager) return false
     if (tool.name === 'agent_create') return def.builtIn && def.name === TITAN
+    // Only Titan inspects, installs and rolls back add-ons (decisions §66.5).
+    if (tool.permissions.addons === 'manage') return def.builtIn && def.name === TITAN
     return true
   }
   return def.tools.includes(group)
