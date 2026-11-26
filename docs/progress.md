@@ -32,6 +32,10 @@ Where the build stands against the phases in the [roadmap](01-launch-roadmap-v1.
 
 Each entry: date, phase, what was done, and anything left open. One entry per piece of work, not per commit.
 
+### 26 Nov 2026 · Phase 16's rest merged
+
+The pull requests are merged in all three repos (web #66 first, then desktop #61 and pop #53 after their docs check passed), and the development Convex deployment has the new add-on types. Run the desktop app from `main`. Phase 16 stays in progress until its check is seen with real services: a community agent and an app template from a real repository with the topic (the example repository), a publish to a real GitHub account, and the portal's screen once Convex trusts the staff Clerk application; Codeberg stays to verify, and decisions §66 waits for the owner.
+
 ### 26 Nov 2026 · Phase 16: the rest (MCP servers, workflows, GitLab, folders, projects, publishing)
 
 Built (decisions §66.21–24): MCP server and workflow add-ons become a connector and a schedule (removed in safe mode, remade on the next normal start); GitLab.com as a source; `addons_install_folder` (larger tools written into a folder, same checks and card), `project_download` (any open-source project into a new folder, nothing runs) and `addons_publish` (a public repository in the user's GitHub with a licence and README), each with a denial test; the Add-ons screen shows the new kinds, GitLab, where an add-on was published, and "Suggest a change" (GitHub's fork page).
