@@ -2,7 +2,7 @@
 
 Everything waiting on the owner, in the order to do it. Gathered from every repo's progress log; last rewritten 15 Nov 2026 after phase 4's leftovers and the first part of phase 5. Shared doc: edited in `titan117-web`, copied to the other repos. When an item is done, tick it here and add a line to `progress.md`; when the build adds a new one, it goes here in the same commit.
 
-**Where the code is:** everything up to phase 16's second part (installs and ratings, the update card, takedowns and sidebar apps' rollback) is merged into `main` in all three repos (26 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
+**Where the code is:** everything up to the rest of phase 16 (MCP servers and workflows, GitLab, add-ons from a folder, open-source projects and publishing) is merged into `main` in all three repos (26 Nov 2026); run the desktop app from `main` with `pnpm dev`. **Production waits** (decisions §52): everything is checked locally first.
 
 ## Step 1 · Push and review
 
