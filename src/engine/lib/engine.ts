@@ -98,7 +98,8 @@ import { createRunner } from './apps/runner'
 import { createBrowserTests } from './apps/browsers'
 import { AppError, createAppService, type GitHubLink, type Published } from './apps/service'
 import { createDataLayer, DataError, type SyncEntry } from './apps/data'
-import { createSidebarService, type Grants, type SidebarApp } from './apps/sidebar'
+import { createSidebarService, readManifest, type Grants, type SidebarApp } from './apps/sidebar'
+import { checkBundle, packApp, readOnlyFor } from './apps/team-share'
 import { PublishError } from './apps/cloudflare'
 import { cleanBrand, STARTERS, type BrandKit } from './apps/starters'
 import { assess, probeDevice, type DeviceCheck } from './apps/devices'
@@ -912,7 +913,11 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
   // Sidebar apps (6.2, 6.11; decisions §58): a local database per app and the checked builds,
   // in the app's data folder (out of every agent's reach, like the rest of it).
   const sidebarRoot = join(options.dataDir ?? scratchRoot, 'sidebar-apps')
-  const sidebarData = createDataLayer(sidebarRoot)
+  const rawSidebarData = createDataLayer(sidebarRoot)
+  // Apps shared with a team where this person is a viewer (decisions §68.13): their data is
+  // read-only here, for the app's own frame and for Titan alike; the team's changes still arrive.
+  let readOnlyApps = new Map<string, string>()
+  const sidebarData = readOnlyFor(rawSidebarData, (app) => readOnlyApps.get(app) ?? null)
   const sidebar = createSidebarService({
     root: sidebarRoot,
     apps,
@@ -1601,6 +1606,37 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
         }
         if (applied) emit({ type: 'changed', what: 'sidebar' })
         return { applied, skipped, refused }
+      },
+      setReadOnly(next) {
+        readOnlyApps = new Map(Object.entries(next))
+      },
+      readOnly: () => Object.fromEntries(readOnlyApps),
+      pack(id) {
+        const app = sidebar.get(id)
+        if (!app?.folder) throw new AppError('That app isn’t in this laptop’s sidebar.')
+        const m = readManifest(app.folder, app.title)
+        return packApp(app.folder, {
+          id: app.id,
+          title: app.title,
+          manifest: { reads: m.reads, writes: m.writes, ai: m.ai }
+        })
+      },
+      async unpack(bundle, folder) {
+        // The user's click on the Team screen is the OK; files only into a new folder inside the allowed ones.
+        const checked = checkBundle(bundle)
+        const files = createFileAccess(policy(), 'write')
+        const existing = await files.list(folder).catch(() => null)
+        if (existing && existing.length)
+          throw new AppError('That folder isn’t empty. Pick a new one.')
+        await files.makeFolder(folder)
+        const base = folder.replace(/[\\/]+$/, '')
+        for (const f of checked.files)
+          await files.writeBytes(`${base}/${f.path}`, Buffer.from(f.data, 'base64'))
+        return {
+          folder: await files.resolve(folder),
+          title: checked.title,
+          manifest: checked.manifest
+        }
       }
     },
     automation: automationView,
@@ -1844,7 +1880,7 @@ export async function startEngine(options: EngineOptions): Promise<Engine> {
       await connectors.close()
       await codeEngine.shutdown()
       apps.stopAll()
-      sidebarData.close()
+      rawSidebarData.close()
       await codeBridge.stop()
       await toolApprovals.stop()
       await local.dispose()

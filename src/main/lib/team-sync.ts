@@ -55,6 +55,8 @@ interface Stored {
   /** Agents shared, by name: the last version sent (their file's updatedAt). */
   sharedAgents: Record<string, number>
   sharedApps: string[]
+  /** Apps whose source was shared with the team, by id: the last build sent. */
+  sharedAppCode: Record<string, string>
   resendSeen: number
   lastMembers: string[]
   trusted: string[]
@@ -105,6 +107,8 @@ interface Reply {
   top?: number
   gap?: boolean
   resendAt?: number | null
+  /** The audit log's sealed notes, for owners and admins (decisions §68.9). */
+  notes?: { at: number; actor: string; action: string; sealed: string }[]
 }
 
 interface Outgoing {
@@ -121,6 +125,13 @@ export type TeamBody =
   | { type: 'agent'; name: string; text: string; updatedAt: number }
   | { type: 'agent-removed'; name: string }
   | { type: 'data'; app: string; entries: unknown[] }
+  | {
+      type: 'app'
+      id: string
+      title: string
+      manifest: { reads: string[]; writes: string[]; ai: boolean }
+      files: { path: string; data: string }[]
+    }
 
 export interface TeamSyncDeps {
   dataDir: string
@@ -151,6 +162,7 @@ export class Team {
   pending: { gen: number; key: Buffer; by: string; byName: string; code: string } | null = null
   outgoing: Outgoing = {}
   sendOff = false
+  activity: TeamView['activity'] = []
 
   constructor(
     readonly id: string,
@@ -174,6 +186,7 @@ export class Team {
       appCursors: {},
       sharedAgents: {},
       sharedApps: [],
+      sharedAppCode: {},
       resendSeen: 0,
       lastMembers: [],
       trusted: [],
@@ -260,6 +273,8 @@ export class TeamSync {
         confirm: t.pending ? { by: t.pending.byName, code: t.pending.code } : null,
         sharedAgents: Object.keys(t.stored.sharedAgents),
         sharedApps: t.stored.sharedApps,
+        sharedAppCode: Object.keys(t.stored.sharedAppCode),
+        activity: t.activity,
         inbox: t.stored.inbox,
         lastSyncAt: t.stored.lastSyncAt
       }))
@@ -376,6 +391,7 @@ export class TeamSync {
   shareApp(teamId: string, appId: string, on: boolean): void {
     const t = this.team(teamId)
     if (!t || !/^[a-z0-9-]{1,60}$/.test(appId)) return
+    // A viewer receives the team's records; switching sharing off on a viewer's laptop is allowed.
     t.stored.sharedApps = t.stored.sharedApps.filter((a) => a !== appId)
     if (on) {
       t.stored.sharedApps.push(appId)
@@ -387,10 +403,70 @@ export class TeamSync {
   }
 
   /** The user's click: add a shared agent from the inbox to this laptop's agents. */
+  /**
+   * Share a sidebar app itself with the team (members and up, decisions §68.13): its source,
+   * without packages, builds or secrets. Sent once now; the user shares it again for a new version.
+   */
+  async shareAppCode(teamId: string, appId: string): Promise<string | null> {
+    const t = this.team(teamId)
+    if (!t || !teamCan(t.role, 'shareItems') || !/^[a-z0-9-]{1,60}$/.test(appId))
+      return 'Your role doesn’t share apps.'
+    if (t.status !== 'in') return 'Join the team on this laptop first.'
+    let bundle: TeamBody
+    try {
+      ;({ bundle } = await this.deps.engine<{ bundle: TeamBody }>(
+        'GET',
+        `/v1/sync/apps/${encodeURIComponent(appId)}/pack`
+      ))
+    } catch (e) {
+      return e instanceof Error ? e.message : 'The app couldn’t be packed.'
+    }
+    if (
+      !(await this.sendItem(
+        t,
+        bundle,
+        appId in t.stored.sharedAppCode ? 'item.updated' : 'item.shared'
+      ))
+    )
+      return 'The app is too large to share, or Titan117 can’t be reached. Try again later.'
+    t.stored.sharedAppCode[appId] = new Date(this.now()).toISOString()
+    // Its records go with it from now on.
+    if (!t.stored.sharedApps.includes(appId)) t.stored.sharedApps.push(appId)
+    t.save()
+    await this.pushReadOnly()
+    this.changed()
+    this.schedule(0)
+    return null
+  }
+
+  /** The user's click: copy a shared app's source into a new folder named after it inside `parent`. */
+  async addAppFromInbox(teamId: string, entryId: string, parent: string): Promise<string | null> {
+    const t = this.team(teamId)
+    const entry = t?.stored.inbox.find((e) => e.id === entryId && e.type === 'app')
+    if (!t || !entry || !entry.appId) return 'That’s gone.'
+    const text = this.readInboxFile(t, entry.id)
+    if (!text) return 'That’s gone.'
+    const folder = `${parent.replace(/[\\/]+$/, '')}/${entry.appId}`
+    try {
+      await this.deps.engine('POST', '/v1/sync/unpack', {
+        bundle: JSON.parse(text) as unknown,
+        folder
+      })
+    } catch (e) {
+      return e instanceof Error ? e.message : 'The app couldn’t be copied.'
+    }
+    // Its records travel once it's in this laptop's sidebar too.
+    if (!t.stored.sharedApps.includes(entry.appId)) t.stored.sharedApps.push(entry.appId)
+    this.dropInbox(t, entry.id)
+    await this.pushReadOnly()
+    this.changed()
+    return null
+  }
+
   async addFromInbox(teamId: string, entryId: string): Promise<string | null> {
     const t = this.team(teamId)
     const entry = t?.stored.inbox.find((e) => e.id === entryId)
-    if (!t || !entry) return 'That’s gone.'
+    if (!t || !entry || entry.type !== 'agent') return 'That’s gone.'
     const text = this.readInboxFile(t, entry.id)
     if (!text) return 'That’s gone.'
     try {
@@ -439,6 +515,7 @@ export class TeamSync {
           t.stored.on &&
           (t.status !== 'in' || !!t.pending || t.laptops.some((l) => l.status === 'waiting'))
       }
+      await this.pushReadOnly()
       this.changed()
     } catch {
       this.problem = 'Can’t reach Titan117 right now.'
@@ -542,6 +619,7 @@ export class TeamSync {
       t.status = 'waiting'
       return
     }
+    this.openNotes(t, reply.notes ?? [])
     await this.takeKey(t, reply)
     t.status = 'in'
 
@@ -710,6 +788,37 @@ export class TeamSync {
       )
       return true
     }
+    if (body.type === 'app' && c.kind === 'item' && allowed('shareItems')) {
+      if (
+        typeof body.id !== 'string' ||
+        !/^[a-z0-9][a-z0-9-]{0,59}$/.test(body.id) ||
+        !Array.isArray(body.files)
+      )
+        return false
+      for (const old of t.stored.inbox.filter((e) => e.type === 'app' && e.appId === body.id))
+        this.dropInbox(t, old.id)
+      const id = randomId()
+      mkdirSync(join(t.dir, 'inbox'), { recursive: true })
+      // The engine checks every path again before writing anything (team-share.ts).
+      writeFileSync(join(t.dir, 'inbox', `${id}.md`), JSON.stringify(body))
+      const m = body.manifest ?? { reads: [], writes: [], ai: false }
+      t.stored.inbox.push({
+        id,
+        type: 'app',
+        name: String(body.title).slice(0, 60),
+        appId: body.id,
+        asks: { reads: m.reads ?? [], writes: m.writes ?? [], ai: m.ai === true },
+        from: person,
+        role: c.role,
+        at: this.now(),
+        update: false
+      })
+      this.deps.notify(
+        `${t.name}: a shared app`,
+        `${person} shared ${String(body.title).slice(0, 60)}. Open Team to add it.`
+      )
+      return true
+    }
     if (body.type === 'agent-removed' && c.kind === 'item' && allowed('shareItems')) {
       for (const old of t.stored.inbox.filter((e) => e.name === body.name))
         this.dropInbox(t, old.id)
@@ -797,7 +906,9 @@ export class TeamSync {
     if (sealed.length > SYNC_MAX_PACKAGE_BYTES || !(await this.upload(t, 'item', sealed)))
       return false
     // A note for the audit log, sealed under the team key: which agent, readable only by the team.
-    const note = sealPackage(key, { action, name: 'name' in body ? body.name : '' }, t.aad)
+    const what =
+      body.type === 'app' ? `the app ${body.title}` : 'name' in body ? `the agent ${body.name}` : ''
+    const note = sealPackage(key, { action, name: what }, t.aad)
     const urlSafe = Buffer.from(note, 'base64').toString('base64url')
     if (urlSafe.length <= 2000) (t.outgoing.notes ??= []).push({ action, sealed: urlSafe })
     return true
@@ -816,6 +927,47 @@ export class TeamSync {
       body: sealed
     })
     return res.ok
+  }
+
+  /** The audit log's notes this laptop can open: which agent or app was shared, and by whom. */
+  private openNotes(t: Team, notes: NonNullable<Reply['notes']>): void {
+    const out: TeamView['activity'] = []
+    for (const n of notes.slice(0, 50)) {
+      let opened: unknown = null
+      for (const key of t.keys.values()) {
+        opened = openPackage(key, Buffer.from(n.sealed, 'base64url').toString('base64'), t.aad)
+        if (opened) break
+      }
+      const name = (opened as { name?: unknown } | null)?.name
+      if (typeof name === 'string' && name)
+        out.push({
+          at: n.at,
+          who: n.actor.slice(0, 60),
+          action: n.action,
+          what: name.slice(0, 120)
+        })
+    }
+    t.activity = out
+  }
+
+  /**
+   * Apps shared with a team where this person is a viewer: read-only in the engine
+   * (decisions §68.13), for the app's frame and for Titan.
+   */
+  private lastReadOnly = ''
+  async pushReadOnly(): Promise<void> {
+    const apps: Record<string, string> = {}
+    for (const t of this.teams.values())
+      if (t.stored.on && t.role === 'viewer')
+        for (const a of t.stored.sharedApps) apps[a] ??= t.name
+    const text = JSON.stringify(apps)
+    if (text === this.lastReadOnly) return
+    try {
+      await this.deps.engine('PUT', '/v1/sync/read-only', { apps })
+      this.lastReadOnly = text
+    } catch {
+      // The engine may be starting; the next round tries again.
+    }
   }
 
   // ---------------------------------------------------------------- inbox files

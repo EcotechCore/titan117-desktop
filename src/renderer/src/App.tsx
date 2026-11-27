@@ -803,7 +803,12 @@ function App(): React.JSX.Element {
               />
             )}
             {view.kind === 'team' && (
-              <TeamView agents={agents} apps={sidebarApps} onProblem={fail} />
+              <TeamView
+                agents={agents}
+                apps={sidebarApps}
+                folders={engine?.folders ?? []}
+                onProblem={fail}
+              />
             )}
             {view.kind === 'remote' && (
               <RemoteView folders={engine?.folders ?? []} onProblem={fail} />

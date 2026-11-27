@@ -111,6 +111,9 @@ contextBridge.exposeInMainWorld('titan117', {
       ipcRenderer.invoke('teams:shareApp', id, app, on),
     add: (id: string, entry: string) => ipcRenderer.invoke('teams:add', id, entry),
     dismiss: (id: string, entry: string) => ipcRenderer.invoke('teams:dismiss', id, entry),
+    shareAppCode: (id: string, app: string) => ipcRenderer.invoke('teams:shareAppCode', id, app),
+    addApp: (id: string, entry: string, parent: string) =>
+      ipcRenderer.invoke('teams:addApp', id, entry, parent),
     onChange: (listener: (view: unknown) => void) => {
       ipcRenderer.on('teams:changed', (_event, view) => listener(view))
     }

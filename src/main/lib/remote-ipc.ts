@@ -258,6 +258,19 @@ export function startRemote(w: RemoteWiring): RemoteHooks {
     'teams:dismiss',
     (e, id: unknown, entry: unknown) => (guard(e), teams.dismiss(str(id), str(entry)), teams.view())
   )
+  ipcMain.handle('teams:shareAppCode', async (e, id: unknown, app: unknown) => {
+    guard(e)
+    return { error: await teams.shareAppCode(str(id), str(app)), view: teams.view() }
+  })
+  // Copying a shared app: only from our own window, on the user's click; the engine writes only into an allowed folder.
+  ipcMain.handle('teams:addApp', async (e, id: unknown, entry: unknown, parent: unknown) => {
+    guard(e)
+    const folder = typeof parent === 'string' ? parent.slice(0, 1000) : ''
+    return {
+      error: folder ? await teams.addAppFromInbox(str(id), str(entry), folder) : 'Pick a folder.',
+      view: teams.view()
+    }
+  })
   ipcMain.handle('slack:status', (e) => (guard(e), sl.view()))
   ipcMain.handle(
     'slack:connect',

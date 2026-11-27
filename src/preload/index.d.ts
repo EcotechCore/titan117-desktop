@@ -159,6 +159,12 @@ declare global {
         shareApp(id: string, app: string, on: boolean): Promise<TeamsView>
         add(id: string, entry: string): Promise<{ error: string | null; view: TeamsView }>
         dismiss(id: string, entry: string): Promise<TeamsView>
+        shareAppCode(id: string, app: string): Promise<{ error: string | null; view: TeamsView }>
+        addApp(
+          id: string,
+          entry: string,
+          parent: string
+        ): Promise<{ error: string | null; view: TeamsView }>
         onChange(listener: (view: TeamsView) => void): void
       }
       /** The user's own Slack app in Socket Mode (decisions §64.11). Tokens go in, never out. */

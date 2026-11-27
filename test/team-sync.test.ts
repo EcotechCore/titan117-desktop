@@ -47,7 +47,7 @@ function fakeRelay(people: { userId: string; name: string; role: TeamRole; devic
     seq: 0,
     seen: [] as string[],
     refused: [] as string[],
-    notes: [] as { by: string; action: string }[],
+    notes: [] as { by: string; action: string; sealed: string; at: number }[],
     fetch: (async (url: string, init?: RequestInit) => {
       const u = String(url)
       if (u.startsWith('https://storage.test/')) {
@@ -126,7 +126,12 @@ function fakeRelay(people: { userId: string; name: string; role: TeamRole; devic
         }
         for (const n of body.notes ?? [])
           if (teamCan(person.role, 'shareItems'))
-            relay.notes.push({ by: person.name, action: n.action })
+            relay.notes.push({
+              by: person.name,
+              action: n.action,
+              sealed: n.sealed,
+              at: Date.now()
+            })
         if (typeof body.cursor === 'number' && body.cursor > me.cursor && body.cursor <= relay.seq)
           me.cursor = body.cursor
       }
@@ -174,7 +179,16 @@ function fakeRelay(people: { userId: string; name: string; role: TeamRole; devic
             : [],
         top: relay.seq,
         gap: false,
-        resendAt: relay.resendAt || null
+        resendAt: relay.resendAt || null,
+        notes:
+          me.status === 'in' && teamCan(person.role, 'seeAudit')
+            ? relay.notes.map((n) => ({
+                at: n.at,
+                actor: n.by,
+                action: n.action,
+                sealed: n.sealed
+              }))
+            : []
       })
     }) as unknown as typeof fetch
   }
@@ -186,6 +200,8 @@ function fakeRelay(people: { userId: string; name: string; role: TeamRole; devic
 function fakeEngine(agentFiles: Record<string, string> = {}) {
   const imported: { text: string; source: string }[] = []
   const applied: { app: string; entries: unknown[] }[] = []
+  const unpacked: { folder: string; bundle: unknown }[] = []
+  const readOnly: Record<string, string>[] = []
   const log: { seq: number; entry: unknown }[] = []
   const engine: EngineCall = async <T>(
     method: string,
@@ -202,6 +218,24 @@ function fakeEngine(agentFiles: Record<string, string> = {}) {
       return { agent: {} } as T
     }
     if (path === '/v1/sync/apps') return { apps: ['crm'] } as T
+    if (method === 'GET' && path === '/v1/sync/apps/crm/pack')
+      return {
+        bundle: {
+          type: 'app',
+          id: 'crm',
+          title: 'Client list',
+          manifest: { reads: [], writes: [], ai: true },
+          files: [{ path: 'src/main.ts', data: Buffer.from('Brasov Logistics').toString('base64') }]
+        }
+      } as T
+    if (method === 'POST' && path === '/v1/sync/unpack') {
+      unpacked.push(body as { folder: string; bundle: unknown })
+      return { folder: (body as { folder: string }).folder } as T
+    }
+    if (method === 'PUT' && path === '/v1/sync/read-only') {
+      readOnly.push((body as { apps: Record<string, string> }).apps)
+      return { apps: {} } as T
+    }
     if (method === 'GET' && url.pathname === '/v1/sync/apps/crm') {
       const since = Number(url.searchParams.get('since'))
       const mine = log.filter((l) => l.seq > since)
@@ -221,6 +255,8 @@ function fakeEngine(agentFiles: Record<string, string> = {}) {
     engine,
     imported,
     applied,
+    unpacked,
+    readOnly,
     write(name: string) {
       log.push({
         seq: ++seq,
@@ -321,7 +357,16 @@ describe('a team of three', () => {
     expect(ana.view().inbox).toEqual([])
     // The sealed note for the audit log goes with Bo's next round.
     await bo.team.tick()
-    expect(relay.notes).toEqual([{ by: 'Bo', action: 'item.shared' }])
+    expect(relay.notes.map((n) => [n.by, n.action])).toEqual([['Bo', 'item.shared']])
+    // Ana (the owner) opens the note with the team key; the relay only ever had it sealed.
+    await ana.team.tick()
+    expect(ana.view().activity.map((a) => [a.who, a.action, a.what])).toEqual([
+      ['Bo', 'item.shared', 'the agent Invoices']
+    ])
+    expect(relay.notes[0]!.sealed).not.toContain('Invoices')
+    // Members don't see the log's notes.
+    await bo.team.tick()
+    expect(bo.view().activity).toEqual([])
     // Nothing readable passed through the relay.
     for (const sent of relay.seen.concat(relay.changes.map((c) => c.body))) {
       expect(sent).not.toContain('Brasov')
@@ -376,5 +421,46 @@ describe('a team of three', () => {
     })
     expect(openPackage(key, sealed, Buffer.from('titan117-team-v1:b'))).toBeNull()
     expect(openPackage(key, sealed)).toBeNull()
+  })
+
+  it('sends an app itself: it waits in the inbox and is copied only into a folder the user picks', async () => {
+    const { relay, ana, bo, cy } = await teamOfThree()
+    // A viewer can't send an app.
+    expect(await cy.team.shareAppCode(TEAM, 'crm')).toMatch(/role/)
+    expect(await bo.team.shareAppCode(TEAM, 'crm')).toBeNull()
+    await bo.team.tick()
+    await ana.team.tick()
+    const entry = ana.view().inbox[0]!
+    expect(entry).toMatchObject({
+      type: 'app',
+      name: 'Client list',
+      appId: 'crm',
+      from: 'Bo',
+      asks: { ai: true }
+    })
+    expect(ana.unpacked).toEqual([])
+    expect(await ana.team.addAppFromInbox(TEAM, entry.id, 'C:/Work')).toBeNull()
+    expect(ana.unpacked.map((u) => u.folder)).toEqual(['C:/Work/crm'])
+    expect(JSON.stringify(ana.unpacked[0]!.bundle)).toContain(
+      Buffer.from('Brasov Logistics').toString('base64')
+    )
+    // Its records travel from now on, and nothing readable passed the relay.
+    expect(ana.view().sharedApps).toEqual(['crm'])
+    for (const sent of relay.seen.concat(relay.changes.map((c) => c.body)))
+      expect(sent).not.toContain(Buffer.from('Brasov Logistics').toString('base64'))
+  })
+
+  it('makes a shared app read-only on a viewer’s laptop, and only there', async () => {
+    const { ana, bo, cy } = await teamOfThree()
+    for (const l of [ana, bo, cy]) {
+      l.team.shareApp(TEAM, 'crm', true)
+      await l.team.tick()
+    }
+    expect(cy.readOnly.at(-1)).toEqual({ crm: 'Acme' })
+    expect(bo.readOnly.at(-1) ?? {}).toEqual({})
+    expect(ana.readOnly.at(-1) ?? {}).toEqual({})
+    cy.team.shareApp(TEAM, 'crm', false)
+    await cy.team.tick()
+    expect(cy.readOnly.at(-1)).toEqual({})
   })
 })
