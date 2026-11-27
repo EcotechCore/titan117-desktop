@@ -11,7 +11,7 @@ Everything waiting on the owner, in the order to do it. Gathered from every repo
 ## Desktop look · layout v2 with Azure (27 Nov 2026)
 
 - [ ] **Decisions §67** (to be confirmed): the new desktop layout as our own version of Antigravity's (no logo, icons or exact details of theirs), the Azure gradient replacing tomato for actions in the app (Send included), Titan staying tomato, the website and logo keeping tomato, tasks nested under the folder they first worked in, and Customize gathering the settings-like screens.
-- [ ] **White text on the Azure gradient reads 2.4–3.5:1**, below the 4.5:1 the app keeps for text. Keep it (your choice), or switch to a deeper Azure that passes (`#1f6fe8 → #1a6ae0 → #0b78b5`, 4.7–5.0:1; one line in the CSS).
+- [x] ~~**White text on the Azure gradient reads 2.4–3.5:1**~~ Kept as it is, 27 Nov 2026 (the owner's choice; decisions §67.9). The deeper Azure that passes (`#1f6fe8 → #1a6ae0 → #0b78b5`) stays on record as a one-line change.
 - [ ] **The faint grey:** the agreed `#80868b` reads 3.7:1 on white, so the app uses `#6c7277` (4.9:1). Say if that's fine.
 - [ ] **Try it on a real task:** an approval card and a running step in the new look weren't seen (they need a real model run). Run a task that writes a file and check the card, the folded steps, the file tab and the drawer.
 - [ ] **Review and merge** the three pull requests (web docs, desktop, pop docs copy).

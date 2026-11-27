@@ -47,7 +47,7 @@ The desktop app's design rules. Layout v2 was worked out in the clickable mockup
 | `--tint` | `#f1f7ff` | Approval cards, chosen chips |
 | `--tint-line` | `#d2e4ff` | Outline of tinted cards |
 
-**White text on the gradient** is the owner's choice and reads 2.4–3.5:1 (below 4.5:1), so it's used only at 11px and up, weight 600, on short labels. A deeper version that passes (`#1f6fe8 → #1a6ae0 → #0b78b5`, 4.7–5.0:1) is ready if the owner wants it (owner checklist).
+**White text on the gradient** is the owner's choice and reads 2.4–3.5:1 (below 4.5:1), so it's used only at 11px and up, weight 600, on short labels. A deeper version that passes (`#1f6fe8 → #1a6ae0 → #0b78b5`, 4.7–5.0:1) stays on record as a one-line change; the owner kept the Azure gradient as it is (27 Nov 2026).
 
 Red stays red: errors `#e24b4a` (text `#b42318`), the recording dot, removed lines in a diff, setup problems.
 
