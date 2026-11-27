@@ -23,6 +23,27 @@ import type { Emit, Store } from './store'
 import type { ToolRegistry } from './tools'
 import type { ParamSchema } from './tools/lib/define-tool'
 import { UNTRUSTED_RULE, wrapUntrusted } from './untrusted'
+import { isAbsolute, resolve } from 'path'
+import { isInsideFolder } from './lib/folders'
+
+/**
+ * The allowed folder a tool call worked in, from its path-like input (decisions §67):
+ * relative paths are relative to the first allowed folder, as the file tools read them.
+ */
+export function folderOfCall(input: Record<string, unknown>, folders: string[]): string | null {
+  for (const key of ['path', 'folder', 'from', 'cwd']) {
+    const value = input[key]
+    if (typeof value !== 'string' || !value || value.includes('\0')) continue
+    const absolute = isAbsolute(value)
+      ? resolve(value)
+      : folders[0]
+        ? resolve(folders[0], value)
+        : null
+    const home = absolute ? folders.find((f) => isInsideFolder(absolute, f)) : undefined
+    if (home) return home
+  }
+  return null
+}
 
 export const AGENT = TITAN
 
@@ -486,6 +507,11 @@ export function createRuntime(deps: {
             output: outcome.output,
             ...(outcome.status === 'done' ? {} : { isError: true })
           })
+          // The first folder it works in places the task under that folder in the sidebar.
+          if (outcome.status === 'done' && !store.getTask(taskId)?.folder) {
+            const folder = folderOfCall(call.input, deps.folders())
+            if (folder) store.updateTask(taskId, { folder })
+          }
         }
         lastFailed = stepFailed
         if (loop) {

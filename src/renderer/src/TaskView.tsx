@@ -1,5 +1,5 @@
-// One task: your messages, Titan's steps, approval cards and the answer
-// (design.md §6).
+// One task: your messages, the agent's steps folded under one line, approval
+// cards and the answer (design.md §6, layout v2, decisions §67).
 import { useEffect, useRef, useState } from 'react'
 
 import type { Approval, ApprovalAnswer, TaskDetail, ToolCall } from '../../shared/protocol'
@@ -7,10 +7,18 @@ import { diffCounts } from './code-lib'
 import { Diff } from './Diff'
 import { Linked } from './Linked'
 import { pullRequestUrl } from './links-lib'
-import { modelName } from './format'
-import { Eyes, Icon } from './ui'
-import type { EngineState } from '../../shared/protocol'
+import { Icon } from './ui'
 import type { EngineClient } from './engine'
+import {
+  age,
+  callsOf,
+  duration,
+  filesMade,
+  smallUsd,
+  turns,
+  turnSummary,
+  type Turn
+} from './layout-lib'
 
 /** An image the task made (2.7), shown in the chat. */
 function TaskImage({
@@ -204,19 +212,187 @@ function Step({
   )
 }
 
+/** One ask's answer: "Titan worked for 48s · 6 steps · $0.004 ›", the steps, then the answer. */
+function Reply({
+  turn,
+  last,
+  detail,
+  agentColor,
+  streaming,
+  results,
+  pending,
+  onAnswer,
+  onReadAloud,
+  onOpenFile,
+  client
+}: {
+  turn: Turn
+  last: boolean
+  detail: TaskDetail
+  agentColor: string
+  streaming: string
+  results: Map<string, { isError: boolean; output: string }>
+  pending: Map<string, Approval>
+  onAnswer(id: string, answer: ApprovalAnswer): void
+  onReadAloud?(text: string): void
+  onOpenFile?(path: string): void
+  client?: EngineClient | null
+}): React.JSX.Element | null {
+  const { task } = detail
+  const active = last && (task.status === 'running' || task.status === 'waiting')
+  // Folded once it's done; open while it works, so the running step shows.
+  const [open, setOpen] = useState<boolean | null>(null)
+  const unfolded = open ?? active
+  const calls = callsOf(turn)
+  const assistant = turn.replies.filter((m) => m.message.role === 'assistant')
+  const final = assistant[assistant.length - 1]
+  const finalMessage = final?.message.role === 'assistant' ? final.message : null
+  const answer =
+    finalMessage && !finalMessage.toolCalls?.length && finalMessage.text ? finalMessage.text : null
+  // Words said between steps stay with the steps.
+  const between = assistant.filter((m) => m !== final || !answer)
+  const foldable =
+    calls.length > 0 || between.some((m) => m.message.role === 'assistant' && m.message.text)
+  const summary = turnSummary(turn, detail.activity, null)
+  const files = filesMade(turn.replies)
+  const head = active
+    ? `${task.agent} is working${calls.length ? ` · step ${calls.length}` : ''}`
+    : `${task.agent} ${calls.length ? 'worked for' : 'answered in'} ${duration(summary.seconds)}${
+        calls.length ? ` · ${calls.length} step${calls.length === 1 ? '' : 's'}` : ''
+      } · ${smallUsd(summary.costUsd)}`
+  if (!turn.replies.length && !active) return null
+
+  return (
+    <div className="reply">
+      <button
+        className="worked"
+        aria-expanded={foldable ? unfolded : undefined}
+        disabled={!foldable}
+        onClick={() => setOpen(!unfolded)}
+      >
+        <span className="agent-dot" style={{ background: agentColor }} />
+        <span className={active ? 'worked-text grad-text' : 'worked-text'}>{head}</span>
+        {foldable && (
+          <span className={unfolded ? 'worked-chev open' : 'worked-chev'} aria-hidden="true">
+            ›
+          </span>
+        )}
+      </button>
+      {unfolded && foldable && (
+        <ul className="steps">
+          {between.map((m) =>
+            m.message.role !== 'assistant' ? null : (
+              <li key={m.id} className="step-group">
+                {m.message.text && <p className="step-say">{m.message.text}</p>}
+                {(m.message.toolCalls ?? []).length > 0 && (
+                  <ul>
+                    {(m.message.toolCalls ?? []).map((call) => {
+                      const result = results.get(call.id)
+                      const state: StepState = result
+                        ? result.isError
+                          ? 'refused'
+                          : 'done'
+                        : pending.has(call.id)
+                          ? 'waiting'
+                          : active
+                            ? 'running'
+                            : 'refused'
+                      // A pull request it opened or prepared: a link to it (GitHub's page).
+                      const url =
+                        result && !result.isError && call.name === 'pull_request'
+                          ? (pullRequestUrl(result.output) ??
+                            /https:\/\/github\.com\/\S+\/compare\/\S+/.exec(result.output)?.[0] ??
+                            null)
+                          : null
+                      const link = url
+                        ? {
+                            url,
+                            label: /\/pull\/\d+/.test(url) ? 'Open on GitHub' : 'Create on GitHub'
+                          }
+                        : null
+                      return <Step key={call.id} call={call} state={state} link={link} />
+                    })}
+                  </ul>
+                )}
+              </li>
+            )
+          )}
+        </ul>
+      )}
+      {client &&
+        calls.map((call) =>
+          call.name === 'image_create' && results.get(call.id)?.isError === false ? (
+            <TaskImage key={`img-${call.id}`} client={client} taskId={task.id} callId={call.id} />
+          ) : null
+        )}
+      {calls.map((call) => {
+        const approval = pending.get(call.id)
+        return approval ? (
+          <ApprovalCard key={approval.id} approval={approval} onAnswer={onAnswer} />
+        ) : null
+      })}
+      {answer && (
+        <div className="reply-text">
+          <Linked text={answer} />
+        </div>
+      )}
+      {active && streaming && (
+        <div className="reply-text">
+          <Linked text={streaming} />
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="made-card">
+          <Icon name="file" />
+          <span className="made-text">
+            {files.length === 1 ? '1 file made: ' : `${files.length} files made: `}
+            {files.map((f, i) => (
+              <span key={f.path}>
+                {i > 0 && ', '}
+                <span className="made-name mono" title={f.path}>
+                  {f.name}
+                </span>
+              </span>
+            ))}
+          </span>
+          {onOpenFile && (
+            <button className="btn" onClick={() => onOpenFile(files[0].path)}>
+              Open
+            </button>
+          )}
+        </div>
+      )}
+      {answer && final && (
+        <div className="reply-meta">
+          {onReadAloud && (
+            <button className="meta-btn" onClick={() => onReadAloud(answer)}>
+              <Icon name="speaker" /> Read aloud
+            </button>
+          )}
+          <span className="faint">{age(final.createdAt)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function TaskView({
   detail,
   streaming,
-  engine,
+  agentColor,
   onAnswer,
   onReadAloud,
+  onOpenFile,
   client
 }: {
   detail: TaskDetail
   streaming: string
-  engine: EngineState | null
+  /** The agent's own colour, for its dot (Titan's is tomato). */
+  agentColor: string
   onAnswer(id: string, answer: ApprovalAnswer): void
   onReadAloud?(text: string): void
+  /** Opens a file the task made in the right panel. */
+  onOpenFile?(path: string): void
   /** Loads the images the task made; without it they aren't shown. */
   client?: EngineClient | null
 }): React.JSX.Element {
@@ -236,105 +412,39 @@ export function TaskView({
   for (const { message } of messages)
     if (message.role === 'assistant')
       for (const call of message.toolCalls ?? []) toolCallIds.add(call.id)
+  const all = turns(messages)
 
   return (
     <div className="thread">
-      {messages.map(({ id, message }) => {
-        if (message.role === 'user')
-          return (
-            <div key={id} className="bubble">
-              {message.text}
-            </div>
-          )
-        if (message.role !== 'assistant') return null
-        return (
-          <div key={id} className="reply">
-            <div className="reply-head">
-              <span className="agent-tile">
-                <Eyes state="working" />
-              </span>
-              <strong>{task.agent}</strong>
-              <span className="faint">{modelName(task.model, engine)}</span>
-            </div>
-            {message.toolCalls && (
-              <ul className="steps">
-                {message.toolCalls.map((call) => {
-                  const result = results.get(call.id)
-                  const state: StepState = result
-                    ? result.isError
-                      ? 'refused'
-                      : 'done'
-                    : pending.has(call.id)
-                      ? 'waiting'
-                      : active
-                        ? 'running'
-                        : 'refused'
-                  // A pull request it opened or prepared: a link to it (GitHub's page).
-                  const url =
-                    result && !result.isError && call.name === 'pull_request'
-                      ? (pullRequestUrl(result.output) ??
-                        /https:\/\/github\.com\/\S+\/compare\/\S+/.exec(result.output)?.[0] ??
-                        null)
-                      : null
-                  const link = url
-                    ? {
-                        url,
-                        label: /\/pull\/\d+/.test(url) ? 'Open on GitHub' : 'Create on GitHub'
-                      }
-                    : null
-                  return <Step key={call.id} call={call} state={state} link={link} />
-                })}
-              </ul>
-            )}
-            {client &&
-              message.toolCalls?.map((call) =>
-                call.name === 'image_create' && results.get(call.id)?.isError === false ? (
-                  <TaskImage
-                    key={`img-${call.id}`}
-                    client={client}
-                    taskId={task.id}
-                    callId={call.id}
-                  />
-                ) : null
-              )}
-            {message.toolCalls?.map((call) => {
-              const approval = pending.get(call.id)
-              return approval ? (
-                <ApprovalCard key={approval.id} approval={approval} onAnswer={onAnswer} />
-              ) : null
-            })}
-            {message.text && (
-              <div className="reply-text">
-                <Linked text={message.text} />
-              </div>
-            )}
-            {message.text && onReadAloud && (
-              <button className="read-aloud" onClick={() => onReadAloud(message.text)}>
-                <Icon name="speaker" /> Read aloud
-              </button>
-            )}
-          </div>
-        )
-      })}
+      {all.map((turn, i) => (
+        <div key={turn.ask?.id ?? turn.replies[0]?.id ?? i} className="turn">
+          {turn.ask?.message.role === 'user' && (
+            <div className="bubble">{turn.ask.message.text}</div>
+          )}
+          <Reply
+            turn={turn}
+            last={i === all.length - 1}
+            detail={detail}
+            agentColor={agentColor}
+            streaming={streaming}
+            results={results}
+            pending={pending}
+            onAnswer={onAnswer}
+            onReadAloud={onReadAloud}
+            onOpenFile={onOpenFile}
+            client={client}
+          />
+        </div>
+      ))}
 
-      {/* Asks that aren't one of Titan's own steps: the coding engine's commands and changes. */}
+      {/* Asks that aren't one of the agent's own steps: the coding engine's commands and changes. */}
       {approvals
         .filter((a) => a.status === 'pending' && !toolCallIds.has(a.callId))
         .map((approval) => (
           <ApprovalCard key={approval.id} approval={approval} onAnswer={onAnswer} />
         ))}
 
-      {active && (
-        <div className="reply">
-          {streaming ? (
-            <div className="reply-text">
-              <Linked text={streaming} />
-            </div>
-          ) : (
-            task.status === 'running' && <p className="working">Working</p>
-          )}
-        </div>
-      )}
+      {active && all.length === 0 && <p className="working">Working</p>}
 
       {task.note && (
         <p className={task.status === 'error' ? 'note note-error' : 'note'} role="status">

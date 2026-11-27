@@ -1,5 +1,6 @@
-// The window (design.md 0.2): title bar, sidebar, workspace and task details.
-// Everything it shows comes from the engine's local API.
+// The window (layout v2, decisions §67): a toolbar, a short sidebar, the chat
+// as a white sheet, and the right panel as its own sheet that opens like a
+// drawer. Everything it shows comes from the engine's local API.
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
 import type {
@@ -16,9 +17,9 @@ import type {
 import { connect, type EngineClient } from './engine'
 import { initialState, reducer } from './state'
 import { TaskView } from './TaskView'
-import { clock, folderName, modelName, usd } from './format'
+import { folderName, modelName } from './format'
 import { Eyes, Icon, type EyesState } from './ui'
-import { AccountBox, LeaseWarning, LockScreen } from './Account'
+import { LeaseWarning, LockScreen } from './Account'
 import { useAccount } from './useAccount'
 import { ApprovalsView, ModelsView } from './Views'
 import { MemoryView } from './Memory'
@@ -36,13 +37,45 @@ import { CodeView } from './Code'
 import { AppsView } from './Apps'
 import { SidebarAppView, type SidebarAppInfo } from './SidebarApp'
 import { AgentsView } from './Agents'
-import { byTeam } from './agents-lib'
 import { CompareView } from './Compare'
 import { AutomationsView } from './Automations'
 import { MarketingView } from './Marketing'
 import { RemoteView } from './Remote'
 import { MediaModelsView } from './Media'
 import type { KeyProvider, ReportMode } from '../../shared/protocol'
+import { OwnKeys } from './Keys'
+import { folderOf } from './layout-lib'
+import { RightPanel } from './RightPanel'
+import { CustomizeView, Palette, SettingsView, Sidebar } from './Shell'
+import type { View } from './state'
+
+/** Titan's own colour: its dot and eyes stay tomato whatever the accent (decisions §67). */
+const TITAN_COLOR = '#ff6347'
+
+/** What the toolbar's breadcrumb says when no task is open. */
+const VIEW_TITLE: Partial<Record<View['kind'], string>> = {
+  start: 'New task',
+  approvals: 'Approvals',
+  models: 'Customize / Models',
+  memory: 'Customize / Memory',
+  connectors: 'Customize / Connectors',
+  addons: 'Customize / Add-ons',
+  artifacts: 'Artifacts',
+  search: 'Customize / Web search',
+  setup: 'Customize / Setup',
+  documents: 'Documents',
+  code: 'Code',
+  apps: 'Apps',
+  agents: 'Agents',
+  compare: 'Customize / Compare',
+  automations: 'Automations',
+  remote: 'Customize / Remote control',
+  marketing: 'Marketing',
+  'sidebar-app': 'Apps',
+  customize: 'Customize',
+  settings: 'Settings',
+  keys: 'Customize / Keys'
+}
 
 const PROMPTS = [
   'Find every invoice in my folder and total them in a CSV.',
@@ -72,6 +105,9 @@ function App(): React.JSX.Element {
   const [wizard, setWizard] = useState(false)
   // A downloaded update waiting for a restart (1.10).
   const [update, setUpdate] = useState<string | null>(null)
+  // Ctrl K search, and the message box's + menu.
+  const [palette, setPalette] = useState(false)
+  const [plus, setPlus] = useState(false)
   // Sidebar apps (6.2): read again whenever the engine says they changed.
   const [sidebarApps, setSidebarApps] = useState<SidebarAppInfo[]>([])
   const sidebarChanged = state.changed.sidebar ?? 0
@@ -89,25 +125,6 @@ function App(): React.JSX.Element {
       .catch(() => undefined)
   }, [api, agentsChanged])
   const draftAgent = agents.find((a) => a.name === agentName) ?? null
-  // Teams fold up in the sidebar, so the task list keeps its room; remembered on this laptop.
-  const [folded, setFolded] = useState<string[]>(() => {
-    try {
-      const saved: unknown = JSON.parse(localStorage.getItem('titan117.foldedTeams') ?? '[]')
-      return Array.isArray(saved) ? saved.filter((x): x is string => typeof x === 'string') : []
-    } catch {
-      return []
-    }
-  })
-  const toggleTeam = (team: string): void =>
-    setFolded((now) => {
-      const next = now.includes(team) ? now.filter((x) => x !== team) : [...now, team]
-      try {
-        localStorage.setItem('titan117.foldedTeams', JSON.stringify(next))
-      } catch {
-        // Not kept; it still folds for now.
-      }
-      return next
-    })
   useEffect(() => {
     if (!api) return
     api
@@ -221,10 +238,27 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') {
+      const mod = event.ctrlKey || event.metaKey
+      const key = event.key.toLowerCase()
+      if (mod && key === 'n') {
         event.preventDefault()
         dispatch({ type: 'view', view: { kind: 'start' } })
         input.current?.focus()
+      } else if (mod && key === 'k') {
+        event.preventDefault()
+        setPalette((open) => !open)
+      } else if (mod && key === 'b') {
+        event.preventDefault()
+        dispatch({ type: 'toggleSidebar' })
+      } else if (mod && key === '.') {
+        event.preventDefault()
+        dispatch({ type: 'toggleDetails' })
+      } else if (event.altKey && event.key === 'ArrowLeft') {
+        event.preventDefault()
+        dispatch({ type: 'back' })
+      } else if (event.altKey && event.key === 'ArrowRight') {
+        event.preventDefault()
+        dispatch({ type: 'forward' })
       }
     }
     window.addEventListener('keydown', onKey)
@@ -400,302 +434,88 @@ function App(): React.JSX.Element {
   const titan: EyesState = waiting ? 'needs-you' : working ? 'working' : 'idle'
   const ready: LocalModel[] = engine.localModels.filter((m) => m.state === 'ready')
   const canSend = !!text.trim() && !busy
+  const colorOf = (name: string): string =>
+    agents.find((a) => a.name === name)?.color ?? (name === 'Titan' ? TITAN_COLOR : '#80868b')
+  const openFolder = task ? folderOf(task, engine.folders) : null
+  // The right panel is there for an open task or artifact; the toolbar's toggle opens and closes it.
+  const hasRight = !!(detail || (state.artifact && api))
+  const rightOpen = hasRight && state.showDetails
+  const full = rightOpen && state.rightTab === 'artifact' && !!state.artifact && state.artifactFull
+  const shellClass = [
+    'shell',
+    state.showSidebar ? '' : 'no-side',
+    rightOpen ? '' : 'no-right',
+    full ? 'right-full' : ''
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const openTask = (id: string): void => dispatch({ type: 'view', view: { kind: 'task', id } })
+  const startWith = (name: string): void => {
+    setAgentName(name)
+    dispatch({ type: 'view', view: { kind: 'start' } })
+    setTimeout(() => input.current?.focus(), 0)
+  }
 
   return (
-    <div
-      className={
-        state.artifact && api
-          ? state.artifactFull
-            ? 'win artifact-full-win'
-            : 'win with-artifact'
-          : state.showDetails && detail
-            ? 'win'
-            : 'win no-details'
-      }
-    >
-      <header className="bar">
-        <div className="brand">
-          <Eyes state="idle" />
-          <span className="wordmark">TITAN117</span>
-        </div>
-        <span className="bar-title">{task ? task.title : ''}</span>
-        <div className="bar-right">
+    <div className="win">
+      <header className="toolbar">
+        <div className="toolbar-left">
+          <span className="brand" title={`Titan117 · ${titan === 'idle' ? 'idle' : titan}`}>
+            <Eyes state={titan} />
+          </span>
           <button
             className="bar-btn"
-            aria-label={`Approvals, ${waiting} waiting`}
-            onClick={() => dispatch({ type: 'view', view: { kind: 'approvals' } })}
+            aria-label={
+              state.showSidebar ? 'Hide the sidebar (Ctrl B)' : 'Show the sidebar (Ctrl B)'
+            }
+            title="Sidebar (Ctrl B)"
+            aria-pressed={state.showSidebar}
+            onClick={() => dispatch({ type: 'toggleSidebar' })}
           >
-            <Icon name="shield" />
-            {waiting > 0 && <span className="badge">{waiting}</span>}
+            <Icon name="sidebar" />
           </button>
           <button
             className="bar-btn"
-            aria-label="Task details"
-            aria-pressed={state.showDetails}
-            onClick={() => dispatch({ type: 'toggleDetails' })}
+            aria-label="Back"
+            title="Back (Alt ←)"
+            disabled={state.back.length === 0}
+            onClick={() => dispatch({ type: 'back' })}
           >
-            <Icon name="panel" />
+            <Icon name="back" />
+          </button>
+          <button
+            className="bar-btn"
+            aria-label="Forward"
+            title="Forward (Alt →)"
+            disabled={state.forward.length === 0}
+            onClick={() => dispatch({ type: 'forward' })}
+          >
+            <Icon name="forward" />
+          </button>
+          <button
+            className="bar-btn"
+            aria-label="Search everything (Ctrl K)"
+            title="Search everything (Ctrl K)"
+            onClick={() => setPalette(true)}
+          >
+            <Icon name="search" />
           </button>
         </div>
-      </header>
-
-      <nav className="side" aria-label="Main">
-        <button
-          className="btn btn-primary new-task"
-          onClick={() => {
-            dispatch({ type: 'view', view: { kind: 'start' } })
-            input.current?.focus()
-          }}
-        >
-          <Icon name="plus" /> New task <kbd>Ctrl N</kbd>
-        </button>
-
-        <button
-          className={view.kind === 'approvals' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'approvals' } })}
-        >
-          <Icon name="shield" /> Approvals {waiting > 0 && <span className="count">{waiting}</span>}
-        </button>
-        <button
-          className={view.kind === 'memory' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'memory' } })}
-        >
-          <Icon name="brain" /> Memory
-        </button>
-        <button
-          className={view.kind === 'connectors' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'connectors' } })}
-        >
-          <Icon name="plug" /> Connectors
-        </button>
-        <button
-          className={view.kind === 'addons' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'addons' } })}
-        >
-          <Icon name="box" /> Add-ons
-        </button>
-        <button
-          className={view.kind === 'code' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'code' } })}
-        >
-          <Icon name="code" /> Code
-        </button>
-        <button
-          className={view.kind === 'apps' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'apps' } })}
-        >
-          <Icon name="globe" /> Apps
-        </button>
-        <button
-          className={view.kind === 'documents' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'documents' } })}
-        >
-          <Icon name="folder" /> Documents
-        </button>
-        <button
-          className={view.kind === 'artifacts' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'artifacts' } })}
-        >
-          <Icon name="file" /> Artifacts
-        </button>
-        <button
-          className={view.kind === 'search' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'search' } })}
-        >
-          <Icon name="globe" /> Web search
-        </button>
-        <button
-          className={view.kind === 'models' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'models' } })}
-        >
-          <Icon name="chip" /> Models
-        </button>
-        <button
-          className={view.kind === 'automations' ? 'nav on' : 'nav'}
-          onClick={() => {
-            setAutomateAgent(null)
-            dispatch({ type: 'view', view: { kind: 'automations' } })
-          }}
-        >
-          <Icon name="calendar" /> Automations
-        </button>
-        <button
-          className={view.kind === 'marketing' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'marketing' } })}
-        >
-          <Icon name="tag" /> Marketing
-        </button>
-        <button
-          className={view.kind === 'remote' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'remote' } })}
-        >
-          <Icon name="send" /> Remote control
-        </button>
-        <button
-          className={view.kind === 'compare' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'compare' } })}
-        >
-          <Icon name="chart" /> Compare models
-        </button>
-        <button
-          className={view.kind === 'setup' ? 'nav on' : 'nav'}
-          onClick={() => dispatch({ type: 'view', view: { kind: 'setup' } })}
-        >
-          <Icon name="check" /> Setup
-        </button>
-
-        <p className="label">
-          Agents
-          <button
-            className={view.kind === 'agents' ? 'label-btn on' : 'label-btn'}
-            onClick={() => dispatch({ type: 'view', view: { kind: 'agents' } })}
-          >
-            <Icon name="users" /> Manage
-          </button>
-        </p>
-        <button
-          className={view.kind === 'start' && agentName === 'Titan' ? 'nav on' : 'nav'}
-          onClick={() => {
-            setAgentName('Titan')
-            dispatch({ type: 'view', view: { kind: 'start' } })
-          }}
-        >
-          <Eyes state={titan} /> Titan
-          {titan === 'needs-you' && <span className="pill">Needs you</span>}
-          {titan === 'working' && <span className="shimmer">Working</span>}
-        </button>
-        {byTeam(agents).map(([team, list]) => (
-          <div key={team} className="team">
-            {(() => {
-              const isFolded = folded.includes(team)
-              const names = new Set(list.map((a) => a.name))
-              const teamTasks = state.tasks.filter((t) => names.has(t.agent))
-              const teamNeeds = state.approvals.some((ap) =>
-                teamTasks.some((t) => t.id === ap.taskId)
-              )
-              const teamBusy = teamTasks.some((t) => t.status === 'running')
-              return (
-                <button
-                  className={isFolded ? 'team-label folded' : 'team-label'}
-                  aria-expanded={!isFolded}
-                  onClick={() => toggleTeam(team)}
-                >
-                  <Icon name="chevron" />
-                  <span className="nav-text">{team}</span>
-                  {isFolded && teamNeeds && <span className="pill">Needs you</span>}
-                  {isFolded && !teamNeeds && teamBusy && <span className="shimmer">Working</span>}
-                  {isFolded && !teamNeeds && !teamBusy && (
-                    <span className="team-count">{list.length}</span>
-                  )}
-                </button>
-              )
-            })()}
-            {!folded.includes(team) &&
-              list.map((a) => {
-                const mine = state.tasks.filter((t) => t.agent === a.name)
-                const needs = state.approvals.some((ap) => mine.some((t) => t.id === ap.taskId))
-                const busyNow = mine.some((t) => t.status === 'running')
-                return (
-                  <button
-                    key={a.id}
-                    className={view.kind === 'start' && agentName === a.name ? 'nav on' : 'nav'}
-                    onClick={() => {
-                      setAgentName(a.name)
-                      dispatch({ type: 'view', view: { kind: 'start' } })
-                      setTimeout(() => input.current?.focus(), 0)
-                    }}
-                  >
-                    <span className="agent-dot" style={{ background: a.color }} />
-                    <span className="nav-text">{a.name}</span>
-                    {needs && <span className="pill">Needs you</span>}
-                    {!needs && busyNow && <span className="shimmer">Working</span>}
-                  </button>
-                )
-              })}
-          </div>
-        ))}
-
-        {sidebarApps.length > 0 && <p className="label">Your apps</p>}
-        {sidebarApps.map((a) => (
-          <button
-            key={a.id}
-            className={view.kind === 'sidebar-app' && view.id === a.id ? 'nav on' : 'nav'}
-            onClick={() => dispatch({ type: 'view', view: { kind: 'sidebar-app', id: a.id } })}
-          >
-            <Icon name={a.icon} />
-            <span className="nav-text">{a.title}</span>
-            {a.error && <span className="dot dot-error" aria-label="reported an error" />}
-          </button>
-        ))}
-
-        <p className="label">Tasks</p>
-        <div className="scroll">
-          {state.tasks.length === 0 && <p className="hint">No tasks yet.</p>}
-          {state.tasks
-            .filter((t) => !t.parentId)
-            .map((t) => (
-              <button
-                key={t.id}
-                className={taskId === t.id ? 'nav on' : 'nav'}
-                onClick={() => dispatch({ type: 'view', view: { kind: 'task', id: t.id } })}
-              >
-                <span className={`dot dot-${t.status}`} aria-label={t.status} />
-                <span className="nav-text">
-                  {t.title}
-                  {t.syncedFrom && <span className="muted"> · from {t.syncedFrom}</span>}
-                </span>
-              </button>
-            ))}
+        <div className="crumb">
+          {task ? (
+            <>
+              {openFolder && <span className="crumb-folder">{folderName(openFolder)} / </span>}
+              <b>{task.title}</b>
+            </>
+          ) : (
+            <b>{VIEW_TITLE[view.kind] ?? ''}</b>
+          )}
         </div>
-
-        <p className="label">Folders Titan may use</p>
-        {engine.folders.length === 0 && (
-          <p className="hint">None yet. Titan can&apos;t see any files.</p>
-        )}
-        {engine.folders.map((folder) => (
-          <div key={folder} className="folder" title={folder}>
-            <Icon name="folder" />
-            <span className="nav-text">{folderName(folder)}</span>
+        <div className="toolbar-right">
+          {update !== null && (
             <button
-              className="icon-btn"
-              aria-label={`Stop allowing ${folder}`}
-              onClick={() => void window.titan117.removeFolder(folder)}
-            >
-              <Icon name="x" />
-            </button>
-          </div>
-        ))}
-        <button className="btn add-folder" onClick={() => void window.titan117.addFolder()}>
-          <Icon name="plus" /> Allow a folder
-        </button>
-
-        <button
-          className="nav"
-          onClick={() => dispatch({ type: 'report', report: { feature: 'report a problem' } })}
-        >
-          <Icon name="flag" /> Report a problem
-        </button>
-        <p className="foot mono">
-          <span className={state.status === 'ready' ? 'dot dot-done' : 'dot dot-error'} />
-          {state.status === 'ready' ? 'Engine running' : 'Engine restarting'} · v{engine.appVersion}
-        </p>
-        {account && <AccountBox view={account} />}
-      </nav>
-
-      <main className="work">
-        {account && <LeaseWarning view={account} />}
-        {view.kind !== 'addons' && (
-          <SafeModeBanner
-            client={api}
-            changed={state.changed.addons ?? 0}
-            onOpen={() => dispatch({ type: 'view', view: { kind: 'addons' } })}
-          />
-        )}
-        {update !== null && (
-          <div className="note offline-switch" role="status">
-            <span>Titan117 {update} is ready.</span>
-            <button
-              className="btn btn-primary"
+              className="pill-accent"
+              title={`Titan117 ${update} is ready`}
               onClick={() => {
                 const running = state.tasks.some(
                   (t) => t.status === 'running' || t.status === 'waiting'
@@ -710,416 +530,628 @@ function App(): React.JSX.Element {
                 void window.titan117.updates.install()
               }}
             >
-              Restart to update
+              Restart to update →
             </button>
-          </div>
-        )}
-        {!engine.online && (
-          <div className="note offline-bar" role="status">
-            <strong>Offline.</strong> Local models, your files and tools keep working. Cloud models,
-            web search and sharing wait for the internet; error reports wait and go by themselves.
-          </div>
-        )}
-        {state.lastError && reportMode === 'ask' && (
-          <div className="note note-error error-card" role="alert">
-            <span>
-              Something went wrong ({state.lastError.source}). It was saved to the local log. Send
-              us a report? You&apos;ll see all of it first.
-            </span>
-            <button
-              className="btn"
-              onClick={() =>
-                dispatch({ type: 'report', report: { errorRef: state.lastError!.errorId } })
-              }
-            >
-              Review the report
-            </button>
-            <button
-              className="icon-btn"
-              aria-label="Dismiss"
-              onClick={() => dispatch({ type: 'dismissError' })}
-            >
-              <Icon name="x" />
-            </button>
-          </div>
-        )}
-        <div className="work-scroll">
-          {view.kind === 'approvals' && (
-            <ApprovalsView
-              approvals={state.approvals}
-              tasks={state.tasks}
-              onAnswer={answer}
-              onOpen={(id) => dispatch({ type: 'view', view: { kind: 'task', id } })}
-            />
           )}
-          {view.kind === 'memory' && (
-            <MemoryView client={api} changed={state.changed} onProblem={fail} />
-          )}
-          {view.kind === 'artifacts' && (
-            <ArtifactsView
+          <button
+            className={view.kind === 'approvals' ? 'bar-btn on' : 'bar-btn'}
+            aria-label={`Approvals, ${waiting} waiting`}
+            title="Approvals"
+            onClick={() => dispatch({ type: 'view', view: { kind: 'approvals' } })}
+          >
+            <Icon name="shield" />
+          </button>
+          {waiting > 0 && <span className="count">{waiting}</span>}
+          <button
+            className="bar-btn"
+            aria-label="What the task made (Ctrl .)"
+            title="What the task made (Ctrl .)"
+            aria-pressed={rightOpen}
+            disabled={!hasRight}
+            onClick={() => dispatch({ type: 'toggleDetails' })}
+          >
+            <Icon name="panel" />
+          </button>
+        </div>
+      </header>
+
+      <div className={shellClass}>
+        <Sidebar
+          view={view}
+          tasks={state.tasks}
+          approvals={state.approvals}
+          engine={engine}
+          apps={sidebarApps}
+          onView={(next) => dispatch({ type: 'view', view: next })}
+          onNew={() => {
+            dispatch({ type: 'view', view: { kind: 'start' } })
+            setTimeout(() => input.current?.focus(), 0)
+          }}
+          onAutomations={() => {
+            setAutomateAgent(null)
+            dispatch({ type: 'view', view: { kind: 'automations' } })
+          }}
+        />
+
+        <main className="work">
+          {account && <LeaseWarning view={account} />}
+          {view.kind !== 'addons' && (
+            <SafeModeBanner
               client={api}
-              changed={state.changed.artifacts ?? 0}
-              onOpen={(id) => dispatch({ type: 'artifact', id })}
-              onProblem={fail}
+              changed={state.changed.addons ?? 0}
+              onOpen={() => dispatch({ type: 'view', view: { kind: 'addons' } })}
             />
           )}
-          {view.kind === 'code' && (
-            <CodeView
-              client={api}
-              engine={engine}
-              changed={
-                state.tasks.filter((t) => t.status === 'running').length * 1000 +
-                state.approvals.length
-              }
-              onStart={(message) => void startNew(message)}
-              onProblem={fail}
-            />
+          {!engine.online && (
+            <div className="note offline-bar" role="status">
+              <strong>Offline.</strong> Local models, your files and tools keep working. Cloud
+              models, web search and sharing wait for the internet; error reports wait and go by
+              themselves.
+            </div>
           )}
-          {view.kind === 'sidebar-app' &&
-            (() => {
-              const shown = sidebarApps.find((a) => a.id === view.id)
-              return shown && api ? (
-                <SidebarAppView
-                  client={api}
-                  app={shown}
-                  onAsk={(request) => {
-                    setText(request)
-                    dispatch({ type: 'view', view: { kind: 'start' } })
-                    setTimeout(() => input.current?.focus(), 0)
-                  }}
-                  onFix={(request) => void startNew(request)}
-                  onProblem={fail}
+          {state.lastError && reportMode === 'ask' && (
+            <div className="note note-error error-card" role="alert">
+              <span>
+                Something went wrong ({state.lastError.source}). It was saved to the local log. Send
+                us a report? You&apos;ll see all of it first.
+              </span>
+              <button
+                className="btn"
+                onClick={() =>
+                  dispatch({ type: 'report', report: { errorRef: state.lastError!.errorId } })
+                }
+              >
+                Review the report
+              </button>
+              <button
+                className="icon-btn"
+                aria-label="Dismiss"
+                onClick={() => dispatch({ type: 'dismissError' })}
+              >
+                <Icon name="x" />
+              </button>
+            </div>
+          )}
+          <div
+            className={
+              view.kind === 'start' || view.kind === 'task'
+                ? 'work-scroll work-chat'
+                : 'work-scroll'
+            }
+          >
+            {view.kind === 'approvals' && (
+              <ApprovalsView
+                approvals={state.approvals}
+                tasks={state.tasks}
+                onAnswer={answer}
+                onOpen={openTask}
+              />
+            )}
+            {view.kind === 'customize' && (
+              <CustomizeView
+                onView={(next) => dispatch({ type: 'view', view: next })}
+                onReport={() =>
+                  dispatch({ type: 'report', report: { feature: 'report a problem' } })
+                }
+              />
+            )}
+            {view.kind === 'settings' && (
+              <SettingsView
+                account={account}
+                engine={engine}
+                status={state.status}
+                onView={(next) => dispatch({ type: 'view', view: next })}
+                onReport={() =>
+                  dispatch({ type: 'report', report: { feature: 'report a problem' } })
+                }
+              />
+            )}
+            {view.kind === 'keys' && (
+              <div className="list-view">
+                <h1 className="view-title">Keys</h1>
+                <p className="muted">
+                  Your own API keys, kept in this laptop&apos;s keychain. Calls with them are billed
+                  to you by the provider, not through credits.
+                </p>
+                <OwnKeys
+                  saved={engine.ownKeys as Record<KeyProvider, boolean>}
+                  models={state.own}
+                  model={model}
+                  onUse={chooseModel}
+                  onChanged={() => void reloadModels().catch(fail)}
                 />
-              ) : (
-                <p className="hint">This app isn&apos;t in the sidebar any more.</p>
-              )
-            })()}
-          {view.kind === 'apps' && (
-            <AppsView
-              client={api}
-              engine={engine}
-              cloud={state.cloud}
-              onKeysChanged={() => void reloadModels().catch(fail)}
-              changed={
-                (state.changed.apps ?? 0) +
-                state.tasks.filter((t) => t.status === 'running').length * 1000 +
-                state.approvals.length
-              }
-              onStart={(message) => void startNew(message)}
-              onProblem={fail}
-            />
-          )}
-          {view.kind === 'documents' && (
-            <DocumentsView
-              client={api}
-              engine={engine}
-              changed={state.changed.documents ?? 0}
-              onProblem={fail}
-            />
-          )}
-          {view.kind === 'setup' && (
-            <SetupView
-              client={api}
-              changed={(state.changed.connectors ?? 0) + (state.changed.reports ?? 0)}
-              onFix={fix}
-              onProblem={fail}
-            />
-          )}
-          {view.kind === 'search' && (
-            <SearchView
-              client={api}
-              engine={engine}
-              onKeysChanged={() => void reloadModels().catch(fail)}
-              onProblem={fail}
-            />
-          )}
-          {view.kind === 'connectors' && (
-            <ConnectorsView client={api} changed={state.changed.connectors ?? 0} onProblem={fail} />
-          )}
-          {view.kind === 'addons' && (
-            <AddonsView client={api} changed={state.changed.addons ?? 0} onProblem={fail} />
-          )}
-          {view.kind === 'agents' && (
-            <AgentsView
-              client={api}
-              engine={engine}
-              cloud={state.cloud}
-              changed={agentsChanged + (state.changed.skills ?? 0)}
-              onStart={(name) => {
-                setAgentName(name)
-                dispatch({ type: 'view', view: { kind: 'start' } })
-                setTimeout(() => input.current?.focus(), 0)
-              }}
-              onAutomate={(name) => {
-                setAutomateAgent(name)
-                dispatch({ type: 'view', view: { kind: 'automations' } })
-              }}
-              onProblem={fail}
-            />
-          )}
-          {view.kind === 'marketing' && (
-            <MarketingView
-              client={api}
-              changed={state.changed.marketing ?? 0}
-              onProblem={fail}
-              onAsk={(agent, words) => void startNew(words, agent)}
-              savedKeys={(engine?.ownKeys ?? {}) as Record<KeyProvider, boolean>}
-              onKeysChanged={() => void reloadModels().catch(fail)}
-            />
-          )}
-          {view.kind === 'remote' && (
-            <RemoteView folders={engine?.folders ?? []} onProblem={fail} />
-          )}
-          {view.kind === 'automations' && (
-            <AutomationsView
-              key={automateAgent ?? 'all'}
-              client={api}
-              agent={automateAgent}
-              changed={state.changed.automations ?? 0}
-              onProblem={fail}
-              onOpenTask={(id) => dispatch({ type: 'view', view: { kind: 'task', id } })}
-              onAskTitan={(words) =>
-                void startNew(
-                  `${words}
+                <OwnKeys
+                  kind="search"
+                  saved={engine.ownKeys as Record<KeyProvider, boolean>}
+                  models={[]}
+                  model={null}
+                  onUse={() => undefined}
+                  onChanged={() => void reloadModels().catch(fail)}
+                />
+              </div>
+            )}
+            {view.kind === 'memory' && (
+              <MemoryView client={api} changed={state.changed} onProblem={fail} />
+            )}
+            {view.kind === 'artifacts' && (
+              <ArtifactsView
+                client={api}
+                changed={state.changed.artifacts ?? 0}
+                onOpen={(id) => dispatch({ type: 'artifact', id })}
+                onProblem={fail}
+              />
+            )}
+            {view.kind === 'code' && (
+              <CodeView
+                client={api}
+                engine={engine}
+                changed={
+                  state.tasks.filter((t) => t.status === 'running').length * 1000 +
+                  state.approvals.length
+                }
+                onStart={(message) => void startNew(message)}
+                onProblem={fail}
+              />
+            )}
+            {view.kind === 'sidebar-app' &&
+              (() => {
+                const shown = sidebarApps.find((a) => a.id === view.id)
+                return shown && api ? (
+                  <SidebarAppView
+                    client={api}
+                    app={shown}
+                    onAsk={(request) => {
+                      setText(request)
+                      dispatch({ type: 'view', view: { kind: 'start' } })
+                      setTimeout(() => input.current?.focus(), 0)
+                    }}
+                    onFix={(request) => void startNew(request)}
+                    onProblem={fail}
+                  />
+                ) : (
+                  <p className="hint">This app isn&apos;t in the sidebar any more.</p>
+                )
+              })()}
+            {view.kind === 'apps' && (
+              <AppsView
+                client={api}
+                engine={engine}
+                cloud={state.cloud}
+                onKeysChanged={() => void reloadModels().catch(fail)}
+                changed={
+                  (state.changed.apps ?? 0) +
+                  state.tasks.filter((t) => t.status === 'running').length * 1000 +
+                  state.approvals.length
+                }
+                onStart={(message) => void startNew(message)}
+                onProblem={fail}
+              />
+            )}
+            {view.kind === 'documents' && (
+              <DocumentsView
+                client={api}
+                engine={engine}
+                changed={state.changed.documents ?? 0}
+                onProblem={fail}
+              />
+            )}
+            {view.kind === 'setup' && (
+              <SetupView
+                client={api}
+                changed={(state.changed.connectors ?? 0) + (state.changed.reports ?? 0)}
+                onFix={fix}
+                onProblem={fail}
+              />
+            )}
+            {view.kind === 'search' && (
+              <SearchView
+                client={api}
+                engine={engine}
+                onKeysChanged={() => void reloadModels().catch(fail)}
+                onProblem={fail}
+              />
+            )}
+            {view.kind === 'connectors' && (
+              <ConnectorsView
+                client={api}
+                changed={state.changed.connectors ?? 0}
+                onProblem={fail}
+              />
+            )}
+            {view.kind === 'addons' && (
+              <AddonsView client={api} changed={state.changed.addons ?? 0} onProblem={fail} />
+            )}
+            {view.kind === 'agents' && (
+              <AgentsView
+                client={api}
+                engine={engine}
+                cloud={state.cloud}
+                changed={agentsChanged + (state.changed.skills ?? 0)}
+                onStart={startWith}
+                onAutomate={(name) => {
+                  setAutomateAgent(name)
+                  dispatch({ type: 'view', view: { kind: 'automations' } })
+                }}
+                onProblem={fail}
+              />
+            )}
+            {view.kind === 'marketing' && (
+              <MarketingView
+                client={api}
+                changed={state.changed.marketing ?? 0}
+                onProblem={fail}
+                onAsk={(agent, words) => void startNew(words, agent)}
+                savedKeys={(engine?.ownKeys ?? {}) as Record<KeyProvider, boolean>}
+                onKeysChanged={() => void reloadModels().catch(fail)}
+              />
+            )}
+            {view.kind === 'remote' && (
+              <RemoteView folders={engine?.folders ?? []} onProblem={fail} />
+            )}
+            {view.kind === 'automations' && (
+              <AutomationsView
+                key={automateAgent ?? 'all'}
+                client={api}
+                agent={automateAgent}
+                changed={state.changed.automations ?? 0}
+                onProblem={fail}
+                onOpenTask={openTask}
+                onAskTitan={(words) =>
+                  void startNew(
+                    `${words}
 
 (Make this a schedule with schedule_create; add a web watch or use a recording if it needs one.)`
-                )
-              }
-            />
-          )}
-          {view.kind === 'compare' && (
-            <CompareView
-              client={api}
-              engine={engine}
-              cloud={state.cloud}
-              model={model}
-              onProblem={fail}
-            />
-          )}
-          {view.kind === 'models' && (
-            <ModelsView
-              engine={engine}
-              cloud={state.cloud}
-              own={state.own}
-              onKeysChanged={() => void reloadModels().catch(fail)}
-              model={model}
-              onUse={chooseModel}
-              onDownload={(id) =>
-                client.current?.send('POST', `/v1/models/${id}/download`).catch(fail)
-              }
-              onCancel={(id) => client.current?.send('POST', `/v1/models/${id}/cancel`).catch(fail)}
-              onRemove={(id) => client.current?.send('DELETE', `/v1/models/${id}`).catch(fail)}
-            />
-          )}
-          {view.kind === 'models' && <MediaModelsView client={api} onProblem={fail} />}
-          {view.kind === 'start' && (
-            <div className="start">
-              <Eyes state="working" size="large" />
-              <h1>What should {agentName} do?</h1>
-              <p className="muted">
-                {draftAgent && agentName !== 'Titan'
-                  ? `${draftAgent.role} It asks before it changes anything.`
-                  : 'Titan works on this laptop with files, the shell, the browser and your connectors. It reads only the folders you allow, and asks before it changes anything.'}
-              </p>
-              <div className="prompts">
-                {(agentName === 'Titan' ? PROMPTS : []).map((prompt) => (
-                  <button key={prompt} className="prompt" onClick={() => void send(prompt)}>
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {view.kind === 'task' && detail && (
-            <TaskView
-              detail={detail}
-              streaming={state.streaming[detail.task.id] ?? ''}
-              engine={engine}
-              onAnswer={answer}
-              onReadAloud={readAloud}
-              client={api}
-            />
-          )}
-        </div>
-
-        {(view.kind === 'start' || view.kind === 'task') && (
-          <div className="composer">
-            {reading && (
-              <ReadAloudBar
-                reading={reading}
-                onPause={() => {
-                  if (reading.state === 'preparing') return
-                  reading.audio.pause()
-                  setReading({ state: 'paused', audio: reading.audio })
-                }}
-                onResume={() => {
-                  if (reading.state === 'preparing') return
-                  void reading.audio.play()
-                  setReading({ state: 'playing', audio: reading.audio })
-                }}
-                onStop={stopReading}
+                  )
+                }
               />
             )}
-            {task?.status === 'stopped' &&
-              !task.note?.startsWith('No internet') &&
-              task.note !== 'You stopped this task.' && (
-                <div className="note offline-switch">
-                  <span>{task.note ?? 'This task stopped.'}</span>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() =>
-                      client.current?.send('POST', `/v1/tasks/${task.id}/resume`).catch(fail)
-                    }
-                  >
-                    Resume
-                  </button>
-                </div>
-              )}
-            {task?.status === 'stopped' &&
-              (task.note?.startsWith('No internet') ||
-                task.note?.startsWith(
-                  'This task read files from a folder kept for local models'
-                )) && (
-                <div className="note offline-switch">
-                  <span>{task.note}</span>
-                  {ready[0] ? (
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => {
-                        const local = `local:${ready[0].id}`
-                        chooseModel(local)
-                        client.current
-                          ?.send('POST', `/v1/tasks/${task.id}/messages`, {
-                            text: 'Continue with the local model.',
-                            model: local
-                          })
-                          .catch(fail)
-                      }}
-                    >
-                      Continue with {ready[0].name} (local)
-                    </button>
-                  ) : (
-                    <span className="muted">
-                      Download a local model in Models to keep working offline.
-                    </span>
-                  )}
-                </div>
-              )}
-            {state.problem && (
-              <p className="note note-error" role="alert">
-                {state.problem}
-              </p>
+            {view.kind === 'compare' && (
+              <CompareView
+                client={api}
+                engine={engine}
+                cloud={state.cloud}
+                model={model}
+                onProblem={fail}
+              />
             )}
-            <div className="box">
-              {voice !== 'off' && (
-                <VoiceBar
-                  state={voice}
-                  level={micLevel}
-                  onDone={() => void finishVoice()}
-                  onCancel={cancelVoice}
+            {view.kind === 'models' && (
+              <ModelsView
+                engine={engine}
+                cloud={state.cloud}
+                own={state.own}
+                onKeysChanged={() => void reloadModels().catch(fail)}
+                model={model}
+                onUse={chooseModel}
+                onDownload={(id) =>
+                  client.current?.send('POST', `/v1/models/${id}/download`).catch(fail)
+                }
+                onCancel={(id) =>
+                  client.current?.send('POST', `/v1/models/${id}/cancel`).catch(fail)
+                }
+                onRemove={(id) => client.current?.send('DELETE', `/v1/models/${id}`).catch(fail)}
+              />
+            )}
+            {view.kind === 'models' && <MediaModelsView client={api} onProblem={fail} />}
+            {view.kind === 'start' && (
+              <div className="start">
+                <Eyes state="working" size="large" />
+                <h1>What should {agentName} do?</h1>
+                <p className="muted">
+                  {draftAgent && agentName !== 'Titan'
+                    ? `${draftAgent.role} It asks before it changes anything.`
+                    : 'Titan works on this laptop with files, the shell, the browser and your connectors. It reads only the folders you allow, and asks before it changes anything.'}
+                </p>
+                <div className="prompts">
+                  {(agentName === 'Titan' ? PROMPTS : []).map((prompt) => (
+                    <button key={prompt} className="prompt" onClick={() => void send(prompt)}>
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {view.kind === 'task' && detail && (
+              <TaskView
+                detail={detail}
+                streaming={state.streaming[detail.task.id] ?? ''}
+                agentColor={colorOf(detail.task.agent)}
+                onAnswer={answer}
+                onReadAloud={readAloud}
+                onOpenFile={(path) => dispatch({ type: 'tab', tab: `file:${path}` })}
+                client={api}
+              />
+            )}
+          </div>
+
+          {(view.kind === 'start' || view.kind === 'task') && (
+            <div className="composer">
+              {reading && (
+                <ReadAloudBar
+                  reading={reading}
+                  onPause={() => {
+                    if (reading.state === 'preparing') return
+                    reading.audio.pause()
+                    setReading({ state: 'paused', audio: reading.audio })
+                  }}
+                  onResume={() => {
+                    if (reading.state === 'preparing') return
+                    void reading.audio.play()
+                    setReading({ state: 'playing', audio: reading.audio })
+                  }}
+                  onStop={stopReading}
                 />
               )}
-              <textarea
-                style={voice !== 'off' ? { display: 'none' } : undefined}
-                ref={input}
-                rows={2}
-                placeholder={task ? `Reply to ${task.agent}` : `Describe a task for ${agentName}`}
-                aria-label="Message"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    void send()
-                  }
-                }}
-              />
-              <div className="box-row">
-                <label className="chip">
-                  <Icon name="chip" />
-                  <span className="sr">Model</span>
-                  <select
-                    value={model ?? ''}
-                    onChange={(e) =>
-                      e.target.value === 'more'
-                        ? dispatch({ type: 'view', view: { kind: 'models' } })
-                        : chooseModel(e.target.value)
-                    }
-                  >
-                    {!model && <option value="">Choose a model</option>}
-                    {model && !ready.some((m) => `local:${m.id}` === model) && (
-                      <option value={model}>{modelName(model, engine)}</option>
+              {task?.status === 'stopped' &&
+                !task.note?.startsWith('No internet') &&
+                task.note !== 'You stopped this task.' && (
+                  <div className="note offline-switch">
+                    <span>{task.note ?? 'This task stopped.'}</span>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() =>
+                        client.current?.send('POST', `/v1/tasks/${task.id}/resume`).catch(fail)
+                      }
+                    >
+                      Resume
+                    </button>
+                  </div>
+                )}
+              {task?.status === 'stopped' &&
+                (task.note?.startsWith('No internet') ||
+                  task.note?.startsWith(
+                    'This task read files from a folder kept for local models'
+                  )) && (
+                  <div className="note offline-switch">
+                    <span>{task.note}</span>
+                    {ready[0] ? (
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => {
+                          const local = `local:${ready[0].id}`
+                          chooseModel(local)
+                          client.current
+                            ?.send('POST', `/v1/tasks/${task.id}/messages`, {
+                              text: 'Continue with the local model.',
+                              model: local
+                            })
+                            .catch(fail)
+                        }}
+                      >
+                        Continue with {ready[0].name} (local)
+                      </button>
+                    ) : (
+                      <span className="muted">
+                        Download a local model in Models to keep working offline.
+                      </span>
                     )}
-                    {ready.map((m) => (
-                      <option key={m.id} value={`local:${m.id}`}>
-                        {m.name} · local
-                      </option>
-                    ))}
-                    <option value="more">More models…</option>
-                  </select>
-                </label>
-                {!task && (
+                  </div>
+                )}
+              {state.problem && (
+                <p className="note note-error" role="alert">
+                  {state.problem}
+                </p>
+              )}
+              <div className="box">
+                {voice !== 'off' && (
+                  <VoiceBar
+                    state={voice}
+                    level={micLevel}
+                    onDone={() => void finishVoice()}
+                    onCancel={cancelVoice}
+                  />
+                )}
+                <textarea
+                  style={voice !== 'off' ? { display: 'none' } : undefined}
+                  ref={input}
+                  rows={2}
+                  placeholder={
+                    task
+                      ? `Reply to ${task.agent}`
+                      : `Ask ${agentName} anything. It reads only the folders you allow.`
+                  }
+                  aria-label="Message"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void send()
+                    }
+                  }}
+                />
+                <div className="box-row">
+                  <div className="menu-wrap">
+                    <button
+                      className="chip chip-icon"
+                      aria-label="Add files or switch on deep research"
+                      title="Add files"
+                      aria-expanded={plus}
+                      onClick={() => setPlus(!plus)}
+                    >
+                      <Icon name="plus" />
+                    </button>
+                    {plus && (
+                      <div className="menu menu-up" role="menu">
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setPlus(false)
+                            void window.titan117.addFolder()
+                          }}
+                        >
+                          <Icon name="folder" /> Allow a folder…
+                        </button>
+                        {!task && (
+                          <button
+                            role="menuitemcheckbox"
+                            aria-checked={research}
+                            title="Many searches, reading and cross-checking, then a report with sources"
+                            onClick={() => {
+                              setPlus(false)
+                              setResearch(!research)
+                            }}
+                          >
+                            <Icon name="globe" /> Deep research {research ? '· on' : ''}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {!task && (
+                    <label className="chip">
+                      <span className="agent-dot" style={{ background: colorOf(agentName) }} />
+                      <span className="sr">Agent</span>
+                      <select value={agentName} onChange={(e) => setAgentName(e.target.value)}>
+                        {(agents.length ? agents : [{ name: 'Titan', id: 'titan' }]).map((a) => (
+                          <option key={a.id} value={a.name}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {task && (
+                    <span className="chip chip-static">
+                      <span className="agent-dot" style={{ background: colorOf(task.agent) }} />
+                      {task.agent}
+                    </span>
+                  )}
                   <label className="chip">
-                    <span
-                      className="agent-dot"
-                      style={{ background: draftAgent?.color ?? '#ff6347' }}
-                    />
-                    <span className="sr">Agent</span>
-                    <select value={agentName} onChange={(e) => setAgentName(e.target.value)}>
-                      {(agents.length ? agents : [{ name: 'Titan', id: 'titan' }]).map((a) => (
-                        <option key={a.id} value={a.name}>
-                          {a.name}
+                    <span className="sr">Model</span>
+                    <select
+                      value={model ?? ''}
+                      onChange={(e) =>
+                        e.target.value === 'more'
+                          ? dispatch({ type: 'view', view: { kind: 'models' } })
+                          : chooseModel(e.target.value)
+                      }
+                    >
+                      {!model && <option value="">Choose a model</option>}
+                      {model && !ready.some((m) => `local:${m.id}` === model) && (
+                        <option value={model}>{modelName(model, engine)}</option>
+                      )}
+                      {ready.map((m) => (
+                        <option key={m.id} value={`local:${m.id}`}>
+                          {m.name} · local
                         </option>
                       ))}
+                      <option value="more">More models…</option>
                     </select>
                   </label>
-                )}
-                {!task && (
-                  <button
-                    className={research ? 'chip chip-on' : 'chip'}
-                    aria-pressed={research}
-                    title="Many searches, reading and cross-checking, then a report with sources"
-                    onClick={() => setResearch(!research)}
+                  {research && !task && (
+                    <button
+                      className="chip chip-on"
+                      aria-pressed
+                      title="Deep research is on for the next task. Click to switch it off."
+                      onClick={() => setResearch(false)}
+                    >
+                      <Icon name="globe" /> Deep research
+                    </button>
+                  )}
+                  <span className="spacer" />
+                  <span className="cost mono">{model && estimate ? estimate.label : ''}</span>
+                  <span
+                    className="chip chip-static chip-ask"
+                    title="Agents ask before they change files, run commands, send or pay. “Always in this task” on a card lets one kind of step through for that task."
                   >
-                    <Icon name="globe" /> Deep research
-                  </button>
-                )}
-                <span className="cost mono">{model && estimate ? estimate.label : ''}</span>
-                {voice === 'off' && (
-                  <button
-                    className="voice"
-                    aria-label="Speak instead of typing"
-                    title="Speak instead of typing"
-                    onClick={() => void startVoice()}
-                  >
-                    <Icon name="mic" />
-                  </button>
-                )}
-                {busy ? (
-                  <button
-                    className="send"
-                    aria-label="Stop"
-                    onClick={() =>
-                      client.current?.send('POST', `/v1/tasks/${task!.id}/cancel`).catch(fail)
-                    }
-                  >
-                    <Icon name="stop" />
-                  </button>
-                ) : (
-                  <button
-                    className="send"
-                    aria-label="Send"
-                    disabled={!canSend}
-                    onClick={() => void send()}
-                  >
-                    <Icon name="send" />
-                  </button>
-                )}
+                    <Icon name="lock" /> <span className="chip-words">Asks before changes</span>
+                  </span>
+                  {voice === 'off' && (
+                    <button
+                      className="chip chip-icon"
+                      aria-label="Speak instead of typing"
+                      title="Speak instead of typing"
+                      onClick={() => void startVoice()}
+                    >
+                      <Icon name="mic" />
+                    </button>
+                  )}
+                  {busy ? (
+                    <button
+                      className="send"
+                      aria-label="Stop"
+                      title="Stop"
+                      onClick={() =>
+                        client.current?.send('POST', `/v1/tasks/${task!.id}/cancel`).catch(fail)
+                      }
+                    >
+                      <Icon name="stop" />
+                    </button>
+                  ) : (
+                    <button
+                      className="send"
+                      aria-label="Send"
+                      title="Send (Enter)"
+                      disabled={!canSend}
+                      onClick={() => void send()}
+                    >
+                      <Icon name="up" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
+        </main>
+
+        {hasRight ? (
+          <RightPanel
+            client={api}
+            engine={engine}
+            cloud={state.cloud}
+            detail={detail}
+            parts={parts}
+            artifactId={state.artifact}
+            artifactsChanged={state.changed.artifacts ?? 0}
+            tab={state.rightTab}
+            artifactPanel={
+              state.artifact && api ? (
+                <ArtifactPanel
+                  key={state.artifact}
+                  client={api}
+                  id={state.artifact}
+                  changed={state.changed.artifacts ?? 0}
+                  full={state.artifactFull}
+                  onFull={() => dispatch({ type: 'artifactFull' })}
+                  onClose={() => dispatch({ type: 'artifact', id: null })}
+                  onProblem={fail}
+                  onAsk={(words) => {
+                    if (!model) return dispatch({ type: 'view', view: { kind: 'models' } })
+                    client.current
+                      ?.send<{ task: Task }>('POST', '/v1/tasks', { text: words, model })
+                      .then(({ task: created }) => {
+                        dispatch({
+                          type: 'detail',
+                          detail: { task: created, messages: [], approvals: [], activity: [] }
+                        })
+                        openTask(created.id)
+                      })
+                      .catch(fail)
+                  }}
+                />
+              ) : null
+            }
+            onTab={(tab) => dispatch({ type: 'tab', tab })}
+            onArtifact={(id) => dispatch({ type: 'artifact', id })}
+            onClose={() => dispatch({ type: 'toggleDetails' })}
+            onOpenTask={openTask}
+            onReport={(errorRef) => dispatch({ type: 'report', report: { errorRef } })}
+          />
+        ) : (
+          <section className="right" aria-hidden="true" />
         )}
-      </main>
+      </div>
+
+      {palette && (
+        <Palette
+          tasks={state.tasks}
+          agents={agents}
+          folders={engine.folders}
+          onView={(next) => dispatch({ type: 'view', view: next })}
+          onAgent={startWith}
+          onClose={() => setPalette(false)}
+        />
+      )}
 
       {wizard && api && (
         <SetupWizard
@@ -1145,133 +1177,6 @@ function App(): React.JSX.Element {
           }}
           onProblem={fail}
         />
-      )}
-
-      {state.artifact && api && (
-        <ArtifactPanel
-          key={state.artifact}
-          client={api}
-          id={state.artifact}
-          changed={state.changed.artifacts ?? 0}
-          full={state.artifactFull}
-          onFull={() => dispatch({ type: 'artifactFull' })}
-          onClose={() => dispatch({ type: 'artifact', id: null })}
-          onProblem={fail}
-          onAsk={(text) => {
-            if (!model) return dispatch({ type: 'view', view: { kind: 'models' } })
-            client.current
-              ?.send<{ task: Task }>('POST', '/v1/tasks', { text, model })
-              .then(({ task: created }) => {
-                dispatch({
-                  type: 'detail',
-                  detail: { task: created, messages: [], approvals: [], activity: [] }
-                })
-                dispatch({ type: 'view', view: { kind: 'task', id: created.id } })
-              })
-              .catch(fail)
-          }}
-        />
-      )}
-
-      {!state.artifact && state.showDetails && detail && (
-        <aside className="details" aria-label="Task details">
-          <span className={`status status-${detail.task.status}`}>
-            {
-              {
-                running: 'Running',
-                waiting: 'Needs you',
-                done: 'Done',
-                stopped: 'Stopped',
-                error: 'Error'
-              }[detail.task.status]
-            }
-          </span>
-          <dl className="facts">
-            <dt>Agent</dt>
-            <dd>{detail.task.agent}</dd>
-            <dt>Model</dt>
-            <dd>{modelName(detail.task.model, engine)}</dd>
-            <dt>Steps</dt>
-            <dd className="mono">{detail.task.steps}</dd>
-            <dt>Cost</dt>
-            <dd className="mono">{usd(detail.task.costUsd)}</dd>
-            {detail.task.syncedFrom && (
-              <>
-                <dt>From</dt>
-                <dd>{detail.task.syncedFrom}</dd>
-              </>
-            )}
-          </dl>
-          {detail.task.status === 'error' && /ref ([0-9a-f]{8})/.exec(detail.task.note ?? '') && (
-            <button
-              className="btn"
-              onClick={() =>
-                dispatch({
-                  type: 'report',
-                  report: { errorRef: /ref ([0-9a-f]{8})/.exec(detail.task.note ?? '')![1] }
-                })
-              }
-            >
-              Send a report about this
-            </button>
-          )}
-          {parts.length > 0 && (
-            <>
-              <p className="label">Parts handed out</p>
-              <ul className="parts">
-                {parts.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      className="link"
-                      onClick={() => dispatch({ type: 'view', view: { kind: 'task', id: p.id } })}
-                    >
-                      <span className={`dot dot-${p.status}`} aria-label={p.status} /> {p.agent}
-                    </button>
-                    <span className="mono muted"> {usd(p.costUsd)}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {detail.task.parentId && (
-            <button
-              className="link"
-              onClick={() =>
-                dispatch({ type: 'view', view: { kind: 'task', id: detail.task.parentId! } })
-              }
-            >
-              ← The task this is a part of
-            </button>
-          )}
-          {(detail.talk?.length ?? 0) > 0 && (
-            <>
-              <p className="label">Team talk</p>
-              <ol className="talk">
-                {detail.talk!.map((m) => (
-                  <li key={m.id} className={`talk-${m.kind}`}>
-                    <span className="talk-who">
-                      {m.from} → {m.to}
-                    </span>
-                    <span className="talk-text">{m.text}</span>
-                  </li>
-                ))}
-              </ol>
-            </>
-          )}
-          <p className="label">Activity</p>
-          <ol className="log">
-            {detail.activity.map((a) => (
-              <li key={a.id} className={`log-${a.kind}`}>
-                <span className="log-time">{clock(a.at)}</span>
-                <span>
-                  {a.summary}
-                  {a.costUsd > 0 && ` · ${usd(a.costUsd)}`}
-                  {a.approvedBy && ` · approved by ${a.approvedBy}`}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </aside>
       )}
     </div>
   )

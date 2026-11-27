@@ -11,6 +11,13 @@ const PATHS: Record<string, string> = {
   code: 'M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16',
   folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   panel: 'M4 5h16v14H4zM15 5v14',
+  // Layout v2's toolbar (decisions §67).
+  sidebar: 'M4 5h16v14H4zM9 5v14',
+  back: 'M15 6l-6 6 6 6',
+  forward: 'M9 6l6 6-6 6',
+  search: 'M11 5a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM20 20l-4.5-4.5',
+  lock: 'M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z',
+  up: 'M12 19V5M6 11l6-6 6 6',
   file: 'M7 3h7l5 5v13H7zM14 3v5h5',
   down: 'M12 4v12M6 11l6 6 6-6M5 20h14',
   chevron: 'M6 9l6 6 6-6',
@@ -50,7 +57,7 @@ export function Icon({ name }: { name: keyof typeof PATHS }): React.JSX.Element 
 
 export type EyesState = 'idle' | 'working' | 'needs-you'
 
-/** Titan's eyes: gray at rest, tomato while working or waiting (design.md §2.4). */
+/** Titan's eyes: gray at rest, tomato (Titan's own colour) while working or waiting (design.md §2.4). */
 export function Eyes({
   state,
   size = 'small'

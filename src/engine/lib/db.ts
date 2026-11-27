@@ -409,6 +409,10 @@ const MIGRATIONS: string[] = [
   -- Sync between laptops (decisions §65.3): a conversation carried here from another laptop names it.
   alter table tasks add column synced_from text;
   create index tasks_updated on tasks(updated_at);
+  `,
+  `
+  -- Layout v2 (decisions §67): the allowed folder a task works in, so the sidebar can nest it there.
+  alter table tasks add column folder text;
   `
 ]
 

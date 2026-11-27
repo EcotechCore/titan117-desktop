@@ -36,6 +36,13 @@ export type View =
   | { kind: 'marketing' }
   /** A sidebar app (6.2), by its id. */
   | { kind: 'sidebar-app'; id: string }
+  /** Layout v2 (decisions §67): the settings-like screens gathered in one place, the account, and keys. */
+  | { kind: 'customize' }
+  | { kind: 'settings' }
+  | { kind: 'keys' }
+
+/** What the right panel shows: the task's details, the open artifact, or a file the task made. */
+export type RightTab = 'task' | 'artifact' | `file:${string}`
 
 export interface AppState {
   status: 'connecting' | 'ready' | 'lost'
@@ -49,7 +56,13 @@ export interface AppState {
   /** Text streaming in for a task's current step. */
   streaming: Record<string, string>
   view: View
+  /** Views left with Back, and the ones Back left (for Forward). */
+  back: View[]
+  forward: View[]
+  /** The right panel (task details, artifacts, files made), opened and closed like a drawer. */
   showDetails: boolean
+  rightTab: RightTab
+  showSidebar: boolean
   model: string | null
   problem: string | null
   /** Bumped when memory, skills, past tasks or connectors change: their views reload. */
@@ -73,7 +86,11 @@ export const initialState: AppState = {
   details: {},
   streaming: {},
   view: { kind: 'start' },
+  back: [],
+  forward: [],
   showDetails: true,
+  rightTab: 'task',
+  showSidebar: true,
   model: null,
   problem: null,
   changed: {},
@@ -90,6 +107,10 @@ export type Action =
   | { type: 'event'; event: EngineEvent }
   | { type: 'view'; view: View }
   | { type: 'toggleDetails' }
+  | { type: 'toggleSidebar' }
+  | { type: 'back' }
+  | { type: 'forward' }
+  | { type: 'tab'; tab: RightTab }
   | { type: 'model'; model: string | null }
   | { type: 'lost' }
   | { type: 'problem'; message: string | null }
@@ -194,13 +215,19 @@ function onEvent(state: AppState, event: EngineEvent): AppState {
       return { ...state, lastError: { errorId: event.errorId, source: event.source } }
     case 'artifact':
       // What an agent makes opens beside the chat (17.1).
-      return { ...state, artifact: event.artifact.id }
+      return { ...state, artifact: event.artifact.id, rightTab: 'artifact', showDetails: true }
     case 'changed':
       return {
         ...state,
         changed: { ...state.changed, [event.what]: (state.changed[event.what] ?? 0) + 1 }
       }
   }
+}
+
+const HISTORY = 50
+
+function sameView(a: View, b: View): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
 }
 
 export function reducer(state: AppState, action: Action): AppState {
@@ -221,9 +248,47 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'event':
       return onEvent(state, action.event)
     case 'view':
-      return { ...state, view: action.view, problem: null }
+      if (sameView(action.view, state.view)) return { ...state, problem: null }
+      return {
+        ...state,
+        view: action.view,
+        back: [...state.back, state.view].slice(-HISTORY),
+        forward: [],
+        problem: null,
+        // Another task's files aren't this one's.
+        rightTab:
+          action.view.kind === 'task' && state.rightTab.startsWith('file:')
+            ? 'task'
+            : state.rightTab
+      }
+    case 'back': {
+      const to = state.back[state.back.length - 1]
+      if (!to) return state
+      return {
+        ...state,
+        view: to,
+        back: state.back.slice(0, -1),
+        forward: [state.view, ...state.forward].slice(0, HISTORY),
+        problem: null
+      }
+    }
+    case 'forward': {
+      const to = state.forward[0]
+      if (!to) return state
+      return {
+        ...state,
+        view: to,
+        back: [...state.back, state.view].slice(-HISTORY),
+        forward: state.forward.slice(1),
+        problem: null
+      }
+    }
     case 'toggleDetails':
       return { ...state, showDetails: !state.showDetails }
+    case 'toggleSidebar':
+      return { ...state, showSidebar: !state.showSidebar }
+    case 'tab':
+      return { ...state, rightTab: action.tab, showDetails: true }
     case 'model':
       return { ...state, model: action.model }
     case 'lost':
@@ -231,7 +296,13 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'problem':
       return { ...state, problem: action.message }
     case 'artifact':
-      return { ...state, artifact: action.id, artifactFull: action.id ? state.artifactFull : false }
+      return {
+        ...state,
+        artifact: action.id,
+        artifactFull: action.id ? state.artifactFull : false,
+        rightTab: action.id ? 'artifact' : state.rightTab === 'artifact' ? 'task' : state.rightTab,
+        showDetails: action.id ? true : state.showDetails
+      }
     case 'artifactFull':
       return { ...state, artifactFull: !state.artifactFull }
     case 'report':
