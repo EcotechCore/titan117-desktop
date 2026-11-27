@@ -377,6 +377,25 @@ export function createApi(deps: {
           throw new ApiError(400, 'BAD_REQUEST', 'An agent’s name can’t change. Clone it instead.')
         return { agent: agents.save(def, { replace: true }) }
       }
+      case 'POST agents/:id/import': {
+        // An agent a team member shared (decisions §68.8), added after the user's own click
+        // on the laptop. Its source is always the team and person the shell names, never
+        // the file's header; it can replace only an agent that came from that same source.
+        if (id !== 'team') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        const source = String(field(body, 'source') ?? '')
+        if (!/^team [^\n]{1,120}$/.test(source))
+          throw new ApiError(400, 'BAD_REQUEST', 'Say which team it comes from.')
+        const parsed = parseAgent(String(field(body, 'text') ?? '').slice(0, 100_000), source)
+        const def = checkAgent({ ...parsed, source }, source)
+        const existing = agents.get(def.name)
+        if (existing && existing.source !== source)
+          throw new ApiError(
+            409,
+            'CONFLICT',
+            `You already have an agent called ${existing.name}. Rename yours or remove it first.`
+          )
+        return { agent: agents.save(def, { replace: !!existing }) }
+      }
       case 'POST compare':
         return {
           results: await need(deps.compare)(

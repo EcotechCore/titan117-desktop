@@ -421,3 +421,40 @@ describe('own memory only (§59.4)', () => {
     expect(JSON.stringify(or.requests[0].body)).not.toContain('Acme Cleaning')
   })
 })
+
+describe('an agent a team member shared (decisions §68.8)', () => {
+  it('is added as the team and person, and never over an agent of another source', async () => {
+    engine = await testEngine({})
+    const text = serializeAgent(checkAgent({ ...CLERK, name: 'Shared clerk' }, 'Titan117'))
+    const source = 'team Acme · Bo'
+    const added = await call(engine, 'POST', '/v1/agents/team/import', { text, source })
+    expect(added.status).toBe(200)
+    // The file's own header (here "Titan117") never decides where it came from.
+    expect(added.body.agent).toMatchObject({ name: 'Shared clerk', source, builtIn: false })
+    // An update from the same team and person replaces it.
+    expect((await call(engine, 'POST', '/v1/agents/team/import', { text, source })).status).toBe(
+      200
+    )
+    // Someone else's agent with that name, or one of the user's own, is never replaced.
+    expect(
+      (await call(engine, 'POST', '/v1/agents/team/import', { text, source: 'team Other · Eve' }))
+        .status
+    ).toBe(409)
+    await call(engine, 'POST', '/v1/agents', CLERK)
+    const mine = serializeAgent(checkAgent(CLERK, 'you'))
+    expect(
+      (await call(engine, 'POST', '/v1/agents/team/import', { text: mine, source })).status
+    ).toBe(409)
+    // A built-in agent's name can't be taken, and the source must name a team.
+    const research = serializeAgent(checkAgent({ ...CLERK, name: 'Researcher' }, 'you'))
+    expect(
+      (await call(engine, 'POST', '/v1/agents/team/import', { text: research, source })).status
+    ).toBe(409)
+    expect(
+      (await call(engine, 'POST', '/v1/agents/team/import', { text, source: 'you' })).status
+    ).toBe(400)
+    expect((await call(engine, 'POST', '/v1/agents/other/import', { text, source })).status).toBe(
+      404
+    )
+  })
+})

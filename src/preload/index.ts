@@ -97,6 +97,24 @@ contextBridge.exposeInMainWorld('titan117', {
       ipcRenderer.on('sync:changed', (_event, view) => listener(view))
     }
   },
+  teams: {
+    status: () => ipcRenderer.invoke('teams:status'),
+    join: (id: string) => ipcRenderer.invoke('teams:join', id),
+    leave: (id: string) => ipcRenderer.invoke('teams:leave', id),
+    allow: (id: string, laptop: string) => ipcRenderer.invoke('teams:allow', id, laptop),
+    refuse: (id: string, laptop: string) => ipcRenderer.invoke('teams:refuse', id, laptop),
+    remove: (id: string, laptop: string) => ipcRenderer.invoke('teams:remove', id, laptop),
+    confirm: (id: string, accept: boolean) => ipcRenderer.invoke('teams:confirm', id, accept),
+    shareAgent: (id: string, name: string, on: boolean) =>
+      ipcRenderer.invoke('teams:shareAgent', id, name, on),
+    shareApp: (id: string, app: string, on: boolean) =>
+      ipcRenderer.invoke('teams:shareApp', id, app, on),
+    add: (id: string, entry: string) => ipcRenderer.invoke('teams:add', id, entry),
+    dismiss: (id: string, entry: string) => ipcRenderer.invoke('teams:dismiss', id, entry),
+    onChange: (listener: (view: unknown) => void) => {
+      ipcRenderer.on('teams:changed', (_event, view) => listener(view))
+    }
+  },
   slack: {
     status: () => ipcRenderer.invoke('slack:status'),
     connect: (app: string, bot: string) => ipcRenderer.invoke('slack:connect', app, bot),

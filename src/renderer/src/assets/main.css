@@ -3032,3 +3032,23 @@ ol.rec-steps {
   align-items: center;
   justify-content: space-between;
 }
+
+/* Teams (decisions §68.7): an agency's name beside Titan's eyes. */
+.team-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--soft);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.team-brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}

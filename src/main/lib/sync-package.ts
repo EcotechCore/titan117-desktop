@@ -17,7 +17,8 @@ function checkKey(key: Buffer): void {
   if (!Buffer.isBuffer(key) || key.length !== 32) throw new Error('The sync key must be 32 bytes.')
 }
 
-export function sealPackage(key: Buffer, body: unknown): string {
+/** `aad` binds a package to where it belongs: a team's packages use `titan117-team-v1:<team id>` (decisions §68.3). */
+export function sealPackage(key: Buffer, body: unknown, aad: Buffer = AAD): string {
   checkKey(key)
   const json = Buffer.from(JSON.stringify(body), 'utf8')
   const plain = Buffer.alloc(Math.ceil((json.length + 4) / PAD) * PAD)
@@ -25,7 +26,7 @@ export function sealPackage(key: Buffer, body: unknown): string {
   json.copy(plain, 4)
   const iv = randomBytes(12)
   const cipher = createCipheriv('aes-256-gcm', key, iv)
-  cipher.setAAD(AAD)
+  cipher.setAAD(aad)
   const encrypted = Buffer.concat([cipher.update(plain), cipher.final()])
   return Buffer.concat([
     MAGIC,
@@ -37,14 +38,14 @@ export function sealPackage(key: Buffer, body: unknown): string {
 }
 
 /** The package's contents, or null when it was changed, sealed with another key or isn't one. */
-export function openPackage(key: Buffer, sealed: string): unknown {
+export function openPackage(key: Buffer, sealed: string, aad: Buffer = AAD): unknown {
   checkKey(key)
   const raw = Buffer.from(sealed, 'base64')
   if (raw.length > MAX_PACKAGE || raw.length < 34) return null
   if (!raw.subarray(0, 5).equals(MAGIC) || raw[5] !== VERSION) return null
   try {
     const decipher = createDecipheriv('aes-256-gcm', key, raw.subarray(6, 18))
-    decipher.setAAD(AAD)
+    decipher.setAAD(aad)
     decipher.setAuthTag(raw.subarray(18, 34))
     const plain = Buffer.concat([decipher.update(raw.subarray(34)), decipher.final()])
     const length = plain.readUInt32BE(0)

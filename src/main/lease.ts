@@ -30,7 +30,7 @@ export interface Lease {
   v: 1
   sub: string
   dev: string
-  plan: 'starter' | 'pro' | 'max' | 'custom' | null
+  plan: 'starter' | 'pro' | 'max' | 'team' | 'agency' | 'custom' | null
   devices: number
   iat: number
   exp: number

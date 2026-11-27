@@ -265,8 +265,8 @@ Like Lovable, the builder uses several models, each for the job it does best; li
 | 11.3 | Credit ledger and top-ups | V1 | In Convex, atomic deductions |
 | 11.4 | OpenRouter proxy with metering | V1 | A streaming route on Vercel holds our one secret key; Convex keeps the ledger and the rules (decisions §12). OpenRouter confirmed this model is allowed (8 Nov 2026) |
 | 11.5 | BYOK | V1 | Key kept on the device, in the OS keychain |
-| 11.6 | Teams, roles, audit log | V1 | Agents, apps and data shared between team members' laptops go through our cloud end to end encrypted to each member's devices; we see who is in the team, never what they share (decisions §32) |
-| 11.7 | Agency and white-label plan | V1 | |
+| 11.6 | Teams, roles, audit log | V1 | Agents, apps and data shared between team members' laptops go through our cloud end to end encrypted to each member's devices; we see who is in the team, never what they share (decisions §32). Four roles (owner, admin, member, viewer), invite links, an append-only audit log; first part built 27 Nov 2026 (decisions §68) |
+| 11.7 | Agency and white-label plan | V1 | Per-seat Team and Agency plans; Agency gets up to 20 client teams and its own name, colour and logo in its clients' app header and shared pages (decisions §68.6–7; prices to be confirmed) |
 | 11.8 | **Product owner portal** | V1 | Our own admin app in its own repo (`titan117-pop`) at its own address, for the owner and employees: error reports (§19), accounts and plans, credit corrections, kill switches, releases; two-factor required; every view logged (decisions §23) |
 
 ## 12. Trust and security (across everything)

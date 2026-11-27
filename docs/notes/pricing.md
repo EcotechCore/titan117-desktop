@@ -41,6 +41,18 @@ With smart routing (a strong planner, a cheap coder, local quick edits), a Pro u
 | **Agency and white-label** | — | — | — | Yes |
 | **Support** | Email | Email | Priority | Dedicated |
 
+**Teams and agencies (proposed 27 Nov 2026, decisions §68.6, to be confirmed by the owner):** two plans bought per seat take the place of Custom for most teams. A team runs on its owner's plan; members need no plan of their own and spend one credit pool.
+
+| | Team | Agency |
+|---|---|---|
+| **Price** | €20 / $20 a seat a month | €30 / $30 a seat a month |
+| **Yearly** | €200 / $200 a seat | €300 / $300 a seat |
+| **Seats** | 2–50 | 3–100 |
+| **Credits a month** | 1,000 a seat, pooled | 1,500 a seat, pooled |
+| **Devices** | 3 a person | 3 a person |
+| **Teams** | One, with roles and an audit log | Up to 20 client teams sharing the seats |
+| **White-label** | — | The agency's name, colour and logo for its clients |
+
 **Who it's for:** Starter as the way in; Pro for one person running a company; Max for heavy daily use of cloud models; Custom for teams and agencies.
 
 ## No free plan

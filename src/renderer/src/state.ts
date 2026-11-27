@@ -32,6 +32,8 @@ export type View =
   /** Schedules, web watches and recordings (phase 13). */
   | { kind: 'automations' }
   | { kind: 'remote' }
+  /** Teams (phase 17, decisions §68): joining a team's key and what it shares. */
+  | { kind: 'team' }
   /** The brand kit, the content calendar and promo videos (phase 14). */
   | { kind: 'marketing' }
   /** A sidebar app (6.2), by its id. */

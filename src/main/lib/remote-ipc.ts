@@ -8,6 +8,7 @@ import { hostname } from 'node:os'
 
 import { verifySecondFactorProof } from '../lease'
 import { LaptopSync } from './laptop-sync'
+import { TeamSync } from './team-sync'
 import { Remote } from './remote'
 import { RemoteCommands, type EngineCall } from './remote-commands'
 import { Slack } from './slack'
@@ -36,6 +37,7 @@ export interface RemoteHooks {
   telegram: Telegram
   slack: Slack
   sync: LaptopSync
+  teams: TeamSync
   /** An engine notification (1.9): a schedule's result also goes to the phone and the chat (decisions §61.5). */
   notice(note: { title: string; body: string; taskId: string }): void
 }
@@ -128,8 +130,20 @@ export function startRemote(w: RemoteWiring): RemoteHooks {
     notify: w.notify,
     onChange: (view) => send('sync:changed', view)
   })
+  // Teams (decisions §68): agents and apps' data shared with team members, sealed under each team's key.
+  const teams = new TeamSync({
+    dataDir: w.dataDir,
+    laptopName: hostname().slice(0, 60) || 'Laptop',
+    keychain: w.keychain,
+    apiUrl: w.apiUrl,
+    deviceToken: w.deviceToken,
+    engine,
+    notify: w.notify,
+    onChange: (view) => send('teams:changed', view)
+  })
   void remote.start()
   void sync.start()
+  void teams.start()
   slack.start()
   telegram.start()
 
@@ -185,6 +199,64 @@ export function startRemote(w: RemoteWiring): RemoteHooks {
   ipcMain.handle(
     'sync:confirm',
     (e, accept: unknown) => (guard(e), sync.confirmKey(accept === true), sync.view())
+  )
+  const str = (v: unknown): string => (typeof v === 'string' ? v.slice(0, 100) : '')
+  ipcMain.handle('teams:status', async (e) => (guard(e), await teams.tick(), teams.view()))
+  ipcMain.handle(
+    'teams:join',
+    async (e, id: unknown) => (guard(e), await teams.join(str(id)), teams.view())
+  )
+  ipcMain.handle('teams:leave', (e, id: unknown) => (guard(e), teams.leave(str(id)), teams.view()))
+  ipcMain.handle('teams:allow', async (e, id: unknown, laptop: unknown) => {
+    guard(e)
+    await teams.allow(str(id), str(laptop))
+    return teams.view()
+  })
+  ipcMain.handle(
+    'teams:refuse',
+    (e, id: unknown, laptop: unknown) => (
+      guard(e),
+      teams.refuse(str(id), str(laptop)),
+      teams.view()
+    )
+  )
+  ipcMain.handle(
+    'teams:remove',
+    (e, id: unknown, laptop: unknown) => (
+      guard(e),
+      teams.remove(str(id), str(laptop)),
+      teams.view()
+    )
+  )
+  ipcMain.handle(
+    'teams:confirm',
+    (e, id: unknown, accept: unknown) => (
+      guard(e),
+      teams.confirmKey(str(id), accept === true),
+      teams.view()
+    )
+  )
+  ipcMain.handle('teams:shareAgent', async (e, id: unknown, name: unknown, on: unknown) => {
+    guard(e)
+    await teams.shareAgent(str(id), str(name), on === true)
+    return teams.view()
+  })
+  ipcMain.handle(
+    'teams:shareApp',
+    (e, id: unknown, app: unknown, on: unknown) => (
+      guard(e),
+      teams.shareApp(str(id), str(app), on === true),
+      teams.view()
+    )
+  )
+  // Adding a shared agent: only from our own window, on the user's click (a standing instruction, decisions §68.8).
+  ipcMain.handle('teams:add', async (e, id: unknown, entry: unknown) => {
+    guard(e)
+    return { error: await teams.addFromInbox(str(id), str(entry)), view: teams.view() }
+  })
+  ipcMain.handle(
+    'teams:dismiss',
+    (e, id: unknown, entry: unknown) => (guard(e), teams.dismiss(str(id), str(entry)), teams.view())
   )
   ipcMain.handle('slack:status', (e) => (guard(e), sl.view()))
   ipcMain.handle(
@@ -249,5 +321,5 @@ ${note.body}`.slice(0, 1000)
     r.setScheduleResults(on === true)
     return r.view()
   })
-  return { remote, telegram, slack, sync, notice }
+  return { remote, telegram, slack, sync, teams, notice }
 }

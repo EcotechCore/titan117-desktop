@@ -16,6 +16,15 @@ Everything waiting on the owner, in the order to do it. Gathered from every repo
 - [ ] **Try it on a real task:** an approval card and a running step in the new look weren't seen (they need a real model run). Run a task that writes a file and check the card, the folded steps, the file tab and the drawer.
 - [ ] **Review and merge** the three pull requests (web docs, desktop, pop docs copy).
 
+## Phase 17 · Teams and plans (started 27 Nov 2026)
+
+- [ ] **Decisions §68** (to be confirmed): teams in our own Convex tables instead of Clerk Organizations (Clerk's free organizations stop at 20 people with only Admin and Member; custom roles cost $100 a month), four roles (owner, admin, member, viewer), invite links used once within a week, the append-only audit log, the team relay with laptops let in only from an owner's or admin's laptop after comparing a code, shared agents added only with a click, members covered by the owner's per-seat plan and spending one credit pool.
+- [ ] **Decide the prices and limits of Team and Agency** (§68.6). Proposed: Team €20 a seat a month (€200 a year), 2–50 seats, 1,000 credits a seat pooled, 3 devices a person, one team; Agency €30 a seat a month (€300 a year), 3–100 seats, 1,500 credits a seat, up to 20 client teams, white-label. Then make the prices in Stripe (test mode first) with the lookup keys `titan117_team_month`, `titan117_team_year`, `titan117_agency_month` and `titan117_agency_year`, **per unit** (the quantity is the seats), and let customers change the quantity in the billing portal's settings. Until then Checkout for these two plans fails cleanly. The public pricing page still says Custom; say when to show the new plans there.
+- [ ] **Clerk's plan:** nothing new is needed from Clerk for teams (§68.1); remote control and staff two-factor still need Clerk Pro (§37). Say if you'd rather pay for Clerk's Enhanced B2B add-on ($100 a month) and use Clerk Organizations instead.
+- [ ] **White-label rules** (§68.7): what an agency may change (today: a name that isn't Titan117's, a colour white text reads on, a logo up to 200 KB), whether "Made with Titan117" may be hidden on their shared pages (off until you say; the switch is `WHITE_LABEL_HIDE_MADE_WITH=on` in Convex), and whether agencies get the app itself under their name (a separate signed build per agency, not built).
+- [ ] **Try a team of three** once the plan prices exist in test mode: buy Team with 3 seats on one account, make a team on `/team`, invite two other accounts (one member, one viewer) with the links, sign the desktop app in on three laptops (or three throwaway profiles), **Customize → Team → Join on this laptop** on yours first, let the others in after comparing codes, share an agent and a sidebar app's data, and check the viewer can't change anything and the audit log shows it all.
+- [ ] **Review and merge** the three pull requests (web first, then desktop, then pop).
+
 ## Next · After phase 8 (put aside by the owner on 21 Nov 2026)
 
 Nothing here blocks phase 8. Gathered here to do together once phase 8 is built.
