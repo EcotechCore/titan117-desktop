@@ -1,10 +1,16 @@
-import type { RemoteView, SlackView, SyncView, TelegramView } from '../shared/remote-views'
-export type { RemoteView, SlackView, SyncView, TelegramView }
+import type {
+  RemoteView,
+  SlackView,
+  SyncView,
+  TeamsView,
+  TelegramView
+} from '../shared/remote-views'
+export type { RemoteView, SlackView, SyncView, TeamsView, TelegramView }
 export interface AccountView {
   signedIn: boolean
   locked: boolean
   reason: 'signedOut' | 'noPlan' | 'expired' | null
-  plan: 'starter' | 'pro' | 'max' | 'custom' | null
+  plan: 'starter' | 'pro' | 'max' | 'team' | 'agency' | 'custom' | null
   expiresAt: number | null
   warn: boolean
   problem: string | null
@@ -139,6 +145,27 @@ declare global {
         remove(id: string): Promise<SyncView>
         confirm(accept: boolean): Promise<SyncView>
         onChange(listener: (view: SyncView) => void): void
+      }
+      /** Teams (decisions §68): agents and apps' data shared with team members, sealed end to end. */
+      teams: {
+        status(): Promise<TeamsView>
+        join(id: string): Promise<TeamsView>
+        leave(id: string): Promise<TeamsView>
+        allow(id: string, laptop: string): Promise<TeamsView>
+        refuse(id: string, laptop: string): Promise<TeamsView>
+        remove(id: string, laptop: string): Promise<TeamsView>
+        confirm(id: string, accept: boolean): Promise<TeamsView>
+        shareAgent(id: string, name: string, on: boolean): Promise<TeamsView>
+        shareApp(id: string, app: string, on: boolean): Promise<TeamsView>
+        add(id: string, entry: string): Promise<{ error: string | null; view: TeamsView }>
+        dismiss(id: string, entry: string): Promise<TeamsView>
+        shareAppCode(id: string, app: string): Promise<{ error: string | null; view: TeamsView }>
+        addApp(
+          id: string,
+          entry: string,
+          parent: string
+        ): Promise<{ error: string | null; view: TeamsView }>
+        onChange(listener: (view: TeamsView) => void): void
       }
       /** The user's own Slack app in Socket Mode (decisions §64.11). Tokens go in, never out. */
       slack: {

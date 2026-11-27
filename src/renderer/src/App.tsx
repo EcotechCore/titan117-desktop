@@ -41,6 +41,8 @@ import { CompareView } from './Compare'
 import { AutomationsView } from './Automations'
 import { MarketingView } from './Marketing'
 import { RemoteView } from './Remote'
+import { TeamView } from './Team'
+import type { TeamsView } from '../../preload/index.d'
 import { MediaModelsView } from './Media'
 import type { KeyProvider, ReportMode } from '../../shared/protocol'
 import { OwnKeys } from './Keys'
@@ -116,6 +118,14 @@ function App(): React.JSX.Element {
   const [agentName, setAgentName] = useState('Titan')
   /** The agent whose page sent the user to Automations (a schedule or trigger for it, 4.1). */
   const [automateAgent, setAutomateAgent] = useState<string | null>(null)
+  const [teamBrand, setTeamBrand] = useState<TeamsView['brand']>(null)
+  useEffect(() => {
+    window.titan117.teams.onChange((v) => setTeamBrand(v.brand))
+    void window.titan117.teams
+      .status()
+      .then((v) => setTeamBrand(v.brand))
+      .catch(() => undefined)
+  }, [])
   const agentsChanged = state.changed.agents ?? 0
   useEffect(() => {
     if (!api) return
@@ -463,6 +473,13 @@ function App(): React.JSX.Element {
           <span className="brand" title={`Titan117 · ${titan === 'idle' ? 'idle' : titan}`}>
             <Eyes state={titan} />
           </span>
+          {teamBrand && (
+            // An agency's brand (white-label, decisions §68.7): its name, with ours beside it.
+            <span className="team-brand" title={`${teamBrand.name} · with Titan117`}>
+              <span className="team-brand-dot" style={{ background: teamBrand.accent }} />
+              {teamBrand.name}
+            </span>
+          )}
           <button
             className="bar-btn"
             aria-label={
@@ -783,6 +800,14 @@ function App(): React.JSX.Element {
                 onAsk={(agent, words) => void startNew(words, agent)}
                 savedKeys={(engine?.ownKeys ?? {}) as Record<KeyProvider, boolean>}
                 onKeysChanged={() => void reloadModels().catch(fail)}
+              />
+            )}
+            {view.kind === 'team' && (
+              <TeamView
+                agents={agents}
+                apps={sidebarApps}
+                folders={engine?.folders ?? []}
+                onProblem={fail}
               />
             )}
             {view.kind === 'remote' && (

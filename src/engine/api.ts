@@ -45,6 +45,7 @@ import { SearchError, DEFAULT_SEARCH_SETTINGS, siteOf } from './lib/search'
 import { ShareError, type ShareService } from './lib/share'
 import { ReportError, type ReportService } from './lib/reports'
 import { AppError } from './lib/apps/service'
+import { TeamShareError } from './lib/apps/team-share'
 import { DataError } from './lib/apps/data'
 import { NodeDownloadError } from './lib/apps/node'
 import { AndroidError } from './lib/apps/android'
@@ -227,6 +228,13 @@ export function createApi(deps: {
     apps(): string[]
     entriesSince(app: string, since: number, limit: number): { upTo: number; entries: unknown[] }
     apply(app: string, entries: unknown[]): { applied: number; skipped: number; refused: number }
+    /** Teams (decisions §68.13): apps whose data is read-only here (app id → team name). */
+    setReadOnly(next: Record<string, string>): void
+    readOnly(): Record<string, string>
+    /** A sidebar app's source files, to share with a team. */
+    pack(id: string): unknown
+    /** A shared app's files into a new allowed folder, after the user's click. */
+    unpack(bundle: unknown, folder: string): Promise<unknown>
   }
   /** The Marketing screen (phase 14; decisions §62): the brand kit and the content calendar. */
   marketing?: {
@@ -376,6 +384,25 @@ export function createApi(deps: {
         if (def.name !== current.name)
           throw new ApiError(400, 'BAD_REQUEST', 'An agent’s name can’t change. Clone it instead.')
         return { agent: agents.save(def, { replace: true }) }
+      }
+      case 'POST agents/:id/import': {
+        // An agent a team member shared (decisions §68.8), added after the user's own click
+        // on the laptop. Its source is always the team and person the shell names, never
+        // the file's header; it can replace only an agent that came from that same source.
+        if (id !== 'team') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
+        const source = String(field(body, 'source') ?? '')
+        if (!/^team [^\n]{1,120}$/.test(source))
+          throw new ApiError(400, 'BAD_REQUEST', 'Say which team it comes from.')
+        const parsed = parseAgent(String(field(body, 'text') ?? '').slice(0, 100_000), source)
+        const def = checkAgent({ ...parsed, source }, source)
+        const existing = agents.get(def.name)
+        if (existing && existing.source !== source)
+          throw new ApiError(
+            409,
+            'CONFLICT',
+            `You already have an agent called ${existing.name}. Rename yours or remove it first.`
+          )
+        return { agent: agents.save(def, { replace: !!existing }) }
       }
       case 'POST compare':
         return {
@@ -1198,8 +1225,15 @@ export function createApi(deps: {
       .filter(Boolean)
       .map((p) => decodeURIComponent(p))
     if (parts[0] !== 'v1') throw new ApiError(404, 'NOT_FOUND', 'Not found.')
-    const [, area, id, action] = parts
-    const key = `${method} ${area}${id ? '/:id' : ''}${action ? `/${action}` : ''}`
+    const [, area, first, second] = parts
+    // Sync's routes name their kind first (`sync/apps/<app>`, `sync/tasks`; decisions §65, §68):
+    // the general pattern would read `apps` as an id and none of them would match.
+    const isSync = area === 'sync' && !!first
+    const id = isSync ? second : first
+    const action = isSync ? parts[4] : second
+    const key = isSync
+      ? `${method} sync/${first}${second ? '/:id' : ''}${parts[4] ? `/${parts[4]}` : ''}`
+      : `${method} ${area}${id ? '/:id' : ''}${action ? `/${action}` : ''}`
 
     // A script's token reaches only its own task's tools, through the permission layer.
     if (scriptTask || key === 'POST tool-calls') {
@@ -1360,6 +1394,38 @@ export function createApi(deps: {
         if (!need(deps.syncData).apps().includes(id))
           throw new ApiError(404, 'NOT_FOUND', 'That app isn’t in this laptop’s sidebar.')
         return need(deps.syncData).apply(id, entries)
+      }
+
+      // Teams (decisions §68.13): the shell asks; the user's click on the Team screen is behind each one.
+      case 'PUT sync/read-only': {
+        const next = field(body, 'apps')
+        if (!next || typeof next !== 'object') throw new ApiError(400, 'BAD_REQUEST', 'Send apps.')
+        const clean: Record<string, string> = {}
+        for (const [app, team] of Object.entries(next as Record<string, unknown>))
+          if (/^[a-z0-9-]{1,60}$/.test(app) && typeof team === 'string')
+            clean[app] = team.slice(0, 60)
+        need(deps.syncData).setReadOnly(clean)
+        return { apps: need(deps.syncData).readOnly() }
+      }
+      case 'GET sync/apps/:id/pack':
+        try {
+          return { bundle: need(deps.syncData).pack(id!) }
+        } catch (error) {
+          if (error instanceof TeamShareError || error instanceof AppError)
+            throw new ApiError(400, 'BAD_REQUEST', error.message)
+          throw error
+        }
+      case 'POST sync/unpack': {
+        const folder = field(body, 'folder')
+        if (typeof folder !== 'string' || !folder)
+          throw new ApiError(400, 'BAD_REQUEST', 'Pick a folder.')
+        try {
+          return await need(deps.syncData).unpack(field(body, 'bundle'), folder)
+        } catch (error) {
+          if (error instanceof TeamShareError || error instanceof AppError)
+            throw new ApiError(400, 'BAD_REQUEST', error.message)
+          throw error
+        }
       }
 
       case 'GET sync/tasks':

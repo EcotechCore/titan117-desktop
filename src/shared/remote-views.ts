@@ -1,4 +1,5 @@
 /** What the window sees of remote control and the chat channels (decisions §64). Never a key or a token. */
+import type { TeamRole } from './team-roles'
 
 export interface TrustedDevice {
   publicKey: string
@@ -58,4 +59,62 @@ export interface SyncView {
   tooLong: number
   lastSyncAt: number | null
   keychain: boolean
+}
+
+/** Teams on this laptop (decisions §68; main/lib/team-sync.ts). */
+export interface TeamBrandView {
+  name: string
+  accent: string
+  hideMadeWith: boolean
+  logoUrl: string | null
+}
+
+export interface TeamView {
+  id: string
+  name: string
+  role: TeamRole
+  /** The owner's plan covers this person. */
+  active: boolean
+  on: boolean
+  status: 'off' | 'joining' | 'waiting' | 'in'
+  problem: string | null
+  laptops: {
+    id: string
+    name: string
+    person: string
+    role: TeamRole | null
+    me: boolean
+    code: string | null
+  }[]
+  waiting: { id: string; name: string; person: string; code: string }[]
+  confirm: { by: string; code: string } | null
+  sharedAgents: string[]
+  sharedApps: string[]
+  /** Apps whose source this person shared with the team. */
+  sharedAppCode: string[]
+  /** What the team shared, opened from the audit log's sealed notes (owners and admins). */
+  activity: { at: number; who: string; action: string; what: string }[]
+  inbox: {
+    id: string
+    /** An agent to add, or a sidebar app's source to copy into a folder (decisions §68.13). */
+    type: 'agent' | 'app'
+    name: string
+    /** For an app: its id, the folder name it keeps so its records match the team's. */
+    appId?: string
+    /** For an app: what its data asks to read and change, and whether it asks the AI model. */
+    asks?: { reads: string[]; writes: string[]; ai: boolean }
+    from: string
+    role: TeamRole
+    at: number
+    update: boolean
+  }[]
+  lastSyncAt: number | null
+}
+
+export interface TeamsView {
+  signedIn: boolean
+  keychain: boolean
+  problem: string | null
+  brand: TeamBrandView | null
+  teams: TeamView[]
 }

@@ -13,3 +13,4 @@ scripts/check-repo-settings.mjs
 src/engine/lib/apps/templates
 src/shared/remote-protocol.ts
 src/shared/addon-manifest.ts
+src/shared/team-roles.ts

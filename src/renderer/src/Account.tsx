@@ -13,6 +13,8 @@ const PLAN_NAME: Record<string, string> = {
   starter: 'Starter',
   pro: 'Pro',
   max: 'Max',
+  team: 'Team seat',
+  agency: 'Agency seat',
   custom: 'Custom'
 }
 

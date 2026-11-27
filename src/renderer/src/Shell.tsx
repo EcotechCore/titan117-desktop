@@ -53,6 +53,12 @@ const CUSTOMIZE: { view: View; title: string; icon: IconName; line: string }[] =
     icon: 'send',
     line: 'Your phone and chat channels, off by default'
   },
+  {
+    view: { kind: 'team' },
+    title: 'Team',
+    icon: 'users',
+    line: 'Agents and apps shared with your team'
+  },
   { view: { kind: 'setup' }, title: 'Setup', icon: 'check', line: 'The checklist and health' },
   {
     view: { kind: 'compare' },
